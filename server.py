@@ -5,7 +5,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"<html><body><h1>Hello, World!</h1></body></html>")
+        self.wfile.write(b"<html><body><h1>Hello, Third!</h1></body></html>")
 
 def run(server_class=HTTPServer, handler_class=SimpleHandler, port=8000):
     server_address = ('', port)
