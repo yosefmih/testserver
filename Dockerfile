@@ -4,6 +4,6 @@ WORKDIR /app
 
 COPY server.py .
 
-EXPOSE 8000
+EXPOSE 3000
 
 CMD ["python", "server.py"]
