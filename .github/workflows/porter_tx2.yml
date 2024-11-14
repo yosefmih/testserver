@@ -1,0 +1,25 @@
+"on":
+  push:
+    branches:
+    - app2
+name: Deploy to Porter
+jobs:
+  porter-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Set Github tag
+      id: vars
+      run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+    - name: Update Porter App
+      timeout-minutes: 20
+      uses: porter-dev/porter-update-action@v0.1.0
+      with:
+        app: tx2
+        cluster: "1"
+        host: https://yosefdev2.withporter.run
+        namespace: default
+        project: "1"
+        tag: ${{ steps.vars.outputs.sha_short }}
+        token: ${{ secrets.PORTER_TOKEN_1 }}
