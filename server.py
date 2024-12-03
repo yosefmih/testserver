@@ -5,7 +5,6 @@ import threading
 import signal
 import logging
 from collections import defaultdict
-from time import time
 
 # Configure logging
 logging.basicConfig(
@@ -19,7 +18,7 @@ class MetricsCollector:
         self.request_count = defaultdict(int)  # Track requests by path
         self.status_codes = defaultdict(int)   # Track response status codes
         self.request_durations = []            # Track request durations
-        self.last_collection_time = time()
+        self.last_collection_time = time.time()
 
     def record_request(self, path, status_code, duration):
         self.request_count[path] += 1
@@ -87,9 +86,9 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
     def handle_request(self, handler_func):
         """Wrapper to measure request duration and handle logging"""
-        start_time = time()
+        start_time = time.time()
         status_code = handler_func()
-        duration = time() - start_time
+        duration = time.time() - start_time
         self.log_request_info(status_code, duration)
         return status_code
 
@@ -117,11 +116,11 @@ class SimpleHandler(BaseHTTPRequestHandler):
         cls.is_ready = False
 
     def do_GET(self):
-        start_time = time()
+        start_time = time.time()
         
         if self.is_shutting_down:
             self.send_json_response(503, {'status': 'shutting down'})
-            self.log_request_info(503, time() - start_time)
+            self.log_request_info(503, time.time() - start_time)
             return
 
         if self.path == '/metrics':
@@ -129,7 +128,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
             self.wfile.write(self.metrics.get_metrics().encode('utf-8'))
-            self.log_request_info(200, time() - start_time)
+            self.log_request_info(200, time.time() - start_time)
             return
 
         if self.path == '/healthz':
@@ -151,7 +150,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
             else:
                 status_code = self.send_json_response(503, {'status': 'server is initializing'})
 
-        self.log_request_info(status_code, time() - start_time)
+        self.log_request_info(status_code, time.time() - start_time)
 
 def handle_sigterm(signum, frame, server):
     """Handle SIGTERM signal"""
