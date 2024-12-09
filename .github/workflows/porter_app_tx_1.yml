@@ -16,11 +16,11 @@ jobs:
               uses: porter-dev/setup-porter@v0.1.0
             - name: Deploy stack
               timeout-minutes: 30
-              run: exec porter apply --variables A=3
+              run: exec porter apply
               env:
                 PORTER_APP_NAME: tx
                 PORTER_CLUSTER: "1"
-                PORTER_DEPLOYMENT_TARGET_ID: c957b86d-e2c2-4955-b7ab-f26388be5099
+                PORTER_DEPLOYMENT_TARGET_ID: b3d6829a-3a32-4ff3-9b95-e174c3ddc1f8
                 PORTER_HOST: https://yosefdev2.withporter.run
                 PORTER_PR_NUMBER: ${{ github.event.number }}
                 PORTER_PROJECT: "1"
