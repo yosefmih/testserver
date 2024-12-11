@@ -25,9 +25,9 @@ class MetricsCollector:
         self.demo_metrics = {
             'sidekiq_queue_length': 42,
             'pending_audio_calls': 7,
-            'popular_quakers_count': 1723,
-            'active_meditation_sessions': 108,
-            'unprocessed_friend_requests': 15
+            'active_websocket_connections': 1723,
+            'cache_hit_ratio_percent': 94,
+            'ai_inference_latency_ms': 150
         }
         # Simulate some changes over time
         self.update_thread = threading.Thread(target=self._update_demo_metrics, daemon=True)
@@ -38,9 +38,11 @@ class MetricsCollector:
         while True:
             self.demo_metrics['sidekiq_queue_length'] += random.randint(-5, 8)
             self.demo_metrics['pending_audio_calls'] += random.randint(-2, 3)
-            self.demo_metrics['popular_quakers_count'] += random.randint(-10, 15)
-            self.demo_metrics['active_meditation_sessions'] += random.randint(-5, 7)
-            self.demo_metrics['unprocessed_friend_requests'] += random.randint(-3, 4)
+            self.demo_metrics['active_websocket_connections'] += random.randint(-10, 15)
+            self.demo_metrics['cache_hit_ratio_percent'] = min(100, max(50, 
+                self.demo_metrics['cache_hit_ratio_percent'] + random.randint(-2, 2)))
+            self.demo_metrics['ai_inference_latency_ms'] = max(50, min(500,
+                self.demo_metrics['ai_inference_latency_ms'] + random.randint(-10, 15)))
             
             # Keep values positive
             for key in self.demo_metrics:
@@ -105,17 +107,17 @@ class MetricsCollector:
             "# TYPE python_app_pending_audio_calls gauge",
             f"python_app_pending_audio_calls {self.demo_metrics['pending_audio_calls']}",
             
-            "# HELP python_app_popular_quakers_count Number of popular Quaker profiles",
-            "# TYPE python_app_popular_quakers_count gauge",
-            f"python_app_popular_quakers_count {self.demo_metrics['popular_quakers_count']}",
+            "# HELP python_app_active_websocket_connections Number of active WebSocket connections",
+            "# TYPE python_app_active_websocket_connections gauge",
+            f"python_app_active_websocket_connections {self.demo_metrics['active_websocket_connections']}",
             
-            "# HELP python_app_active_meditation_sessions Current active meditation sessions",
-            "# TYPE python_app_active_meditation_sessions gauge",
-            f"python_app_active_meditation_sessions {self.demo_metrics['active_meditation_sessions']}",
+            "# HELP python_app_cache_hit_ratio_percent Cache hit ratio in percentage",
+            "# TYPE python_app_cache_hit_ratio_percent gauge",
+            f"python_app_cache_hit_ratio_percent {self.demo_metrics['cache_hit_ratio_percent']}",
             
-            "# HELP python_app_unprocessed_friend_requests Number of pending friend requests",
-            "# TYPE python_app_unprocessed_friend_requests gauge",
-            f"python_app_unprocessed_friend_requests {self.demo_metrics['unprocessed_friend_requests']}"
+            "# HELP python_app_ai_inference_latency_ms AI model inference latency in milliseconds",
+            "# TYPE python_app_ai_inference_latency_ms gauge",
+            f"python_app_ai_inference_latency_ms {self.demo_metrics['ai_inference_latency_ms']}"
         ])
         
         return "\n".join(metrics)
@@ -174,14 +176,6 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.log_request_info(503, time.time() - start_time)
             return
 
-        if self.path == '/metrics':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/plain')
-            self.end_headers()
-            self.wfile.write(self.metrics.get_metrics().encode('utf-8'))
-            self.log_request_info(200, time.time() - start_time)
-            return
-
         if self.path == '/healthz':
             status_code = self.send_json_response(200, {'status': 'healthy'})
         
@@ -203,6 +197,26 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
         self.log_request_info(status_code, time.time() - start_time)
 
+class MetricsServer(HTTPServer):
+    def __init__(self, metrics_collector, server_address, handler_class):
+        self.metrics_collector = metrics_collector
+        super().__init__(server_address, handler_class)
+
+class MetricsHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/metrics':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            # Get metrics from the shared collector
+            metrics = self.server.metrics_collector.get_metrics()
+            self.wfile.write(metrics.encode('utf-8'))
+        else:
+            self.send_response(404)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'Not Found')
+
 def handle_sigterm(signum, frame, server):
     """Handle SIGTERM signal"""
     print("\nReceived SIGTERM. Starting graceful shutdown...")
@@ -217,6 +231,16 @@ def handle_sigterm(signum, frame, server):
     print("Stopping server...")
     server.shutdown()
 
+def run_metrics_server(metrics_collector, port=9090):
+    """Run the metrics server in a separate thread"""
+    server = MetricsServer(
+        metrics_collector,
+        server_address=('', port),
+        handler_class=MetricsHandler
+    )
+    logger.info(f"Metrics server running on port {port}")
+    server.serve_forever()
+
 def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup_delay=10):
     # Start preparation in a separate thread
     prep_thread = threading.Thread(
@@ -226,10 +250,18 @@ def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup
     )
     prep_thread.start()
 
-    # Start the server
+    # Start the metrics server in a separate thread
+    metrics_thread = threading.Thread(
+        target=run_metrics_server,
+        args=(handler_class.metrics,),
+        daemon=True
+    )
+    metrics_thread.start()
+
+    # Start the main server
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
-    print(f"Server running on port {port}")
+    logger.info(f"Main server running on port {port}")
 
     # Set up SIGTERM handler
     signal.signal(signal.SIGTERM, lambda signum, frame: handle_sigterm(signum, frame, httpd))
