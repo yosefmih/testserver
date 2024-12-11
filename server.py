@@ -5,6 +5,7 @@ import threading
 import signal
 import logging
 from collections import defaultdict
+import random
 
 # Configure logging
 logging.basicConfig(
@@ -19,6 +20,33 @@ class MetricsCollector:
         self.status_codes = defaultdict(int)   # Track response status codes
         self.request_durations = []            # Track request durations
         self.last_collection_time = time.time()
+        
+        # Initialize demo business metrics with some default values
+        self.demo_metrics = {
+            'sidekiq_queue_length': 42,
+            'pending_audio_calls': 7,
+            'popular_quakers_count': 1723,
+            'active_meditation_sessions': 108,
+            'unprocessed_friend_requests': 15
+        }
+        # Simulate some changes over time
+        self.update_thread = threading.Thread(target=self._update_demo_metrics, daemon=True)
+        self.update_thread.start()
+
+    def _update_demo_metrics(self):
+        """Simulate changing metrics values"""
+        while True:
+            self.demo_metrics['sidekiq_queue_length'] += random.randint(-5, 8)
+            self.demo_metrics['pending_audio_calls'] += random.randint(-2, 3)
+            self.demo_metrics['popular_quakers_count'] += random.randint(-10, 15)
+            self.demo_metrics['active_meditation_sessions'] += random.randint(-5, 7)
+            self.demo_metrics['unprocessed_friend_requests'] += random.randint(-3, 4)
+            
+            # Keep values positive
+            for key in self.demo_metrics:
+                self.demo_metrics[key] = max(0, self.demo_metrics[key])
+            
+            time.sleep(5)  # Update every 5 seconds
 
     def record_request(self, path, status_code, duration):
         self.request_count[path] += 1
@@ -65,6 +93,29 @@ class MetricsCollector:
             "# HELP python_app_shutting_down Server shutdown status",
             "# TYPE python_app_shutting_down gauge",
             f"python_app_shutting_down {1 if SimpleHandler.is_shutting_down else 0}",
+        ])
+        
+        # Add demo business metrics
+        metrics.extend([
+            "# HELP python_app_sidekiq_queue_length Current length of Sidekiq queue",
+            "# TYPE python_app_sidekiq_queue_length gauge",
+            f"python_app_sidekiq_queue_length {self.demo_metrics['sidekiq_queue_length']}",
+            
+            "# HELP python_app_pending_audio_calls Number of pending audio calls",
+            "# TYPE python_app_pending_audio_calls gauge",
+            f"python_app_pending_audio_calls {self.demo_metrics['pending_audio_calls']}",
+            
+            "# HELP python_app_popular_quakers_count Number of popular Quaker profiles",
+            "# TYPE python_app_popular_quakers_count gauge",
+            f"python_app_popular_quakers_count {self.demo_metrics['popular_quakers_count']}",
+            
+            "# HELP python_app_active_meditation_sessions Current active meditation sessions",
+            "# TYPE python_app_active_meditation_sessions gauge",
+            f"python_app_active_meditation_sessions {self.demo_metrics['active_meditation_sessions']}",
+            
+            "# HELP python_app_unprocessed_friend_requests Number of pending friend requests",
+            "# TYPE python_app_unprocessed_friend_requests gauge",
+            f"python_app_unprocessed_friend_requests {self.demo_metrics['unprocessed_friend_requests']}"
         ])
         
         return "\n".join(metrics)
