@@ -59,65 +59,64 @@ class MetricsCollector:
         # Calculate average request duration
         avg_duration = sum(self.request_durations) / len(self.request_durations) if self.request_durations else 0
         
-        # Generate Prometheus-style metrics
         metrics = []
         
         # Add help and type information
         metrics.extend([
-            "# HELP python_app_http_requests_total Total number of HTTP requests by path",
-            "# TYPE python_app_http_requests_total counter",
+            "# HELP http_requests_total Total number of HTTP requests by path",
+            "# TYPE http_requests_total counter",
         ])
         
         # Request counts by path
         for path, count in self.request_count.items():
-            metrics.append(f'python_app_http_requests_total{{path="{path}"}} {count}')
+            metrics.append(f'http_requests_total{{path="{path}"}} {count}')
         
         # Status code counts
         metrics.extend([
-            "# HELP python_app_response_status_total Total number of HTTP responses by status code",
-            "# TYPE python_app_response_status_total counter",
+            "# HELP response_status_total Total number of HTTP responses by status code",
+            "# TYPE response_status_total counter",
         ])
         for status, count in self.status_codes.items():
-            metrics.append(f'python_app_response_status_total{{code="{status}"}} {count}')
+            metrics.append(f'response_status_total{{code="{status}"}} {count}')
         
         # Average request duration
         metrics.extend([
-            "# HELP python_app_request_duration_seconds Average request duration in seconds",
-            "# TYPE python_app_request_duration_seconds gauge",
-            f"python_app_request_duration_seconds {avg_duration:.3f}",
+            "# HELP request_duration_seconds Average request duration in seconds",
+            "# TYPE request_duration_seconds gauge",
+            f"request_duration_seconds {avg_duration:.3f}",
         ])
         
         # Server status metrics
         metrics.extend([
-            "# HELP python_app_ready Server ready status",
-            "# TYPE python_app_ready gauge",
-            f"python_app_ready {1 if SimpleHandler.is_ready else 0}",
-            "# HELP python_app_shutting_down Server shutdown status",
-            "# TYPE python_app_shutting_down gauge",
-            f"python_app_shutting_down {1 if SimpleHandler.is_shutting_down else 0}",
+            "# HELP ready Server ready status",
+            "# TYPE ready gauge",
+            f"ready {1 if SimpleHandler.is_ready else 0}",
+            "# HELP shutting_down Server shutdown status",
+            "# TYPE shutting_down gauge",
+            f"shutting_down {1 if SimpleHandler.is_shutting_down else 0}",
         ])
         
         # Add demo business metrics
         metrics.extend([
-            "# HELP python_app_sidekiq_queue_length Current length of Sidekiq queue",
-            "# TYPE python_app_sidekiq_queue_length gauge",
-            f"python_app_sidekiq_queue_length {self.demo_metrics['sidekiq_queue_length']}",
+            "# HELP sidekiq_queue_length Current length of Sidekiq queue",
+            "# TYPE sidekiq_queue_length gauge",
+            f"sidekiq_queue_length {self.demo_metrics['sidekiq_queue_length']}",
             
-            "# HELP python_app_pending_audio_calls Number of pending audio calls",
-            "# TYPE python_app_pending_audio_calls gauge",
-            f"python_app_pending_audio_calls {self.demo_metrics['pending_audio_calls']}",
+            "# HELP pending_audio_calls Number of pending audio calls",
+            "# TYPE pending_audio_calls gauge",
+            f"pending_audio_calls {self.demo_metrics['pending_audio_calls']}",
             
-            "# HELP python_app_active_websocket_connections Number of active WebSocket connections",
-            "# TYPE python_app_active_websocket_connections gauge",
-            f"python_app_active_websocket_connections {self.demo_metrics['active_websocket_connections']}",
+            "# HELP active_websocket_connections Number of active WebSocket connections",
+            "# TYPE active_websocket_connections gauge",
+            f"active_websocket_connections {self.demo_metrics['active_websocket_connections']}",
             
-            "# HELP python_app_cache_hit_ratio_percent Cache hit ratio in percentage",
-            "# TYPE python_app_cache_hit_ratio_percent gauge",
-            f"python_app_cache_hit_ratio_percent {self.demo_metrics['cache_hit_ratio_percent']}",
+            "# HELP cache_hit_ratio_percent Cache hit ratio in percentage",
+            "# TYPE cache_hit_ratio_percent gauge",
+            f"cache_hit_ratio_percent {self.demo_metrics['cache_hit_ratio_percent']}",
             
-            "# HELP python_app_ai_inference_latency_ms AI model inference latency in milliseconds",
-            "# TYPE python_app_ai_inference_latency_ms gauge",
-            f"python_app_ai_inference_latency_ms {self.demo_metrics['ai_inference_latency_ms']}"
+            "# HELP ai_inference_latency_ms AI model inference latency in milliseconds",
+            "# TYPE ai_inference_latency_ms gauge",
+            f"ai_inference_latency_ms {self.demo_metrics['ai_inference_latency_ms']}"
         ])
         
         return "\n".join(metrics)
