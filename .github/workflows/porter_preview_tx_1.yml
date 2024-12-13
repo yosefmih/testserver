@@ -8,8 +8,9 @@ jobs:
     porter-deploy:
         runs-on: ubuntu-latest
         steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+            - uses: actions/checkout@v4
+              with:
+                ref: ${{ github.event.pull_request.head.ref }}
             - name: Set Github tag
               id: vars
               run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
