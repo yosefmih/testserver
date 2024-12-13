@@ -189,7 +189,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header('Content-type', 'text/html')
                 self.end_headers()
-                self.wfile.write(b"<html><body><h1>Hello, Third!</h1></body></html>")
+                self.wfile.write(b"<html><body><h1>Hello Human!!</h1></body></html>")
                 status_code = 200
             else:
                 status_code = self.send_json_response(503, {'status': 'server is initializing'})
