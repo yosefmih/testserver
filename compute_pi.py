@@ -2,6 +2,7 @@
 import argparse
 import psycopg2
 import os
+import sys
 from datetime import datetime
 from decimal import Decimal, getcontext
 
@@ -110,9 +111,11 @@ def main():
         print(f"Computed and cached Pi to {args.digits} digits: {pi}")
         
     except psycopg2.Error as e:
-        print(f"Database error: {e}")
+        print(f"Database error: {e}", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
     finally:
         if 'conn' in locals():
             conn.close()
