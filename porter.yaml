@@ -1,0 +1,49 @@
+version: v2
+name: txx
+services:
+- name: txx
+  run: python /app/server.py
+  type: web
+  instances: 1
+  cpuCores: 0.2
+  ramMegabytes: 300
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  autoscaling:
+    enabled: true
+    gpu: false
+    minInstances: 1
+    maxInstances: 10
+    cpuThresholdPercent: 0
+    memoryThresholdPercent: 0
+    gpuThresholdPercent: 0
+    vramThresholdPercent: 0
+  domains:
+  - name: testthisapp.com
+  - name: testthisappdfdfdfdfdfdfd.com
+  sleep: false
+- name: worker
+  run: python /app/compute_pi.py --digits 30
+  type: worker
+  instances: 1
+  cpuCores: 0.16
+  ramMegabytes: 300
+  terminationGracePeriodSeconds: 30
+  sleep: false
+- name: test
+  run: python /app/compute_pi.py --digits 25
+  type: job
+  cpuCores: 0.16
+  ramMegabytes: 300
+  terminationGracePeriodSeconds: 30
+  cron: '*/1 * * * *'
+  timeoutSeconds: 3600
+  sleep: false
+build:
+  context: ./
+  method: docker
+  dockerfile: ./Dockerfile
+envGroups:
+- dbtest
+autoRollback:
+  enabled: false
