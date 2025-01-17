@@ -22,14 +22,6 @@ services:
   - name: testthisapp.com
   - name: testthisappdfdfdfdfdfdfd.com
   sleep: false
-- name: worker
-  run: python /app/compute_pi.py --digits 30
-  type: worker
-  instances: 1
-  cpuCores: 0.16
-  ramMegabytes: 300
-  terminationGracePeriodSeconds: 30
-  sleep: false
 - name: test
   run: python /app/compute_pi.py --digits 25
   type: job
