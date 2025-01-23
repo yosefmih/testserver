@@ -27,6 +27,9 @@ services:
   type: job
   cpuCores: 0.16
   ramMegabytes: 300
+  gpu:
+    enabled: true
+    gpuCoresNvidia: 0.25
   terminationGracePeriodSeconds: 30
   cron: '*/1 * * * *'
   timeoutSeconds: 3600
