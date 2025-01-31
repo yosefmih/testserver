@@ -15,7 +15,7 @@ jobs:
             - name: Setup porter
               uses: porter-dev/setup-porter@v0.1.0
               with:
-                tagged_release: v0.0.25
+                tagged_release: dev
             - name: Deploy stack
               timeout-minutes: 30
               run: exec porter apply
