@@ -14,15 +14,13 @@ jobs:
               run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
             - name: Setup porter
               uses: porter-dev/setup-porter@v0.1.0
-              with:
-                tagged_release: v0.0.25
             - name: Deploy stack
               timeout-minutes: 30
               run: exec porter apply
               env:
                 PORTER_APP_NAME: txx
                 PORTER_CLUSTER: "1"
-                PORTER_DEPLOYMENT_TARGET_ID: 3c479d6a-2599-4589-8083-8be66ba7687b
+                PORTER_DEPLOYMENT_TARGET_ID: ba9a581f-3979-4eb4-ae32-487415064a90
                 PORTER_HOST: https://yosefdev2.withporter.run
                 PORTER_PR_NUMBER: ${{ github.event.number }}
                 PORTER_PROJECT: "1"
