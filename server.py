@@ -203,7 +203,7 @@ class MetricsServer(HTTPServer):
 
 class MetricsHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/metrics':
+        if self.path == '/api/metrics':
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
