@@ -11,6 +11,7 @@ RUN pip install -r requirements.txt
 EXPOSE 3000
 EXPOSE 9090
 
+ARG RUN_FILE
 RUN echo "RUN_FILE is set to $RUN_FILE"
 
 CMD ["python", "server.py"]
