@@ -16,7 +16,7 @@ jobs:
               uses: porter-dev/setup-porter@v0.1.0
             - name: Deploy stack
               timeout-minutes: 30
-              run: exec porter apply
+              run: exec porter apply --variables RUN_FILE=compute_pi.py
               env:
                 PORTER_APP_NAME: txx
                 PORTER_CLUSTER: "1"
@@ -27,4 +27,3 @@ jobs:
                 PORTER_REPO_NAME: ${{ github.event.repository.name }}
                 PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
                 PORTER_TOKEN: ${{ secrets.PORTER_APP_1_1 }}
-                RUN_FILE: compute_pi.py
