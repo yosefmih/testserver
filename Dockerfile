@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY server.py .
 COPY compute_pi.py .
+COPY gpu_benchmark.py .
 COPY requirements.txt .
 
 RUN pip install -r requirements.txt
