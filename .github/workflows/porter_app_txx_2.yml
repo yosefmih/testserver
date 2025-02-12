@@ -27,3 +27,4 @@ jobs:
                 PORTER_REPO_NAME: ${{ github.event.repository.name }}
                 PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
                 PORTER_TOKEN: ${{ secrets.PORTER_APP_1_2 }}
+                DOCKER_BUILDKIT: 1
