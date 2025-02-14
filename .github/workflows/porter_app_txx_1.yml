@@ -1,7 +1,7 @@
 "on":
     push:
         branches:
-            - ym/smaller-binary
+            - ym/smaller_binary
 name: Deploy to txx
 jobs:
     porter-deploy:
