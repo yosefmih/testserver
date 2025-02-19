@@ -54,7 +54,7 @@ def compute_pi(precision):
 
 def main():
     parser = argparse.ArgumentParser(description='Compute Pi to a specified number of digits')
-    parser.add_argument('--digits', type=int, default=10, 
+    parser.add_argument('--digits', type=int, default=12, 
                       help='Number of digits of Pi to compute (max 30)')
     
     args = parser.parse_args()
