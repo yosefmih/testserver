@@ -10,8 +10,9 @@ COPY fibonacci/go.mod .
 # Copy the source code
 COPY fibonacci/main.go .
 
-# Build the Go application
-RUN go build -o fibonacci-app main.go
+# Build the Go application and move it to a PATH location
+RUN go build -o fibonacci-app main.go && \
+    mv fibonacci-app /usr/local/bin/fib
 
-# Run the application
-ENTRYPOINT ["./fibonacci-app"] 
+# Set up the container entrypoint
+ENTRYPOINT ["fib"] 
