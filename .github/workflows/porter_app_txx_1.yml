@@ -20,7 +20,7 @@ jobs:
               env:
                 PORTER_APP_NAME: txx
                 PORTER_CLUSTER: "1"
-                PORTER_DEPLOYMENT_TARGET_ID: 2f81b0f5-49de-476c-b5a5-470b89cd389b
+                PORTER_DEPLOYMENT_TARGET_ID: e95cfd46-097b-4d71-9bb9-31a529be2e6c
                 PORTER_HOST: https://yosefdev2.withporter.run
                 PORTER_PR_NUMBER: ${{ github.event.number }}
                 PORTER_PROJECT: "1"
