@@ -22,18 +22,6 @@ services:
   - name: testthisapp.com
   - name: testthisappdfdfdfdfdfdfd.com
   sleep: false
-- name: test
-  run: python /app/compute_pi.py --digits 25
-  type: job
-  cpuCores: 0.16
-  ramMegabytes: 300
-  gpu:
-    enabled: true
-    gpuCoresNvidia: 0.25
-  terminationGracePeriodSeconds: 30
-  cron: '*/1 * * * *'
-  timeoutSeconds: 3600
-  sleep: false
 build:
   context: ./
   method: docker
