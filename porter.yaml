@@ -38,7 +38,10 @@ build:
   context: ./
   method: docker
   dockerfile: ./Dockerfile
-envGroups:
-- dbtest
+env:
+- key: testk
+  value: testv
+- key: testk2
+  value: testv2
 autoRollback:
   enabled: false
