@@ -766,60 +766,70 @@ class LinkerdTest:
         # Indicators for Linkerd on server side
         server_in_mesh = False
         
-        # Server detection is more straightforward - we're looking for header propagation
-        # and consistent behavior with mesh presence
+        # ===== UPDATED SERVER DETECTION LOGIC =====
+        # Look for specific Linkerd-related headers that would only be present
+        # if the server has a Linkerd sidecar injected
         
-        # Tracing headers propagation is the main signal for server in mesh
-        if tracing_test:
-            if tracing_test.get("propagation", False):
-                # If server propagates headers correctly, it's likely in the mesh
-                server_in_mesh = True
-                logger.info("Trace header propagation suggests server is in mesh")
-            elif "trace_id" in tracing_test and "raw_output" in tracing_test:
-                # Look for specific mesh-related headers in response
-                mesh_header_patterns = [
-                    r"x-linkerd-proxy",
-                    r"l5d-",
-                    r"Response headers:.*X-B3-TraceId.*X-B3-SpanId",
-                    r"server-timing"
-                ]
-                
-                for pattern in mesh_header_patterns:
-                    if re.search(pattern, tracing_test.get("raw_output", ""), re.IGNORECASE):
-                        server_in_mesh = True
-                        logger.info(f"Found mesh-specific headers in server response: {pattern}")
+        # Define patterns that would ONLY exist with Linkerd sidecar
+        linkerd_specific_patterns = [
+            r"l5d-.*:",              # Linkerd-specific headers
+            r"linkerd-proxy",        # Linkerd proxy headers
+            r"Via:.*linkerd",        # Via header with linkerd
+            r"server-timing:.*linkerd", # Server timing from linkerd
+            r"x-linkerd-"            # Linkerd-specific headers
+        ]
+        
+        # Check for these patterns in all test outputs
+        linkerd_headers_found = False
+        for test in self.results["tests"]:
+            if "raw_output" in test:
+                for pattern in linkerd_specific_patterns:
+                    if re.search(pattern, test.get("raw_output", ""), re.IGNORECASE):
+                        linkerd_headers_found = True
+                        logger.info(f"Found Linkerd-specific header/pattern in response: {pattern}")
                         break
+                if linkerd_headers_found:
+                    break
         
-        # Look for additional signals from retry test that server is in mesh
+        # Only consider header propagation if we also see Linkerd-specific headers
+        # Otherwise, it could just be the application echoing the headers
+        if tracing_test and tracing_test.get("propagation", False):
+            if linkerd_headers_found:
+                server_in_mesh = True
+                logger.info("Trace header propagation combined with Linkerd headers confirms server is in mesh")
+            else:
+                logger.info("Trace header propagation detected, but no Linkerd-specific headers found.")
+                logger.info("This suggests the server application is manually handling trace headers, not a service mesh.")
+                server_in_mesh = False
+        
+        # Check for retry handling that would suggest server mesh
+        server_mesh_signals = 0
+        
+        # Signal 1: High retry effectiveness without client retries being triggered
         if retry_test and retry_test.get("status") == "PASS":
-            # Look for evidence of automatic retries or traffic shifting
-            if retry_test.get("retry_effectiveness", 0) > 0.5:
-                retry_effectiveness = retry_test.get("retry_effectiveness", 0)
-                # High retry success suggests server-side retry or automatic failover
-                server_in_mesh = True
-                logger.info(f"Server appears to handle errors efficiently (effectiveness: {retry_effectiveness:.2f})")
+            retry_effectiveness = retry_test.get("retry_effectiveness", 0)
+            if retry_effectiveness > 0.8 and not client_in_mesh:
+                server_mesh_signals += 1
+                logger.info(f"High retry effectiveness ({retry_effectiveness:.2f}) without client being in mesh suggests server-side retries")
         
-        # In debug mode, check server details from responses
-        if self.debug_mode and not server_in_mesh:
-            for test in self.results["tests"]:
-                if "raw_output" in test:
-                    # Look for server-side mesh indicators in any response data
-                    server_mesh_indicators = [
-                        r"x-server-host:",  # Server hostname header
-                        r"x-b3-traceid:.*x-b3-spanid",  # B3 propagation
-                        r"traceparent:",  # W3C trace context
-                        r"linkerd-proxy"  # Direct mention of Linkerd proxy
-                    ]
-                    
-                    for indicator in server_mesh_indicators:
-                        if re.search(indicator, test.get("raw_output", ""), re.IGNORECASE):
-                            server_in_mesh = True
-                            logger.info(f"Server response contains mesh indicators: {indicator}")
-                            break
-                    
-                    if server_in_mesh:
-                        break
-
+        # Signal 2: Abnormal latency behavior that suggests server-side circuit breaking
+        if latency_test and "injected_duration" in latency_test and "baseline_duration" in latency_test:
+            baseline = latency_test["baseline_duration"]
+            injected = latency_test["injected_duration"]
+            
+            # If latency isn't as high as we'd expect with the injected delay
+            expected_min = baseline + (LATENCY_MS * 9 / 1000)  # 90% of expected
+            expected_max = baseline + (LATENCY_MS * 11 / 1000) # 110% of expected
+            
+            if injected < expected_min and not client_in_mesh:
+                server_mesh_signals += 1
+                logger.info(f"Latency lower than expected: {injected:.2f}s vs {expected_min:.2f}s, suggests server-side circuit breaking")
+        
+        # For debug mode, don't be lenient in detecting server mesh - require stronger evidence
+        if linkerd_headers_found or server_mesh_signals >= 1:
+            server_in_mesh = True
+            logger.info(f"Found indicators that server is in mesh: headers={linkerd_headers_found}, signals={server_mesh_signals}")
+        
         # Check for override environment variables (useful for manual testing)
         env_client = os.environ.get('LINKERD_CLIENT_IN_MESH', '').lower()
         env_server = os.environ.get('LINKERD_SERVER_IN_MESH', '').lower()
