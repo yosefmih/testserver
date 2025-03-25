@@ -126,6 +126,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
     is_ready = False
     is_shutting_down = False
     metrics = MetricsCollector()
+    greeting_word = "MAN"  # Default greeting word
 
     def log_request_info(self, status_code, duration):
         """Log information about the request"""
@@ -189,11 +190,53 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header('Content-type', 'text/html')
                 self.end_headers()
-                self.wfile.write(b"<html><body><h1>Hello, MAN!</h1></body></html>")
+                self.wfile.write(f"<html><body><h1>Hello, {self.greeting_word}!</h1></body></html>".encode('utf-8'))
                 status_code = 200
             else:
                 status_code = self.send_json_response(503, {'status': 'server is initializing'})
 
+        self.log_request_info(status_code, time.time() - start_time)
+    
+    def do_POST(self):
+        start_time = time.time()
+        
+        if self.is_shutting_down:
+            status_code = self.send_json_response(503, {'status': 'shutting down'})
+            self.log_request_info(status_code, time.time() - start_time)
+            return
+            
+        if not self.is_ready:
+            status_code = self.send_json_response(503, {'status': 'server is initializing'})
+            self.log_request_info(status_code, time.time() - start_time)
+            return
+            
+        # Process POST request to update greeting word
+        if self.path == '/update-greeting':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            
+            try:
+                data = json.loads(post_data)
+                if 'word' in data and isinstance(data['word'], str) and data['word'].strip():
+                    # Update the class variable to change greeting for all instances
+                    SimpleHandler.greeting_word = data['word'].strip()
+                    status_code = self.send_json_response(200, {
+                        'status': 'success', 
+                        'message': f'Greeting updated to: {SimpleHandler.greeting_word}'
+                    })
+                else:
+                    status_code = self.send_json_response(400, {
+                        'status': 'error',
+                        'message': 'Invalid request: "word" field is required and must be a non-empty string'
+                    })
+            except json.JSONDecodeError:
+                status_code = self.send_json_response(400, {
+                    'status': 'error',
+                    'message': 'Invalid JSON format'
+                })
+        else:
+            status_code = self.send_json_response(404, {'status': 'not found'})
+            
         self.log_request_info(status_code, time.time() - start_time)
 
 class MetricsServer(HTTPServer):
