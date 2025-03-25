@@ -291,7 +291,8 @@ class LinkerdTest:
             result = self.run_client_command([
                 "--mode", "load-test", 
                 "--requests", "10", 
-                "--concurrency", "1"
+                "--concurrency", "1", 
+                "--trace", "false"
             ], timeout=30)  # 30 second timeout
             
             if result:
@@ -864,4 +865,6 @@ def main():
     test.run_all_tests()
 
 if __name__ == '__main__':
-    main() 
+    while True:
+        main() 
+        time.sleep(60)
