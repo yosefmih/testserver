@@ -216,8 +216,8 @@ def main():
     # Operating mode options
     parser.add_argument('--word', help='The greeting word to use (if not provided, a random word will be generated)')
     parser.add_argument('--interval', type=int, default=120, help='Time interval between updates in seconds (default: 120)')
-    parser.add_argument('--mode', choices=['normal', 'config', 'load-test'], default='normal',
-                       help='Operation mode: normal (default), config (configure server), load-test (high frequency requests)')
+    parser.add_argument('--mode', choices=['normal', 'config', 'load-test', 'single-request'], default='normal',
+                       help='Operation mode: normal (default), config (configure server), load-test (high frequency requests), single-request (run once and exit)')
     
     # Service mesh testing options
     parser.add_argument('--retries', type=int, default=3, help='Maximum number of retries for failed requests (default: 3)')
@@ -247,6 +247,11 @@ def main():
     # Generate trace headers (may be overridden for each request if args.trace is True)
     base_headers = generate_trace_headers()
     logger.debug(f"Base trace ID: {base_headers['X-B3-TraceId']}")
+    
+    # Single request mode is implied if interval is very large (>9000)
+    if args.interval > 9000:
+        args.mode = 'single-request'
+        logger.debug(f"Large interval detected ({args.interval}), switching to single-request mode")
     
     # Configuration mode: update server configuration and exit
     if args.mode == 'config':
@@ -306,6 +311,35 @@ def main():
             
         sys.exit(0 if failure_count == 0 else 1)
     
+    # Single request mode: send one request and exit
+    if args.mode == 'single-request':
+        # Either use provided word or generate a random one
+        if args.word and args.word.strip():
+            word = args.word.strip()
+            logger.info(f"Using provided word: {word}")
+        else:
+            word = generate_random_word()
+            logger.info(f"Generated random word: {word}")
+        
+        # Create headers
+        headers = generate_trace_headers() if args.trace else base_headers
+            
+        # Update the greeting on the server
+        update_result, response = update_greeting(
+            args.server, 
+            word, 
+            max_retries=args.retries,
+            retry_delay=args.retry_delay,
+            headers=headers
+        )
+        
+        if update_result:
+            logger.info(f"Update successful!")
+            sys.exit(0)
+        else:
+            logger.error(f"Update failed!")
+            sys.exit(1)
+        
     # Normal mode: update greeting word periodically
     logger.info(f"Running in normal mode - update interval set to {args.interval} seconds")
     

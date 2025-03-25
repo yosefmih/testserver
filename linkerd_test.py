@@ -153,9 +153,13 @@ class LinkerdTest:
             "start_time": datetime.now().isoformat()
         }
         
-        # Reset the word with a known value
+        # Reset the word with a known value - add timeout to prevent hanging
         word = "CONNECTIVITY-TEST"
-        result = self.run_client_command(["--word", word, "--interval", "5"])
+        
+        # Use a single request with timeout instead of potential loop
+        result = self.run_client_command(["--word", word, "--interval", "9999"], 
+                                        timeout=10, # 10 second timeout
+                                        capture_output=True)
         
         # Check if request was successful
         if result and result.returncode == 0:
@@ -166,68 +170,78 @@ class LinkerdTest:
                 logger.info("✅ Basic connectivity test passed")
             else:
                 test_data["status"] = "FAIL"
-                logger.error("❌ Basic connectivity test failed")
+                logger.error("❌ Basic connectivity test failed - no success message found")
+                logger.debug(f"Output: {result.stdout}")
         else:
             test_data["status"] = "FAIL"
-            logger.error("❌ Basic connectivity test failed - client error")
-            
+            logger.error("❌ Basic connectivity test failed - client error or timeout")
+            if result:
+                logger.debug(f"Stderr: {result.stderr}")
+        
         test_data["end_time"] = datetime.now().isoformat()
         self.results["tests"].append(test_data)
         return test_data["status"] == "PASS"
         
     def test_tracing_headers(self):
         """Test tracing headers propagation"""
-        logger.info("=== Testing Tracing Headers Propagation ===")
+        logger.info("=== Testing Tracing Headers ===")
         test_data = {
             "name": "tracing_headers",
             "description": "Tests if tracing headers are propagated",
             "start_time": datetime.now().isoformat()
         }
         
-        # Ensure tracing is enabled
-        self.configure_server("tracing", "true")
-        
-        # Send several requests with same trace ID
-        result = self.run_client_command([
-            "--mode", "load-test", 
-            "--requests", "10", 
-            "--concurrency", "1", 
-            "--trace", "false"
-        ])
-        
-        trace_id_detected = False
-        server_propagation_detected = False
-        
-        if result and result.returncode == 0:
-            # Look for evidence of trace propagation in the output
-            output = result.stdout
+        try:
+            # Ensure tracing is enabled
+            self.configure_server("tracing", "true")
             
-            # Check if trace ID is present in requests
-            trace_id_match = re.search(r"Base trace ID: ([a-f0-9]+)", output)
-            if trace_id_match:
-                trace_id = trace_id_match.group(1)
-                trace_id_detected = True
-                test_data["trace_id"] = trace_id
-                logger.info(f"Found trace ID: {trace_id}")
+            # Send several requests with same trace ID
+            result = self.run_client_command([
+                "--mode", "load-test", 
+                "--requests", "10", 
+                "--concurrency", "1", 
+                "--trace", "false"
+            ], timeout=30)  # 30 second timeout
+            
+            trace_id_detected = False
+            server_propagation_detected = False
+            
+            if result and result.returncode == 0:
+                # Look for evidence of trace propagation in the output
+                output = result.stdout
                 
-                # Look for evidence that server returned the same trace ID
-                if "X-B3-TraceId" in output and "X-Server-Host" in output:
-                    server_propagation_detected = True
-                    logger.info("Server appears to propagate tracing headers")
-        
-        if trace_id_detected:
-            if server_propagation_detected:
-                test_data["status"] = "PASS"
-                test_data["propagation"] = True
-                logger.info("✅ Tracing headers test passed - headers are propagated")
+                # Check if trace ID is present in requests
+                trace_id_match = re.search(r"Base trace ID: ([a-f0-9]+)", output)
+                if trace_id_match:
+                    trace_id = trace_id_match.group(1)
+                    trace_id_detected = True
+                    test_data["trace_id"] = trace_id
+                    logger.info(f"Found trace ID: {trace_id}")
+                    
+                    # Look for evidence that server returned the same trace ID
+                    if "X-B3-TraceId" in output and "X-Server-Host" in output:
+                        server_propagation_detected = True
+                        logger.info("Server appears to propagate tracing headers")
+            
+            if trace_id_detected:
+                if server_propagation_detected:
+                    test_data["status"] = "PASS"
+                    test_data["propagation"] = True
+                    logger.info("✅ Tracing headers test passed - headers are propagated")
+                else:
+                    test_data["status"] = "PARTIAL"
+                    test_data["propagation"] = False
+                    logger.warning("⚠️ Tracing headers test partial - client sends but server doesn't propagate")
             else:
-                test_data["status"] = "PARTIAL"
+                test_data["status"] = "FAIL"
                 test_data["propagation"] = False
-                logger.warning("⚠️ Tracing headers test partial - client sends but server doesn't propagate")
-        else:
-            test_data["status"] = "FAIL"
-            test_data["propagation"] = False
-            logger.error("❌ Tracing headers test failed - no trace ID detected")
+                logger.error("❌ Tracing headers test failed - no trace ID detected")
+        except Exception as e:
+            test_data["status"] = "ERROR"
+            test_data["error"] = str(e)
+            logger.error(f"❌ Tracing headers test error: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
             
         test_data["end_time"] = datetime.now().isoformat()
         self.results["tests"].append(test_data)
@@ -242,50 +256,62 @@ class LinkerdTest:
             "start_time": datetime.now().isoformat()
         }
         
-        # Configure server to return errors
-        self.configure_server("error-rate", str(ERROR_RATE))
-        
-        # Send requests with retries
-        result = self.run_client_command([
-            "--mode", "load-test", 
-            "--requests", "20", 
-            "--concurrency", "1",
-            "--retries", "3",
-            "--retry-delay", "0.5"
-        ])
-        
-        if result:
-            output = result.stdout
+        try:
+            # Configure server to return errors
+            self.configure_server("error-rate", str(ERROR_RATE))
             
-            # Extract success and failure counts
-            success_match = re.search(r"Load test completed in .* - (\d+) succeeded, (\d+) failed", output)
-            if success_match:
-                successes = int(success_match.group(1))
-                failures = int(success_match.group(2))
+            # Send requests with retries
+            result = self.run_client_command([
+                "--mode", "load-test", 
+                "--requests", "20", 
+                "--concurrency", "1",
+                "--retries", "3",
+                "--retry-delay", "0.5"
+            ], timeout=60)  # 60 second timeout
+            
+            if result and result.returncode == 0:
+                output = result.stdout
                 
-                test_data["successes"] = successes
-                test_data["failures"] = failures
-                test_data["error_rate"] = ERROR_RATE
-                
-                retry_attempts = len(re.findall(r"will retry \((\d+)/(\d+)\)", output))
-                test_data["retry_attempts"] = retry_attempts
-                
-                # With 30% error rate and 3 retries, we expect a high success rate
-                if successes > 0 and retry_attempts > 0:
-                    test_data["status"] = "PASS"
-                    logger.info(f"✅ Retry test passed - {successes} succeeded, {failures} failed, {retry_attempts} retries")
+                # Extract success and failure counts
+                success_match = re.search(r"Load test completed in .* - (\d+) succeeded, (\d+) failed", output)
+                if success_match:
+                    successes = int(success_match.group(1))
+                    failures = int(success_match.group(2))
+                    
+                    test_data["successes"] = successes
+                    test_data["failures"] = failures
+                    test_data["error_rate"] = ERROR_RATE
+                    
+                    retry_attempts = len(re.findall(r"will retry \((\d+)/(\d+)\)", output))
+                    test_data["retry_attempts"] = retry_attempts
+                    
+                    # With 30% error rate and 3 retries, we expect a high success rate
+                    if successes > 0 and retry_attempts > 0:
+                        test_data["status"] = "PASS"
+                        logger.info(f"✅ Retry test passed - {successes} succeeded, {failures} failed, {retry_attempts} retries")
+                    else:
+                        test_data["status"] = "FAIL"
+                        logger.error(f"❌ Retry test failed - retries don't seem effective")
                 else:
                     test_data["status"] = "FAIL"
-                    logger.error(f"❌ Retry test failed - retries don't seem effective")
+                    logger.error("❌ Retry test failed - couldn't parse results")
             else:
                 test_data["status"] = "FAIL"
-                logger.error("❌ Retry test failed - couldn't parse results")
-        else:
-            test_data["status"] = "FAIL"
-            logger.error("❌ Retry test failed - client error")
-        
-        # Reset error rate
-        self.configure_server("error-rate", "0")
+                logger.error("❌ Retry test failed - client error or timeout")
+                if result:
+                    logger.debug(f"Stderr: {result.stderr}")
+        except Exception as e:
+            test_data["status"] = "ERROR"
+            test_data["error"] = str(e)
+            logger.error(f"❌ Retry test error: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+        finally:
+            # Reset error rate even if test fails
+            try:
+                self.configure_server("error-rate", "0")
+            except Exception:
+                logger.warning("Failed to reset error rate after test")
             
         test_data["end_time"] = datetime.now().isoformat()
         self.results["tests"].append(test_data)
@@ -300,54 +326,66 @@ class LinkerdTest:
             "start_time": datetime.now().isoformat()
         }
         
-        # First measure baseline latency
-        baseline_result = self.run_client_command([
-            "--mode", "load-test", 
-            "--requests", "10", 
-            "--concurrency", "1"
-        ])
-        
-        baseline_duration = None
-        if baseline_result and baseline_result.returncode == 0:
-            duration_match = re.search(r"Load test completed in (\d+\.\d+)s", baseline_result.stdout)
-            if duration_match:
-                baseline_duration = float(duration_match.group(1))
-                test_data["baseline_duration"] = baseline_duration
-        
-        # Now inject latency
-        self.configure_server("latency", str(LATENCY_MS))
-        
-        # Run test with injected latency
-        latency_result = self.run_client_command([
-            "--mode", "load-test", 
-            "--requests", "10", 
-            "--concurrency", "1"
-        ])
-        
-        injected_duration = None
-        if latency_result and latency_result.returncode == 0:
-            duration_match = re.search(r"Load test completed in (\d+\.\d+)s", latency_result.stdout)
-            if duration_match:
-                injected_duration = float(duration_match.group(1))
-                test_data["injected_duration"] = injected_duration
-        
-        # Reset latency
-        self.configure_server("latency", "0")
-        
-        if baseline_duration is not None and injected_duration is not None:
-            # We expect injected duration to be significantly higher
-            expected_minimum = baseline_duration + (LATENCY_MS * 10 / 1000)  # 10 requests with LATENCY_MS each
+        try:
+            # First measure baseline latency
+            baseline_result = self.run_client_command([
+                "--mode", "load-test", 
+                "--requests", "10", 
+                "--concurrency", "1"
+            ], timeout=30)  # 30 second timeout
             
-            if injected_duration >= expected_minimum * 0.7:  # Allow some variance
-                test_data["status"] = "PASS"
-                logger.info(f"✅ Latency test passed - baseline: {baseline_duration:.2f}s, injected: {injected_duration:.2f}s")
+            baseline_duration = None
+            if baseline_result and baseline_result.returncode == 0:
+                duration_match = re.search(r"Load test completed in (\d+\.\d+)s", baseline_result.stdout)
+                if duration_match:
+                    baseline_duration = float(duration_match.group(1))
+                    test_data["baseline_duration"] = baseline_duration
+                    logger.info(f"Baseline latency: {baseline_duration:.2f}s")
+            
+            # Now inject latency
+            self.configure_server("latency", str(LATENCY_MS))
+            
+            # Run test with injected latency
+            latency_result = self.run_client_command([
+                "--mode", "load-test", 
+                "--requests", "10", 
+                "--concurrency", "1"
+            ], timeout=60)  # 60 second timeout with added latency
+            
+            injected_duration = None
+            if latency_result and latency_result.returncode == 0:
+                duration_match = re.search(r"Load test completed in (\d+\.\d+)s", latency_result.stdout)
+                if duration_match:
+                    injected_duration = float(duration_match.group(1))
+                    test_data["injected_duration"] = injected_duration
+                    logger.info(f"Injected latency: {injected_duration:.2f}s")
+            
+            if baseline_duration is not None and injected_duration is not None:
+                # We expect injected duration to be significantly higher
+                expected_minimum = baseline_duration + (LATENCY_MS * 10 / 1000)  # 10 requests with LATENCY_MS each
+                
+                if injected_duration >= expected_minimum * 0.7:  # Allow some variance
+                    test_data["status"] = "PASS"
+                    logger.info(f"✅ Latency test passed - baseline: {baseline_duration:.2f}s, injected: {injected_duration:.2f}s")
+                else:
+                    test_data["status"] = "FAIL"
+                    logger.error(f"❌ Latency test failed - baseline: {baseline_duration:.2f}s, injected: {injected_duration:.2f}s")
+                    logger.error(f"   Expected injected duration to be at least {expected_minimum:.2f}s")
             else:
                 test_data["status"] = "FAIL"
-                logger.error(f"❌ Latency test failed - baseline: {baseline_duration:.2f}s, injected: {injected_duration:.2f}s")
-                logger.error(f"   Expected injected duration to be at least {expected_minimum:.2f}s")
-        else:
-            test_data["status"] = "FAIL"
-            logger.error("❌ Latency test failed - couldn't measure latency")
+                logger.error("❌ Latency test failed - couldn't measure latency")
+        except Exception as e:
+            test_data["status"] = "ERROR"
+            test_data["error"] = str(e)
+            logger.error(f"❌ Latency test error: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+        finally:
+            # Reset latency even if test fails
+            try:
+                self.configure_server("latency", "0")
+            except Exception:
+                logger.warning("Failed to reset latency after test")
             
         test_data["end_time"] = datetime.now().isoformat()
         self.results["tests"].append(test_data)
@@ -362,42 +400,51 @@ class LinkerdTest:
             "start_time": datetime.now().isoformat()
         }
         
-        # Run load test
-        result = self.run_client_command([
-            "--mode", "load-test", 
-            "--requests", str(REQUESTS), 
-            "--concurrency", str(CONCURRENCY),
-            "--retries", "2"
-        ])
-        
-        if result and result.returncode == 0:
-            throughput_match = re.search(r"Average throughput: (\d+\.\d+) requests/second", result.stdout)
-            success_match = re.search(r"Load test completed in .* - (\d+) succeeded, (\d+) failed", result.stdout)
+        try:
+            # Run load test
+            result = self.run_client_command([
+                "--mode", "load-test", 
+                "--requests", str(REQUESTS), 
+                "--concurrency", str(CONCURRENCY),
+                "--retries", "2"
+            ], timeout=120)  # 2 minute timeout for load test
             
-            if throughput_match and success_match:
-                throughput = float(throughput_match.group(1))
-                successes = int(success_match.group(1))
-                failures = int(success_match.group(2))
+            if result and result.returncode == 0:
+                throughput_match = re.search(r"Average throughput: (\d+\.\d+) requests/second", result.stdout)
+                success_match = re.search(r"Load test completed in .* - (\d+) succeeded, (\d+) failed", result.stdout)
                 
-                test_data["throughput"] = throughput
-                test_data["successes"] = successes
-                test_data["failures"] = failures
-                
-                success_rate = successes / (successes + failures) if (successes + failures) > 0 else 0
-                test_data["success_rate"] = success_rate
-                
-                if success_rate > 0.9:  # More than 90% success
-                    test_data["status"] = "PASS"
-                    logger.info(f"✅ Load test passed - {throughput:.2f} req/s, {success_rate*100:.1f}% success")
+                if throughput_match and success_match:
+                    throughput = float(throughput_match.group(1))
+                    successes = int(success_match.group(1))
+                    failures = int(success_match.group(2))
+                    
+                    test_data["throughput"] = throughput
+                    test_data["successes"] = successes
+                    test_data["failures"] = failures
+                    
+                    success_rate = successes / (successes + failures) if (successes + failures) > 0 else 0
+                    test_data["success_rate"] = success_rate
+                    
+                    if success_rate > 0.9:  # More than 90% success
+                        test_data["status"] = "PASS"
+                        logger.info(f"✅ Load test passed - {throughput:.2f} req/s, {success_rate*100:.1f}% success")
+                    else:
+                        test_data["status"] = "FAIL"
+                        logger.error(f"❌ Load test failed - too many failures ({failures}/{successes+failures})")
                 else:
                     test_data["status"] = "FAIL"
-                    logger.error(f"❌ Load test failed - too many failures ({failures}/{successes+failures})")
+                    logger.error("❌ Load test failed - couldn't parse results")
             else:
                 test_data["status"] = "FAIL"
-                logger.error("❌ Load test failed - couldn't parse results")
-        else:
-            test_data["status"] = "FAIL"
-            logger.error("❌ Load test failed - client error")
+                logger.error("❌ Load test failed - client error or timeout")
+                if result:
+                    logger.debug(f"Stderr: {result.stderr}")
+        except Exception as e:
+            test_data["status"] = "ERROR"
+            test_data["error"] = str(e)
+            logger.error(f"❌ Load test error: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
             
         test_data["end_time"] = datetime.now().isoformat()
         self.results["tests"].append(test_data)
