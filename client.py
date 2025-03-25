@@ -122,18 +122,20 @@ def configure_server(server_url, config_type, value, headers=None):
     # Ensure URL doesn't end with a slash
     server_url = server_url.rstrip('/')
     
-    # Map config types to endpoints and payload
-    config_endpoints = {
-        'error-rate': ('/config/error-rate', {'percent': float(value)}),
-        'latency': ('/config/latency', {'ms': float(value)}),
-        'tracing': ('/config/tracing', {'enabled': value.lower() in ('true', 'yes', '1')})
-    }
-    
-    if config_type not in config_endpoints:
+    # Map config types to endpoints and payload - with proper type conversion
+    if config_type == 'error-rate':
+        endpoint = '/config/error-rate'
+        payload = {'percent': float(value)}
+    elif config_type == 'latency':
+        endpoint = '/config/latency'
+        payload = {'ms': float(value)}
+    elif config_type == 'tracing':
+        endpoint = '/config/tracing'
+        payload = {'enabled': value.lower() in ('true', 'yes', '1')}
+    else:
         logger.error(f"Unknown configuration type: {config_type}")
         return False
         
-    endpoint, payload = config_endpoints[config_type]
     config_url = f"{server_url}{endpoint}"
     
     # Set up headers
