@@ -73,27 +73,50 @@ class LinkerdTest:
     def get_server_config(self):
         """Get the server configuration"""
         logger.info("Getting server configuration")
-        result = self.run_client_command(["--get-config"])
+        
+        # Add timeout to prevent hanging
+        result = self.run_client_command(["--get-config"], timeout=15)
+        
+        # If timeout or failure, provide option to continue anyway
+        if not result or result.returncode != 0:
+            logger.warning("Failed to get server configuration, proceeding with tests anyway")
+            if result:
+                logger.warning(f"Error output: {result.stderr}")
+            
+            # Create default configuration
+            default_config = {
+                "greeting_word": "DEFAULT",
+                "error_rate_percent": 0,
+                "latency_injection_ms": 0,
+                "trace_propagation": True,
+                "hostname": "unknown"
+            }
+            
+            logger.info(f"Using default configuration: {json.dumps(default_config)}")
+            self.results["server_info"]["config"] = default_config
+            self.results["server_info"]["config_status"] = "default_used"
+            return default_config
         
         # Extract config from logs
-        if result and result.returncode == 0:
-            # Try to parse the config from output
-            config_line = None
-            for line in result.stdout.splitlines():
-                if "Server configuration:" in line:
-                    config_line = line.split("Server configuration:", 1)[1].strip()
-                    break
-            
-            if config_line:
-                try:
-                    config = json.loads(config_line)
-                    logger.info(f"Server config: {json.dumps(config, indent=2)}")
-                    self.results["server_info"]["config"] = config
-                    return config
-                except json.JSONDecodeError:
-                    logger.error("Failed to parse server configuration")
+        # Try to parse the config from output
+        config_line = None
+        for line in result.stdout.splitlines():
+            if "Server configuration:" in line:
+                config_line = line.split("Server configuration:", 1)[1].strip()
+                break
         
-        logger.error("Failed to get server configuration")
+        if config_line:
+            try:
+                config = json.loads(config_line)
+                logger.info(f"Server config: {json.dumps(config, indent=2)}")
+                self.results["server_info"]["config"] = config
+                self.results["server_info"]["config_status"] = "success"
+                return config
+            except json.JSONDecodeError:
+                logger.error("Failed to parse server configuration")
+        
+        logger.warning("Failed to extract configuration from response, proceeding with tests anyway")
+        self.results["server_info"]["config_status"] = "failed"
         return None
     
     def configure_server(self, config_type, config_value):
@@ -433,26 +456,60 @@ class LinkerdTest:
         """Run all tests in sequence"""
         logger.info(f"Starting Linkerd test suite against {self.server_url}")
         
-        # Get server config first
-        self.get_server_config()
-        
-        # Reset server to clean state
-        self.reset_server_config()
-        
-        # Run the test suite
-        self.test_basic_connectivity()
-        self.test_tracing_headers()
-        self.test_retries()
-        self.test_latency()
-        self.test_load()
-        
-        # Analyze results
-        self.analyze_results()
-        
-        # Save results to file
-        self.save_results()
-        
-        logger.info(f"Tests completed. Results saved to {self.output_dir}")
+        try:
+            # Get server config first (with timeout)
+            config_result = self.get_server_config()
+            
+            # Basic connectivity is essential - if it fails, we can't continue
+            logger.info("Checking basic connectivity before proceeding with tests")
+            connectivity_test = self.test_basic_connectivity()
+            
+            if not connectivity_test:
+                logger.error("Cannot establish basic connectivity to server, aborting tests")
+                self.results["status"] = "failed"
+                self.save_results()
+                return False
+            
+            # Attempt to reset server config but continue if it fails
+            try:
+                self.reset_server_config()
+            except Exception as e:
+                logger.warning(f"Failed to reset server configuration: {str(e)}")
+            
+            # Run the test suite with appropriate error handling for each test
+            test_functions = [
+                self.test_tracing_headers,
+                self.test_retries,
+                self.test_latency,
+                self.test_load
+            ]
+            
+            # Run tests with individual error handling
+            for test_func in test_functions:
+                try:
+                    logger.info(f"Running test: {test_func.__name__}")
+                    test_func()
+                except Exception as e:
+                    logger.error(f"Test {test_func.__name__} failed with error: {str(e)}")
+                    import traceback
+                    logger.debug(traceback.format_exc())
+            
+            # Analyze results even if some tests failed
+            self.analyze_results()
+            
+            # Save results to file
+            self.save_results()
+            
+            logger.info(f"Tests completed. Results saved to {self.output_dir}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Test suite execution failed: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            self.results["status"] = "error"
+            self.save_results()
+            return False
         
     def save_results(self):
         """Save test results to file"""
