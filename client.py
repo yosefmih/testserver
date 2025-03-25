@@ -6,6 +6,14 @@ import sys
 import time
 import random
 import string
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def generate_random_word(length=8):
     """Generate a random string to use as a greeting word."""
@@ -25,6 +33,8 @@ def update_greeting(server_url, word):
     update_url = f"{server_url}/update-greeting"
     
     try:
+        logger.debug(f"Sending POST request to {update_url} with word: {word}")
+        
         # Send POST request with the word
         response = requests.post(
             update_url,
@@ -33,19 +43,19 @@ def update_greeting(server_url, word):
         
         # Check response status
         if response.status_code == 200:
-            print(f"Success! Server's greeting updated to '{word}'")
+            logger.info(f"Success! Server's greeting updated to '{word}'")
             return True
         else:
-            print(f"Error: Server returned status code {response.status_code}")
+            logger.error(f"Server returned status code {response.status_code}")
             try:
                 error_data = response.json()
-                print(f"Message: {error_data.get('message', 'No message provided')}")
+                logger.error(f"Error message: {error_data.get('message', 'No message provided')}")
             except ValueError:
-                print(f"Response: {response.text}")
+                logger.error(f"Non-JSON response: {response.text}")
             return False
     
     except requests.exceptions.RequestException as e:
-        print(f"Error connecting to server: {e}")
+        logger.error(f"Error connecting to server: {e}")
         return False
 
 def main():
@@ -54,8 +64,17 @@ def main():
     parser.add_argument('--server', required=True, help='Server URL (e.g., localhost:3000)')
     parser.add_argument('--word', help='The new greeting word to use (if not provided, a random word will be generated)')
     parser.add_argument('--interval', type=int, default=120, help='Time interval between updates in seconds (default: 120)')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging', default=True)
     
     args = parser.parse_args()
+    
+    # Set logging level based on verbosity
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("Verbose logging enabled")
+    
+    logger.info(f"Client started - targeting server at {args.server}")
+    logger.info(f"Update interval set to {args.interval} seconds")
     
     # Run in a loop, updating the greeting every specified interval
     try:
@@ -63,23 +82,31 @@ def main():
             # Either use provided word or generate a random one
             if args.word and args.word.strip():
                 word = args.word.strip()
+                logger.info(f"Using provided word: {word}")
                 # Generate a new random word for next time
                 args.word = None
             else:
                 word = generate_random_word()
+                logger.info(f"Generated random word: {word}")
                 
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Sending word: {word}")
-            
             # Update the greeting on the server
-            update_greeting(args.server, word)
+            update_result = update_greeting(args.server, word)
+            
+            if update_result:
+                logger.info(f"Update successful, next update in {args.interval} seconds")
+            else:
+                logger.warning(f"Update failed, will retry in {args.interval} seconds")
             
             # Sleep for the specified interval
-            print(f"Sleeping for {args.interval} seconds before next update...")
+            logger.debug(f"Sleeping for {args.interval} seconds")
             time.sleep(args.interval)
     
     except KeyboardInterrupt:
-        print("\nClient stopped by user.")
+        logger.info("Client stopped by user")
         sys.exit(0)
+    except Exception as e:
+        logger.exception(f"Unexpected error occurred: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main() 
