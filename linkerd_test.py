@@ -291,8 +291,7 @@ class LinkerdTest:
             result = self.run_client_command([
                 "--mode", "load-test", 
                 "--requests", "10", 
-                "--concurrency", "1", 
-                "--trace", "false"
+                "--concurrency", "1"
             ], timeout=30)  # 30 second timeout
             
             if result:
