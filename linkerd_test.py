@@ -705,157 +705,171 @@ class LinkerdTest:
         """Analyze test results to determine Linkerd configuration"""
         logger.info("=== Analyzing Results ===")
         
-        # Extract key indicators
+        # First try to use direct mesh detection
+        try:
+            logger.info("Running direct mesh detection through client.py")
+            result = self.run_client_command(["--mode", "mesh-detect"], timeout=60)
+            
+            if result and result.returncode == 0:
+                # Try to parse the JSON results
+                mesh_detection_results = None
+                for line in result.stdout.splitlines():
+                    try:
+                        data = json.loads(line)
+                        if isinstance(data, dict) and 'client' in data and 'server' in data:
+                            mesh_detection_results = data
+                            break
+                    except json.JSONDecodeError:
+                        continue
+                
+                if mesh_detection_results:
+                    logger.info("Successfully obtained mesh detection results from client.py")
+                    client_in_mesh = mesh_detection_results['client']['in_mesh']
+                    server_in_mesh = mesh_detection_results['server']['in_mesh']
+                    
+                    # Get evidence
+                    client_evidence = mesh_detection_results['client'].get('evidence', [])
+                    server_evidence = mesh_detection_results['server'].get('evidence', [])
+                    
+                    # Get test results
+                    test_results = mesh_detection_results.get('tests', {})
+                    
+                    self.results["analysis"] = {
+                        "client_in_mesh": client_in_mesh,
+                        "server_in_mesh": server_in_mesh,
+                        "configuration": self._get_configuration_name(client_in_mesh, server_in_mesh),
+                        "client_evidence": client_evidence,
+                        "server_evidence": server_evidence,
+                        "detection_method": "direct",
+                        "test_results": test_results,
+                        "debug_mode": self.debug_mode
+                    }
+                    
+                    # Print assessment
+                    logger.info(f"📊 Analysis complete using direct detection")
+                    logger.info(f"🔍 Detected configuration: {self.results['analysis']['configuration'].replace('_', ' ')}")
+                    logger.info(f"   - Client in mesh: {'Yes' if client_in_mesh else 'No'}")
+                    if client_evidence:
+                        logger.info(f"     Evidence: {', '.join(client_evidence)}")
+                    logger.info(f"   - Server in mesh: {'Yes' if server_in_mesh else 'No'}")
+                    if server_evidence:
+                        logger.info(f"     Evidence: {', '.join(server_evidence)}")
+                    
+                    return self.results["analysis"]
+        except Exception as e:
+            logger.warning(f"Direct mesh detection failed: {e}, falling back to test analysis")
+        
+        # If direct detection failed, fall back to analyzing test results
+        logger.info("Analyzing test results to determine mesh configuration")
+        
+        # Extract key indicators from test results
         tracing_test = next((t for t in self.results["tests"] if t["name"] == "tracing_headers"), None)
         retry_test = next((t for t in self.results["tests"] if t["name"] == "retry_behavior"), None)
         latency_test = next((t for t in self.results["tests"] if t["name"] == "latency_handling"), None)
-        load_test = next((t for t in self.results["tests"] if t["name"] == "load_test"), None)
         
-        # Indicators for Linkerd on client side
-        client_in_mesh = False
-        
-        # More reliable client mesh indicators:
-        # - Automatic retries without explicit client retry code
-        # - Client-side timeout behavior
-        # - Header manipulation patterns
-        
-        # Look for unique mesh-only behaviors that would indicate client is in mesh
-        client_mesh_signals = 0
-        mesh_signals_required = 1  # How many signals needed to consider client in mesh
-        
-        # Signal 1: In retry test, check for successful retries that happen faster than client retry delay would allow
-        if retry_test and retry_test.get("status") == "PASS" and retry_test.get("raw_output"):
-            # Client retry delay is set to 0.5s in our test
-            # If we see retries succeeding in less time, it might be mesh-level retries
-            rapid_retry_pattern = r"retry.*success.*in (0\.[0-4]\d+)s"  # Faster than client's 0.5s delay
-            rapid_retries = re.search(rapid_retry_pattern, retry_test.get("raw_output", ""), re.IGNORECASE)
-            
-            if rapid_retries:
-                logger.info(f"Found evidence of rapid retries ({rapid_retries.group(1)}s) faster than client retry mechanism")
-                client_mesh_signals += 1
-                
-        # Signal 2: If latency test shows timeout handling or circuit breaking
-        if latency_test and "injected_duration" in latency_test and "baseline_duration" in latency_test:
-            baseline = latency_test["baseline_duration"]
-            injected = latency_test["injected_duration"]
-            
-            # If the injected latency is much less than expected (indicating timeouts/circuit breaking)
-            if injected < (baseline + (LATENCY_MS * 5 / 1000)):
-                logger.info(f"Latency test shows circuit breaking or timeout behavior ({injected:.2f}s vs expected >{baseline + (LATENCY_MS * 10 / 1000):.2f}s)")
-                client_mesh_signals += 1
-        
-        # For debug mode, we need stronger evidence before claiming client is in mesh
-        if self.debug_mode:
-            mesh_signals_required = 1
-            
-            # Check if environment has known Linkerd env vars that would indicate client is in mesh
-            client_env_signals = any([
-                "LINKERD_PROXY_CONTROL_URL" in os.environ,
-                "LINKERD_PROXY_ADMIN_LISTEN_ADDR" in os.environ
-            ])
-            
-            if client_env_signals:
-                logger.info("Found Linkerd environment variables in client environment")
-                client_mesh_signals += 1
-                
-        # Only mark client as in mesh if we have sufficient signals
-        if client_mesh_signals >= mesh_signals_required:
-            client_in_mesh = True
-            logger.info(f"Found {client_mesh_signals} indicators that client is in mesh")
-            
-        # Indicators for Linkerd on server side
+        # ----- SERVER IN MESH DETECTION -----
         server_in_mesh = False
+        server_mesh_evidence = []
         
-        # ===== UPDATED SERVER DETECTION LOGIC =====
-        # Look for specific Linkerd-related headers that would only be present
-        # if the server has a Linkerd sidecar injected
-        
-        # Define patterns that would ONLY exist with Linkerd sidecar
-        linkerd_specific_patterns = [
-            r"l5d-.*:",              # Linkerd-specific headers
-            r"linkerd-proxy",        # Linkerd proxy headers
-            r"Via:.*linkerd",        # Via header with linkerd
-            r"server-timing:.*linkerd", # Server timing from linkerd
-            r"x-linkerd-"            # Linkerd-specific headers
+        # Look for Linkerd-specific headers in raw outputs
+        linkerd_header_patterns = [
+            r"['\"]X-Linkerd-Meshed['\"]:\s*['\"]true['\"]",
+            r"['\"]l5d-[^'\"]+['\"]",
+            r"['\"]x-linkerd-[^'\"]+['\"]",
+            r"['\"]Server-Mesh-ID['\"]",
+            r"['\"]Via['\"]:\s*['\"].*linkerd.*['\"]",
+            r"['\"]server-timing['\"]:\s*['\"].*linkerd.*['\"]"
         ]
         
-        # Check for these patterns in all test outputs
-        linkerd_headers_found = False
+        # Check all tests for Linkerd headers
         for test in self.results["tests"]:
             if "raw_output" in test:
-                for pattern in linkerd_specific_patterns:
-                    if re.search(pattern, test.get("raw_output", ""), re.IGNORECASE):
-                        linkerd_headers_found = True
-                        logger.info(f"Found Linkerd-specific header/pattern in response: {pattern}")
-                        break
-                if linkerd_headers_found:
-                    break
+                raw_output = test["raw_output"]
+                for pattern in linkerd_header_patterns:
+                    if re.search(pattern, raw_output, re.IGNORECASE):
+                        match = re.search(pattern, raw_output, re.IGNORECASE)
+                        evidence = f"Found Linkerd header: {match.group(0)}"
+                        if evidence not in server_mesh_evidence:
+                            server_mesh_evidence.append(evidence)
+                        server_in_mesh = True
         
-        # Only consider header propagation if we also see Linkerd-specific headers
-        # Otherwise, it could just be the application echoing the headers
-        if tracing_test and tracing_test.get("propagation", False):
-            if linkerd_headers_found:
+        # Check for header propagation without echo
+        if tracing_test and "raw_output" in tracing_test:
+            # Look for non-echoed trace headers
+            if re.search(r"X-B3-TraceId.*not Echo-X-B3-TraceId", tracing_test["raw_output"], re.IGNORECASE):
+                server_mesh_evidence.append("Found trace headers propagated without echo")
                 server_in_mesh = True
-                logger.info("Trace header propagation combined with Linkerd headers confirms server is in mesh")
-            else:
-                logger.info("Trace header propagation detected, but no Linkerd-specific headers found.")
-                logger.info("This suggests the server application is manually handling trace headers, not a service mesh.")
-                server_in_mesh = False
         
-        # Check for retry handling that would suggest server mesh
-        server_mesh_signals = 0
-        
-        # Signal 1: High retry effectiveness without client retries being triggered
+        # Check retry test for server mesh indicators
         if retry_test and retry_test.get("status") == "PASS":
             retry_effectiveness = retry_test.get("retry_effectiveness", 0)
-            if retry_effectiveness > 0.8 and not client_in_mesh:
-                server_mesh_signals += 1
-                logger.info(f"High retry effectiveness ({retry_effectiveness:.2f}) without client being in mesh suggests server-side retries")
+            if retry_effectiveness > 0.8:
+                # This is a weak signal, only use if we have other evidence
+                if server_mesh_evidence:
+                    server_mesh_evidence.append(f"High retry effectiveness: {retry_effectiveness:.2f}")
         
-        # Signal 2: Abnormal latency behavior that suggests server-side circuit breaking
-        if latency_test and "injected_duration" in latency_test and "baseline_duration" in latency_test:
-            baseline = latency_test["baseline_duration"]
-            injected = latency_test["injected_duration"]
-            
-            # If latency isn't as high as we'd expect with the injected delay
-            expected_min = baseline + (LATENCY_MS * 9 / 1000)  # 90% of expected
-            expected_max = baseline + (LATENCY_MS * 11 / 1000) # 110% of expected
-            
-            if injected < expected_min and not client_in_mesh:
-                server_mesh_signals += 1
-                logger.info(f"Latency lower than expected: {injected:.2f}s vs {expected_min:.2f}s, suggests server-side circuit breaking")
+        # ----- CLIENT IN MESH DETECTION -----
+        client_in_mesh = False
+        client_mesh_evidence = []
         
-        # For debug mode, don't be lenient in detecting server mesh - require stronger evidence
-        if linkerd_headers_found or server_mesh_signals >= 1:
-            server_in_mesh = True
-            logger.info(f"Found indicators that server is in mesh: headers={linkerd_headers_found}, signals={server_mesh_signals}")
+        # Check for environment variables in the output
+        env_var_patterns = [
+            r"LINKERD_PROXY_.*=",
+            r"_LINKERD_PROXY_ID=",
+            r"Found env var: LINKERD_PROXY_"
+        ]
         
-        # Check for override environment variables (useful for manual testing)
+        # Look in all test outputs
+        for test in self.results["tests"]:
+            if "raw_output" in test:
+                raw_output = test["raw_output"]
+                for pattern in env_var_patterns:
+                    if re.search(pattern, raw_output, re.IGNORECASE):
+                        match = re.search(pattern, raw_output, re.IGNORECASE)
+                        evidence = f"Found Linkerd env var: {match.group(0)}"
+                        if evidence not in client_mesh_evidence:
+                            client_mesh_evidence.append(evidence)
+                        client_in_mesh = True
+        
+        # Check for rapid retries (faster than client retry logic)
+        if retry_test and "raw_output" in retry_test:
+            # Look for retries faster than the client's retry delay (0.5s)
+            rapid_retry_pattern = r"retry.*success.*in (0\.[0-4]\d+)s"
+            rapid_retries = re.search(rapid_retry_pattern, retry_test.get("raw_output", ""), re.IGNORECASE)
+            if rapid_retries:
+                client_mesh_evidence.append(f"Rapid retry in {rapid_retries.group(1)}s (faster than client delay)")
+                client_in_mesh = True
+        
+        # If server reports client is in mesh
+        for test in self.results["tests"]:
+            if "raw_output" in test and "client in mesh: true" in test["raw_output"].lower():
+                client_mesh_evidence.append("Server reported client is in mesh")
+                client_in_mesh = True
+        
+        # Override environment variables
         env_client = os.environ.get('LINKERD_CLIENT_IN_MESH', '').lower()
         env_server = os.environ.get('LINKERD_SERVER_IN_MESH', '').lower()
         
         if env_client in ('true', 'yes', '1'):
             logger.info("Client in mesh status overridden by environment variable")
             client_in_mesh = True
+            client_mesh_evidence.append("Environment variable override")
         if env_server in ('true', 'yes', '1'):
             logger.info("Server in mesh status overridden by environment variable")
             server_in_mesh = True
+            server_mesh_evidence.append("Environment variable override")
         
-        # Determine configuration
-        configuration = "unknown"
-        if client_in_mesh and server_in_mesh:
-            configuration = "both_in_mesh"
-        elif client_in_mesh:
-            configuration = "client_in_mesh"
-        elif server_in_mesh:
-            configuration = "server_in_mesh"
-        else:
-            configuration = "none_in_mesh"
-            
+        # Determine configuration name
+        configuration = self._get_configuration_name(client_in_mesh, server_in_mesh)
+        
+        # Create analysis result
         self.results["analysis"] = {
             "client_in_mesh": client_in_mesh,
             "server_in_mesh": server_in_mesh,
             "configuration": configuration,
+            "client_evidence": client_mesh_evidence,
+            "server_evidence": server_mesh_evidence,
+            "detection_method": "test_analysis",
             "debug_mode": self.debug_mode
         }
         
@@ -864,7 +878,8 @@ class LinkerdTest:
             self.results["analysis"]["retry_metrics"] = {
                 "successes": retry_test.get("successes", 0),
                 "failures": retry_test.get("failures", 0),
-                "retry_attempts": retry_test.get("retry_attempts", 0)
+                "retry_attempts": retry_test.get("retry_attempts", 0),
+                "retry_effectiveness": retry_test.get("retry_effectiveness", 0)
             }
         
         if latency_test:
@@ -874,13 +889,89 @@ class LinkerdTest:
             }
         
         # Print assessment
-        logger.info(f"📊 Analysis complete")
+        logger.info(f"📊 Analysis complete using test results")
         logger.info(f"🔍 Detected configuration: {configuration.replace('_', ' ')}")
         logger.info(f"   - Client in mesh: {'Yes' if client_in_mesh else 'No'}")
+        if client_mesh_evidence:
+            logger.info(f"     Evidence: {', '.join(client_mesh_evidence)}")
         logger.info(f"   - Server in mesh: {'Yes' if server_in_mesh else 'No'}")
+        if server_mesh_evidence:
+            logger.info(f"     Evidence: {', '.join(server_mesh_evidence)}")
         
         return self.results["analysis"]
+
+    def _get_configuration_name(self, client_in_mesh, server_in_mesh):
+        """Helper to get configuration name based on mesh status"""
+        if client_in_mesh and server_in_mesh:
+            return "both_in_mesh"
+        elif client_in_mesh:
+            return "client_in_mesh"
+        elif server_in_mesh:
+            return "server_in_mesh"
+        else:
+            return "none_in_mesh"
+
+    def test_mesh_detection(self):
+        """Direct test for mesh presence without relying on other tests"""
+        logger.info("=== Testing Mesh Detection ===")
+        test_data = {
+            "name": "mesh_detection",
+            "description": "Directly tests for presence of service mesh",
+            "start_time": datetime.now().isoformat()
+        }
+        
+        try:
+            # Run the mesh detection mode of client.py
+            result = self.run_client_command(["--mode", "mesh-detect"], timeout=60)
             
+            if result and result.returncode == 0:
+                # Try to parse the JSON results
+                mesh_detection_results = None
+                for line in result.stdout.splitlines():
+                    try:
+                        data = json.loads(line)
+                        if isinstance(data, dict) and 'client' in data and 'server' in data:
+                            mesh_detection_results = data
+                            break
+                    except json.JSONDecodeError:
+                        continue
+                
+                if mesh_detection_results:
+                    test_data["status"] = "PASS"
+                    test_data["results"] = mesh_detection_results
+                    logger.info("✅ Mesh detection test passed")
+                    
+                    # Log the results
+                    client_in_mesh = mesh_detection_results['client']['in_mesh']
+                    server_in_mesh = mesh_detection_results['server']['in_mesh']
+                    logger.info(f"Client in mesh: {client_in_mesh}")
+                    logger.info(f"Server in mesh: {server_in_mesh}")
+                    
+                    if client_in_mesh:
+                        logger.info(f"Client evidence: {', '.join(mesh_detection_results['client'].get('evidence', []))}")
+                    if server_in_mesh:
+                        logger.info(f"Server evidence: {', '.join(mesh_detection_results['server'].get('evidence', []))}")
+                else:
+                    test_data["status"] = "FAIL"
+                    test_data["error"] = "Could not parse mesh detection results"
+                    logger.error("❌ Mesh detection test failed - could not parse results")
+            else:
+                test_data["status"] = "FAIL"
+                test_data["error"] = "Mesh detection command failed"
+                logger.error("❌ Mesh detection test failed - command error")
+                if result:
+                    logger.error(f"Error: {result.stderr}")
+        except Exception as e:
+            test_data["status"] = "ERROR"
+            test_data["error"] = str(e)
+            logger.error(f"❌ Mesh detection test error: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+        
+        test_data["end_time"] = datetime.now().isoformat()
+        self.results["tests"].append(test_data)
+        return test_data
+
     def run_all_tests(self):
         """Run all tests in sequence"""
         logger.info(f"Starting Linkerd test suite against {self.server_url}")
@@ -909,6 +1000,9 @@ class LinkerdTest:
             except Exception as e:
                 logger.warning(f"Failed to reset server configuration: {str(e)}")
             
+            # Run mesh detection first to get early indicators
+            self.test_mesh_detection()
+            
             # Run the test suite with appropriate error handling for each test
             test_functions = [
                 self.test_tracing_headers,
@@ -935,7 +1029,6 @@ class LinkerdTest:
             
             logger.info(f"Tests completed. Results saved to {self.output_dir}")
             return True
-            
         except Exception as e:
             logger.error(f"Test suite execution failed: {str(e)}")
             import traceback

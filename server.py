@@ -9,6 +9,8 @@ import random
 import uuid
 import socket
 import os
+import traceback
+import subprocess
 
 # Configure logging
 logging.basicConfig(
@@ -19,6 +21,54 @@ logger = logging.getLogger(__name__)
 
 # Get hostname for pod identification
 HOSTNAME = socket.gethostname()
+
+# Add function to detect if running in Linkerd mesh
+def is_in_linkerd_mesh():
+    """Detect if this server is running in Linkerd mesh"""
+    # Check for Linkerd proxy environment variables
+    linkerd_env_vars = [
+        'LINKERD_PROXY_IDENTITY_DIR',
+        'LINKERD_PROXY_CONTROL_URL',
+        'LINKERD_PROXY_ADMIN_LISTEN_ADDR',
+        '_LINKERD_PROXY_ID'
+    ]
+    for var in linkerd_env_vars:
+        if var in os.environ:
+            return True
+    
+    # Check if linkerd-proxy process is running
+    try:
+        result = subprocess.run(
+            ['ps', 'aux'], 
+            capture_output=True, 
+            text=True, 
+            timeout=1
+        )
+        if 'linkerd-proxy' in result.stdout:
+            return True
+    except Exception:
+        pass
+    
+    # Check if Linkerd proxy port is accessible (default 4191 for admin API)
+    try:
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.5)
+        result = sock.connect_ex(('127.0.0.1', 4191))
+        sock.close()
+        if result == 0:  # Port is open
+            return True
+    except Exception:
+        pass
+        
+    return False
+
+# Initialize mesh detection
+RUNNING_IN_MESH = is_in_linkerd_mesh()
+if RUNNING_IN_MESH:
+    logger.info("🔗 Server detected it's running in a Linkerd mesh")
+else:
+    logger.info("🔗 Server is NOT running in a Linkerd mesh")
 
 class MetricsCollector:
     def __init__(self):
@@ -175,6 +225,9 @@ class SimpleHandler(BaseHTTPRequestHandler):
     error_rate_percent = 0   # % of requests that return 500 errors
     latency_injection_ms = 0  # Additional latency to inject
     trace_propagation = True  # Whether to propagate tracing headers
+    
+    # Mesh status - this is determined at startup
+    in_mesh = RUNNING_IN_MESH
 
     def log_request_info(self, status_code, duration):
         """Log information about the request"""
@@ -210,11 +263,20 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'application/json')
         self.send_header('X-Server-Host', HOSTNAME)
         
+        # Add Linkerd-specific headers if we're in the mesh
+        # These will ONLY be present if actually in mesh
+        if SimpleHandler.in_mesh:
+            self.send_header('X-Linkerd-Meshed', 'true')
+            self.send_header('Server-Mesh-ID', os.environ.get('_LINKERD_PROXY_ID', 'unknown'))
+        
         # Propagate tracing headers if enabled
+        # We only do this in "echo mode" to help test distinguish app-level vs mesh-level
         if SimpleHandler.trace_propagation and 'X-B3-TraceId' in self.headers:
             for header in ['X-B3-TraceId', 'X-B3-SpanId', 'X-B3-ParentSpanId', 'X-B3-Sampled']:
                 if header in self.headers:
-                    self.send_header(header, self.headers[header])
+                    # Add "Echo-" prefix to make it clear this is application-level echo
+                    # not mesh-level propagation
+                    self.send_header(f'Echo-{header}', self.headers[header])
         
         self.end_headers()
         self.wfile.write(json.dumps(data).encode('utf-8'))
@@ -265,8 +327,56 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 'error_rate_percent': self.error_rate_percent,
                 'latency_injection_ms': self.latency_injection_ms,
                 'trace_propagation': self.trace_propagation,
-                'hostname': HOSTNAME
+                'hostname': HOSTNAME,
+                'in_mesh': self.in_mesh
             })
+            
+        # Add a mesh-specific endpoint
+        elif self.path == '/mesh-status':
+            mesh_info = {
+                'in_mesh': self.in_mesh,
+                'hostname': HOSTNAME,
+                'mesh_env_vars': {
+                    var: os.environ.get(var, 'not present')
+                    for var in [
+                        'LINKERD_PROXY_IDENTITY_DIR',
+                        'LINKERD_PROXY_CONTROL_URL',
+                        'LINKERD_PROXY_ADMIN_LISTEN_ADDR',
+                        '_LINKERD_PROXY_ID'
+                    ]
+                }
+            }
+            
+            # Check if we can access the Linkerd proxy API (only available if in mesh)
+            try:
+                import urllib.request
+                req = urllib.request.Request('http://localhost:4191/ready')
+                req.add_header('User-Agent', 'python-mesh-test')
+                with urllib.request.urlopen(req, timeout=0.5) as response:
+                    mesh_info['proxy_ready'] = response.read().decode('utf-8').strip() == 'proxy is ready'
+            except Exception as e:
+                mesh_info['proxy_ready'] = False
+                mesh_info['proxy_error'] = str(e)
+                
+            status_code = self.send_json_response(200, mesh_info)
+            
+        # Add a special endpoint that doesn't echo headers
+        elif self.path == '/no-echo':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('X-Server-Host', HOSTNAME)
+            
+            # Only add mesh headers if in mesh - never echo client headers here
+            if SimpleHandler.in_mesh:
+                self.send_header('X-Linkerd-Meshed', 'true')
+            
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                'status': 'success',
+                'echo_disabled': True,
+                'in_mesh': self.in_mesh
+            }).encode('utf-8'))
+            status_code = 200
             
         else:
             if self.is_ready:
@@ -278,14 +388,19 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 self.send_header('Content-type', 'text/html')
                 self.send_header('X-Server-Host', HOSTNAME)
                 
+                # Add Linkerd-specific headers if we're in the mesh
+                if SimpleHandler.in_mesh:
+                    self.send_header('X-Linkerd-Meshed', 'true')
+                
                 # Propagate tracing headers if enabled
                 if SimpleHandler.trace_propagation and 'X-B3-TraceId' in self.headers:
                     for header in ['X-B3-TraceId', 'X-B3-SpanId', 'X-B3-ParentSpanId', 'X-B3-Sampled']:
                         if header in self.headers:
-                            self.send_header(header, self.headers[header])
+                            # Add "Echo-" prefix to make it clear this is application-level echo
+                            self.send_header(f'Echo-{header}', self.headers[header])
                 
                 self.end_headers()
-                self.wfile.write(f"<html><body><h1>Hello, {self.greeting_word}!</h1><p>From: {HOSTNAME}</p></body></html>".encode('utf-8'))
+                self.wfile.write(f"<html><body><h1>Hello, {self.greeting_word}!</h1><p>From: {HOSTNAME}</p><p>In Mesh: {self.in_mesh}</p></body></html>".encode('utf-8'))
                 status_code = 200
             else:
                 status_code = self.send_json_response(503, {'status': 'server is initializing'})
