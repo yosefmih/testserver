@@ -6,6 +6,9 @@ import signal
 import logging
 from collections import defaultdict
 import random
+import uuid
+import socket
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -14,12 +17,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Get hostname for pod identification
+HOSTNAME = socket.gethostname()
+
 class MetricsCollector:
     def __init__(self):
         self.request_count = defaultdict(int)  # Track requests by path
         self.status_codes = defaultdict(int)   # Track response status codes
         self.request_durations = []            # Track request durations
         self.last_collection_time = time.time()
+        self.tracing_ids = set()               # Track unique trace IDs
+        self.client_calls = defaultdict(int)   # Track calls from different clients
         
         # Initialize demo business metrics with some default values
         self.demo_metrics = {
@@ -50,10 +58,18 @@ class MetricsCollector:
             
             time.sleep(5)  # Update every 5 seconds
 
-    def record_request(self, path, status_code, duration):
+    def record_request(self, path, status_code, duration, headers=None):
         self.request_count[path] += 1
         self.status_codes[status_code] += 1
         self.request_durations.append(duration)
+        
+        # Track tracing data
+        if headers and 'X-B3-TraceId' in headers:
+            self.tracing_ids.add(headers['X-B3-TraceId'])
+            
+        # Track client calls
+        if headers and 'X-Client-ID' in headers:
+            self.client_calls[headers['X-Client-ID']] += 1
 
     def get_metrics(self):
         # Calculate average request duration
@@ -96,6 +112,33 @@ class MetricsCollector:
             f"shutting_down {1 if SimpleHandler.is_shutting_down else 0}",
         ])
         
+        # Add service mesh testing metrics
+        metrics.extend([
+            "# HELP unique_trace_ids_count Number of unique trace IDs received",
+            "# TYPE unique_trace_ids_count gauge",
+            f"unique_trace_ids_count {len(self.tracing_ids)}",
+            
+            "# HELP hostname Pod hostname",
+            "# TYPE hostname gauge",
+            f'hostname{{name="{HOSTNAME}"}} 1',
+            
+            "# HELP error_rate_percent Percentage of responses that are errors (configurable)",
+            "# TYPE error_rate_percent gauge",
+            f"error_rate_percent {SimpleHandler.error_rate_percent}",
+            
+            "# HELP latency_injection_ms Additional latency injected into responses (ms)",
+            "# TYPE latency_injection_ms gauge",
+            f"latency_injection_ms {SimpleHandler.latency_injection_ms}",
+        ])
+        
+        # Client calls metrics
+        metrics.extend([
+            "# HELP client_calls_total Total number of calls from each client",
+            "# TYPE client_calls_total counter",
+        ])
+        for client_id, count in self.client_calls.items():
+            metrics.append(f'client_calls_total{{client_id="{client_id}"}} {count}')
+        
         # Add demo business metrics
         metrics.extend([
             "# HELP sidekiq_queue_length Current length of Sidekiq queue",
@@ -127,15 +170,26 @@ class SimpleHandler(BaseHTTPRequestHandler):
     is_shutting_down = False
     metrics = MetricsCollector()
     greeting_word = "MAN"  # Default greeting word
+    
+    # Service mesh testing properties
+    error_rate_percent = 0   # % of requests that return 500 errors
+    latency_injection_ms = 0  # Additional latency to inject
+    trace_propagation = True  # Whether to propagate tracing headers
 
     def log_request_info(self, status_code, duration):
         """Log information about the request"""
         client_ip = self.client_address[0]
         method = self.command
         path = self.path
-        logger.info(f"Request: {client_ip} - {method} {path} - Status: {status_code} - Duration: {duration:.3f}s")
+        
+        # Extract tracing headers for logging
+        trace_id = self.headers.get('X-B3-TraceId', 'none')
+        span_id = self.headers.get('X-B3-SpanId', 'none')
+        
+        logger.info(f"Request: {client_ip} - {method} {path} - Status: {status_code} - Duration: {duration:.3f}s - TraceID: {trace_id} - SpanID: {span_id}")
+        
         # Record metrics
-        self.metrics.record_request(path, status_code, duration)
+        self.metrics.record_request(path, status_code, duration, dict(self.headers))
 
     def handle_request(self, handler_func):
         """Wrapper to measure request duration and handle logging"""
@@ -147,8 +201,21 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
     def send_json_response(self, status_code, data):
         """Helper method to send JSON response"""
+        # Apply artificial latency if configured
+        if SimpleHandler.latency_injection_ms > 0:
+            time.sleep(SimpleHandler.latency_injection_ms / 1000.0)
+            
+        # Set response headers
         self.send_response(status_code)
         self.send_header('Content-type', 'application/json')
+        self.send_header('X-Server-Host', HOSTNAME)
+        
+        # Propagate tracing headers if enabled
+        if SimpleHandler.trace_propagation and 'X-B3-TraceId' in self.headers:
+            for header in ['X-B3-TraceId', 'X-B3-SpanId', 'X-B3-ParentSpanId', 'X-B3-Sampled']:
+                if header in self.headers:
+                    self.send_header(header, self.headers[header])
+        
         self.end_headers()
         self.wfile.write(json.dumps(data).encode('utf-8'))
         return status_code
@@ -176,6 +243,12 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.log_request_info(503, time.time() - start_time)
             return
 
+        # Random failure injection based on error rate
+        if random.randint(1, 100) <= SimpleHandler.error_rate_percent:
+            self.send_json_response(500, {'status': 'error', 'message': 'Injected failure for testing'})
+            self.log_request_info(500, time.time() - start_time)
+            return
+
         if self.path == '/healthz':
             status_code = self.send_json_response(200, {'status': 'healthy'})
         
@@ -185,12 +258,34 @@ class SimpleHandler(BaseHTTPRequestHandler):
             else:
                 status_code = self.send_json_response(503, {'status': 'not ready'})
         
+        elif self.path == '/config':
+            # Return current configuration
+            status_code = self.send_json_response(200, {
+                'greeting_word': self.greeting_word,
+                'error_rate_percent': self.error_rate_percent,
+                'latency_injection_ms': self.latency_injection_ms,
+                'trace_propagation': self.trace_propagation,
+                'hostname': HOSTNAME
+            })
+            
         else:
             if self.is_ready:
+                # Apply artificial latency if configured
+                if SimpleHandler.latency_injection_ms > 0:
+                    time.sleep(SimpleHandler.latency_injection_ms / 1000.0)
+                    
                 self.send_response(200)
                 self.send_header('Content-type', 'text/html')
+                self.send_header('X-Server-Host', HOSTNAME)
+                
+                # Propagate tracing headers if enabled
+                if SimpleHandler.trace_propagation and 'X-B3-TraceId' in self.headers:
+                    for header in ['X-B3-TraceId', 'X-B3-SpanId', 'X-B3-ParentSpanId', 'X-B3-Sampled']:
+                        if header in self.headers:
+                            self.send_header(header, self.headers[header])
+                
                 self.end_headers()
-                self.wfile.write(f"<html><body><h1>Hello, {self.greeting_word}!</h1></body></html>".encode('utf-8'))
+                self.wfile.write(f"<html><body><h1>Hello, {self.greeting_word}!</h1><p>From: {HOSTNAME}</p></body></html>".encode('utf-8'))
                 status_code = 200
             else:
                 status_code = self.send_json_response(503, {'status': 'server is initializing'})
@@ -210,32 +305,87 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.log_request_info(status_code, time.time() - start_time)
             return
             
-        # Process POST request to update greeting word
-        if self.path == '/update-greeting':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length).decode('utf-8')
+        # Random failure injection based on error rate
+        if random.randint(1, 100) <= SimpleHandler.error_rate_percent:
+            self.send_json_response(500, {'status': 'error', 'message': 'Injected failure for testing'})
+            self.log_request_info(500, time.time() - start_time)
+            return
             
-            try:
-                data = json.loads(post_data)
+        # Get request content
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
+            
+        try:
+            data = json.loads(post_data)
+            
+            # Process POST request to update greeting word
+            if self.path == '/update-greeting':
                 if 'word' in data and isinstance(data['word'], str) and data['word'].strip():
                     # Update the class variable to change greeting for all instances
                     SimpleHandler.greeting_word = data['word'].strip()
                     status_code = self.send_json_response(200, {
                         'status': 'success', 
-                        'message': f'Greeting updated to: {SimpleHandler.greeting_word}'
+                        'message': f'Greeting updated to: {SimpleHandler.greeting_word}',
+                        'hostname': HOSTNAME
                     })
                 else:
                     status_code = self.send_json_response(400, {
                         'status': 'error',
                         'message': 'Invalid request: "word" field is required and must be a non-empty string'
                     })
-            except json.JSONDecodeError:
-                status_code = self.send_json_response(400, {
-                    'status': 'error',
-                    'message': 'Invalid JSON format'
-                })
-        else:
-            status_code = self.send_json_response(404, {'status': 'not found'})
+            
+            # Configure error rate
+            elif self.path == '/config/error-rate':
+                if 'percent' in data and isinstance(data['percent'], (int, float)) and 0 <= data['percent'] <= 100:
+                    SimpleHandler.error_rate_percent = data['percent']
+                    status_code = self.send_json_response(200, {
+                        'status': 'success',
+                        'message': f'Error rate updated to: {SimpleHandler.error_rate_percent}%',
+                        'hostname': HOSTNAME
+                    })
+                else:
+                    status_code = self.send_json_response(400, {
+                        'status': 'error',
+                        'message': 'Invalid request: "percent" field must be a number between 0 and 100'
+                    })
+            
+            # Configure latency injection
+            elif self.path == '/config/latency':
+                if 'ms' in data and isinstance(data['ms'], (int, float)) and data['ms'] >= 0:
+                    SimpleHandler.latency_injection_ms = data['ms']
+                    status_code = self.send_json_response(200, {
+                        'status': 'success',
+                        'message': f'Latency injection updated to: {SimpleHandler.latency_injection_ms}ms',
+                        'hostname': HOSTNAME
+                    })
+                else:
+                    status_code = self.send_json_response(400, {
+                        'status': 'error',
+                        'message': 'Invalid request: "ms" field must be a non-negative number'
+                    })
+                    
+            # Configure tracing behavior
+            elif self.path == '/config/tracing':
+                if 'enabled' in data and isinstance(data['enabled'], bool):
+                    SimpleHandler.trace_propagation = data['enabled']
+                    status_code = self.send_json_response(200, {
+                        'status': 'success',
+                        'message': f'Trace propagation {"enabled" if SimpleHandler.trace_propagation else "disabled"}',
+                        'hostname': HOSTNAME
+                    })
+                else:
+                    status_code = self.send_json_response(400, {
+                        'status': 'error',
+                        'message': 'Invalid request: "enabled" field must be a boolean'
+                    })
+            else:
+                status_code = self.send_json_response(404, {'status': 'not found'})
+                
+        except json.JSONDecodeError:
+            status_code = self.send_json_response(400, {
+                'status': 'error',
+                'message': 'Invalid JSON format'
+            })
             
         self.log_request_info(status_code, time.time() - start_time)
 
@@ -284,6 +434,14 @@ def run_metrics_server(metrics_collector, port=9090):
     server.serve_forever()
 
 def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup_delay=10):
+    # Get startup_delay from environment if available
+    startup_delay = int(os.environ.get('STARTUP_DELAY_SECONDS', startup_delay))
+    
+    # Read configuration from environment variables
+    handler_class.error_rate_percent = float(os.environ.get('ERROR_RATE_PERCENT', '0'))
+    handler_class.latency_injection_ms = float(os.environ.get('LATENCY_INJECTION_MS', '0'))
+    handler_class.trace_propagation = os.environ.get('TRACE_PROPAGATION', 'true').lower() == 'true'
+    
     # Start preparation in a separate thread
     prep_thread = threading.Thread(
         target=handler_class.prepare_server,
@@ -304,6 +462,7 @@ def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
     logger.info(f"Main server running on port {port}")
+    logger.info(f"Server configuration: error_rate={handler_class.error_rate_percent}%, latency={handler_class.latency_injection_ms}ms, tracing={handler_class.trace_propagation}")
 
     # Set up SIGTERM handler
     signal.signal(signal.SIGTERM, lambda signum, frame: handle_sigterm(signum, frame, httpd))
@@ -314,4 +473,4 @@ def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup
         httpd.server_close()
 
 if __name__ == '__main__':
-    run(startup_delay=10)  # 10 seconds preparation time
+    run(startup_delay=int(os.environ.get('STARTUP_DELAY_SECONDS', 10)))
