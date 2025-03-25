@@ -3,8 +3,8 @@ FROM python:3.9-slim-bullseye
 WORKDIR /app
 
 COPY server.py .
-COPY linkerd_test.py .
 COPY client.py .
+COPY linkerd_test.py .
 COPY compute_pi.py .
 COPY requirements.txt .
 
