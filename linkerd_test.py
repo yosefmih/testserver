@@ -714,32 +714,60 @@ class LinkerdTest:
         # Indicators for Linkerd on client side
         client_in_mesh = False
         
-        # Retry test provides the strongest signal for client mesh presence
-        if retry_test and retry_test.get("status") == "PASS":
-            # If we see successful retries despite server errors, Linkerd might be handling retries
-            client_retry_efficiency = retry_test.get("successes", 0) / (retry_test.get("successes", 0) + retry_test.get("failures", 0)) if retry_test.get("successes", 0) + retry_test.get("failures", 0) > 0 else 0
-            
-            # Use a more flexible threshold in debug mode
-            threshold = 0.65 if self.debug_mode else 0.75
-            
-            if client_retry_efficiency > threshold:  # Higher success than expected with just client retries
-                client_in_mesh = True
-                logger.info(f"Client retry efficiency ({client_retry_efficiency:.2f}) suggests client is in mesh")
+        # More reliable client mesh indicators:
+        # - Automatic retries without explicit client retry code
+        # - Client-side timeout behavior
+        # - Header manipulation patterns
         
-        # Also check for improved latency handling as a secondary signal
-        if not client_in_mesh and latency_test and latency_test.get("status") != "FAIL":
-            if "baseline_duration" in latency_test and "injected_duration" in latency_test:
-                baseline = latency_test["baseline_duration"]
-                injected = latency_test["injected_duration"]
+        # Look for unique mesh-only behaviors that would indicate client is in mesh
+        client_mesh_signals = 0
+        mesh_signals_required = 1  # How many signals needed to consider client in mesh
+        
+        # Signal 1: In retry test, check for successful retries that happen faster than client retry delay would allow
+        if retry_test and retry_test.get("status") == "PASS" and retry_test.get("raw_output"):
+            # Client retry delay is set to 0.5s in our test
+            # If we see retries succeeding in less time, it might be mesh-level retries
+            rapid_retry_pattern = r"retry.*success.*in (0\.[0-4]\d+)s"  # Faster than client's 0.5s delay
+            rapid_retries = re.search(rapid_retry_pattern, retry_test.get("raw_output", ""), re.IGNORECASE)
+            
+            if rapid_retries:
+                logger.info(f"Found evidence of rapid retries ({rapid_retries.group(1)}s) faster than client retry mechanism")
+                client_mesh_signals += 1
                 
-                # In debug mode, check if injected latency impact is less than expected
-                # This could suggest Linkerd timeout or retry mechanisms helping
-                if self.debug_mode and injected < (baseline + (LATENCY_MS * 7 / 1000)):
-                    logger.info(f"Latency impact less than expected ({injected:.2f}s vs {baseline:.2f}s baseline), possibly due to mesh")
-                    client_in_mesh = True
+        # Signal 2: If latency test shows timeout handling or circuit breaking
+        if latency_test and "injected_duration" in latency_test and "baseline_duration" in latency_test:
+            baseline = latency_test["baseline_duration"]
+            injected = latency_test["injected_duration"]
+            
+            # If the injected latency is much less than expected (indicating timeouts/circuit breaking)
+            if injected < (baseline + (LATENCY_MS * 5 / 1000)):
+                logger.info(f"Latency test shows circuit breaking or timeout behavior ({injected:.2f}s vs expected >{baseline + (LATENCY_MS * 10 / 1000):.2f}s)")
+                client_mesh_signals += 1
         
+        # For debug mode, we need stronger evidence before claiming client is in mesh
+        if self.debug_mode:
+            mesh_signals_required = 1
+            
+            # Check if environment has known Linkerd env vars that would indicate client is in mesh
+            client_env_signals = any([
+                "LINKERD_PROXY_CONTROL_URL" in os.environ,
+                "LINKERD_PROXY_ADMIN_LISTEN_ADDR" in os.environ
+            ])
+            
+            if client_env_signals:
+                logger.info("Found Linkerd environment variables in client environment")
+                client_mesh_signals += 1
+                
+        # Only mark client as in mesh if we have sufficient signals
+        if client_mesh_signals >= mesh_signals_required:
+            client_in_mesh = True
+            logger.info(f"Found {client_mesh_signals} indicators that client is in mesh")
+            
         # Indicators for Linkerd on server side
         server_in_mesh = False
+        
+        # Server detection is more straightforward - we're looking for header propagation
+        # and consistent behavior with mesh presence
         
         # Tracing headers propagation is the main signal for server in mesh
         if tracing_test:
@@ -747,44 +775,50 @@ class LinkerdTest:
                 # If server propagates headers correctly, it's likely in the mesh
                 server_in_mesh = True
                 logger.info("Trace header propagation suggests server is in mesh")
-            elif self.debug_mode and "trace_id" in tracing_test:
-                # In debug mode, if we at least see trace IDs going through, that's a positive sign
-                logger.info("Trace IDs present but not fully propagated - possible partial mesh setup")
-                server_in_mesh = True
+            elif "trace_id" in tracing_test and "raw_output" in tracing_test:
+                # Look for specific mesh-related headers in response
+                mesh_header_patterns = [
+                    r"x-linkerd-proxy",
+                    r"l5d-",
+                    r"Response headers:.*X-B3-TraceId.*X-B3-SpanId",
+                    r"server-timing"
+                ]
+                
+                for pattern in mesh_header_patterns:
+                    if re.search(pattern, tracing_test.get("raw_output", ""), re.IGNORECASE):
+                        server_in_mesh = True
+                        logger.info(f"Found mesh-specific headers in server response: {pattern}")
+                        break
         
         # Look for additional signals from retry test that server is in mesh
-        if not server_in_mesh and retry_test and retry_test.get("status") == "PASS":
-            # If retries are working well, server might be in mesh
+        if retry_test and retry_test.get("status") == "PASS":
+            # Look for evidence of automatic retries or traffic shifting
             if retry_test.get("retry_effectiveness", 0) > 0.5:
+                retry_effectiveness = retry_test.get("retry_effectiveness", 0)
+                # High retry success suggests server-side retry or automatic failover
                 server_in_mesh = True
-                logger.info(f"Retry effectiveness ({retry_test.get('retry_effectiveness', 0):.2f}) suggests server is in mesh")
-            
-            # Look for trace headers in retry test output indicating server is in mesh
-            if self.debug_mode and retry_test.get("retry_attempts", 0) > 0:
-                # If we see successful retries, that's a strong signal the server is responding to retry attempts
-                # which is a mesh behavior
-                server_in_mesh = True
-                logger.info(f"Successful retries ({retry_test.get('retry_attempts', 0)}) suggest server is in mesh")
+                logger.info(f"Server appears to handle errors efficiently (effectiveness: {retry_effectiveness:.2f})")
         
-        # Check for evidence of header propagation in any test results
-        for test in self.results["tests"]:
-            # Look for X-B3-TraceId in output that matches input
-            if not server_in_mesh and "raw_output" in test:
-                # Look for traces of header propagation in any output
-                # Example pattern: response headers containing the same trace ID sent in request
-                if re.search(r"X-B3-TraceId['\"]?: ['\"]?([a-f0-9-]+)['\"]?.+same.+X-B3-TraceId", test.get("raw_output", ""), re.IGNORECASE | re.DOTALL):
-                    server_in_mesh = True
-                    logger.info(f"Header propagation detected in {test.get('name')} test output")
-        
-        # In debug mode, look for any HTTP response headers that contain X-B3 headers
-        # which is a strong signal the server is in mesh
+        # In debug mode, check server details from responses
         if self.debug_mode and not server_in_mesh:
             for test in self.results["tests"]:
-                if test.get("status") in ["PASS", "PARTIAL"]:
-                    # If any test passes and we can see evidence of the server in logs, assume server is in mesh
-                    server_in_mesh = True
-                    logger.info(f"Server seems to be working correctly in {test.get('name')} test, assuming in mesh")
-                    break
+                if "raw_output" in test:
+                    # Look for server-side mesh indicators in any response data
+                    server_mesh_indicators = [
+                        r"x-server-host:",  # Server hostname header
+                        r"x-b3-traceid:.*x-b3-spanid",  # B3 propagation
+                        r"traceparent:",  # W3C trace context
+                        r"linkerd-proxy"  # Direct mention of Linkerd proxy
+                    ]
+                    
+                    for indicator in server_mesh_indicators:
+                        if re.search(indicator, test.get("raw_output", ""), re.IGNORECASE):
+                            server_in_mesh = True
+                            logger.info(f"Server response contains mesh indicators: {indicator}")
+                            break
+                    
+                    if server_in_mesh:
+                        break
 
         # Check for override environment variables (useful for manual testing)
         env_client = os.environ.get('LINKERD_CLIENT_IN_MESH', '').lower()
