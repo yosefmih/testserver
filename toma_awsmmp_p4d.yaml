@@ -1,0 +1,76 @@
+Name:         toma-cluster-staging-user-0248cc-4boq
+Namespace:    10625
+Labels:       cluster.x-k8s.io/cluster-name=toma-cluster-staging
+              porter.run/has-gpu=true
+              porter.run/managed=true
+              porter.run/node-group-id=0248cc95-c33d-44fe-89bd-b065bedce62b
+              porter.run/node-group-name=llama-70
+              porter.run/workload-kind=user
+Annotations:  sigs.k8s.io/cluster-api-provider-aws-last-applied-tags:
+                {"k8s.io/cluster-autoscaler/node-template/resources/nvidia-gpu":"8","porter.run/has-gpu":"true","porter.run/managed":"true","porter.run/no...
+API Version:  infrastructure.cluster.x-k8s.io/v1beta2
+Kind:         AWSManagedMachinePool
+Metadata:
+  Creation Timestamp:  2025-03-31T16:39:24Z
+  Finalizers:
+    awsmanagedmachinepools.infrastructure.cluster.x-k8s.io
+  Generation:  2
+  Owner References:
+    API Version:           cluster.x-k8s.io/v1beta1
+    Block Owner Deletion:  true
+    Controller:            true
+    Kind:                  MachinePool
+    Name:                  toma-cluster-staging-user-0248cc-4boq
+    UID:                   af16f240-69d1-4fdd-b6b7-f7647ef5baa0
+  Resource Version:        2797339935
+  UID:                     cfc323ca-dde3-4b5c-a216-4c477d21c7a9
+Spec:
+  Additional Tags:
+    k8s.io/cluster-autoscaler/node-template/resources/nvidia-gpu:  8
+    porter.run/has-gpu:                                            true
+    porter.run/managed:                                            true
+    porter.run/node-group-id:                                      0248cc95-c33d-44fe-89bd-b065bedce62b
+    porter.run/node-group-name:                                    llama-70
+    porter.run/workload-kind:                                      user
+  Ami Type:                                                        CUSTOM
+  Availability Zones:
+    us-east-1a
+    us-east-1b
+    us-east-1c
+  Aws Launch Template:
+    Ami:
+      Eks Lookup Type:  AmazonLinuxGPU
+    Instance Metadata Options:
+      Http Endpoint:                enabled
+      Http Put Response Hop Limit:  2
+      Http Tokens:                  required
+      Instance Metadata Tags:       disabled
+    Instance Type:                  p4d.24xlarge
+    Name:                           toma-cluster-staging-user-0248cc-4boq
+    Root Volume:
+      Device Name:     /dev/xvda
+      Encrypted:       true
+      Encryption Key:  arn:aws:kms:us-east-1:001340717190:key/c3979063-ec55-42e5-b3dd-e1a3eabe279b
+      Size:            50
+      Type:            gp3
+  Capacity Type:       onDemand
+  Eks Nodegroup Name:  10625_toma-cluster-staging-user-0248cc-4boq
+  Labels:
+    porter.run/has-gpu:          true
+    porter.run/managed:          true
+    porter.run/node-group-id:    0248cc95-c33d-44fe-89bd-b065bedce62b
+    porter.run/node-group-name:  llama-70
+    porter.run/workload-kind:    user
+  Role Name:                     porter-node-manager
+  Scaling:
+    Max Size:  1
+    Min Size:  0
+  Taints:
+    Effect:  no-schedule
+    Key:     nvidia.com/gpu
+    Value:   Exists
+    Effect:  no-schedule
+    Key:     porter.run/node-group-id
+    Value:   0248cc95-c33d-44fe-89bd-b065bedce62b
+  Update Config:
+    Max Unavailable:  1
