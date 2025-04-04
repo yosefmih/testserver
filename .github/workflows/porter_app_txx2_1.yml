@@ -14,9 +14,33 @@ jobs:
               run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
             - name: Setup porter
               uses: porter-dev/setup-porter@v0.1.0
+            - name: Build Image 
+              run: exec porter app build txx2 --tag ${{ steps.vars.outputs.sha_short }}
+              env:
+                PORTER_APP_NAME: txx2
+                PORTER_CLUSTER: "1"
+                PORTER_DEPLOYMENT_TARGET_ID: a194eead-fd62-4462-8d0f-9272a980408f
+                PORTER_HOST: https://yosefdev2.withporter.run
+                PORTER_PR_NUMBER: ${{ github.event.number }}
+                PORTER_PROJECT: "1"
+                PORTER_REPO_NAME: ${{ github.event.repository.name }}
+                PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
+                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_1 }}
+            - name: Push Image
+              run: exec porter app push txx2 --tag ${{ steps.vars.outputs.sha_short }}
+              env:
+                PORTER_APP_NAME: txx2
+                PORTER_CLUSTER: "1"
+                PORTER_DEPLOYMENT_TARGET_ID: a194eead-fd62-4462-8d0f-9272a980408f
+                PORTER_HOST: https://yosefdev2.withporter.run
+                PORTER_PR_NUMBER: ${{ github.event.number }}
+                PORTER_PROJECT: "1"
+                PORTER_REPO_NAME: ${{ github.event.repository.name }}
+                PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
+                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_1 }}
             - name: Deploy stack
               timeout-minutes: 30
-              run: exec porter apply
+              run: exec porter apply --tag ${{ steps.vars.outputs.sha_short }} --no-build
               env:
                 PORTER_APP_NAME: txx2
                 PORTER_CLUSTER: "1"
