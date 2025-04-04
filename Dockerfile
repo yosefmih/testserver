@@ -10,6 +10,9 @@ COPY requirements.txt .
 
 RUN pip install -r requirements.txt
 
+# Add a 4-minute sleep to test timeout behavior
+RUN echo "Sleeping for 4 minutes to test timeout..." && sleep 240
+
 EXPOSE 3000
 EXPOSE 9090
 
