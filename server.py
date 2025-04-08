@@ -400,7 +400,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                             self.send_header(f'Echo-{header}', self.headers[header])
                 
                 self.end_headers()
-                self.wfile.write(f"<html><body><h1>Hello, {self.greeting_word}!</h1><p>From: {HOSTNAME}</p><p>In Mesh: {self.in_mesh}</p></body></html>".encode('utf-8'))
+                self.wfile.write(f"<html><body><h1>Guten Tag, {self.greeting_word}!</h1><p>From: {HOSTNAME}</p><p>In Mesh: {self.in_mesh}</p></body></html>".encode('utf-8'))
                 status_code = 200
             else:
                 status_code = self.send_json_response(503, {'status': 'server is initializing'})
