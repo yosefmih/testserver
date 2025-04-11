@@ -11,6 +11,7 @@ import socket
 import os
 import traceback
 import subprocess
+import shutil
 
 # Configure logging
 logging.basicConfig(
@@ -377,6 +378,21 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 'in_mesh': self.in_mesh
             }).encode('utf-8'))
             status_code = 200
+            
+        elif self.path == '/download':
+            file_path = 'large_file.dat'
+            if os.path.exists(file_path):
+                self.send_response(200)
+                self.send_header('Content-type', 'application/octet-stream')
+                self.send_header('Content-Disposition', f'attachment; filename="{os.path.basename(file_path)}"')
+                fs = os.fstat(open(file_path, 'rb').fileno())
+                self.send_header("Content-Length", str(fs.st_size))
+                self.end_headers()
+                with open(file_path, 'rb') as f:
+                    shutil.copyfileobj(f, self.wfile)
+                status_code = 200
+            else:
+                status_code = self.send_json_response(404, {'status': 'error', 'message': 'Large file not found'})
             
         else:
             if self.is_ready:
