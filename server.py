@@ -382,15 +382,28 @@ class SimpleHandler(BaseHTTPRequestHandler):
         elif self.path == '/download':
             file_path = 'large_file.dat'
             if os.path.exists(file_path):
-                self.send_response(200)
-                self.send_header('Content-type', 'application/octet-stream')
-                self.send_header('Content-Disposition', f'attachment; filename="{os.path.basename(file_path)}"')
-                fs = os.fstat(open(file_path, 'rb').fileno())
-                self.send_header("Content-Length", str(fs.st_size))
-                self.end_headers()
-                with open(file_path, 'rb') as f:
-                    shutil.copyfileobj(f, self.wfile)
-                status_code = 200
+                try:
+                    with open(file_path, 'rb') as f:
+                        # Get file stats using the valid file descriptor
+                        fs = os.fstat(f.fileno())
+
+                        # Send headers *before* sending the body
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/octet-stream')
+                        self.send_header('Content-Disposition', f'attachment; filename="{os.path.basename(file_path)}"')
+                        self.send_header("Content-Length", str(fs.st_size))
+                        self.end_headers()
+
+                        # Stream the file content using the same file object
+                        shutil.copyfileobj(f, self.wfile)
+
+                    status_code = 200 # Mark success
+
+                except Exception as e:
+                    logger.error(f"Error during file download {file_path}: {e}\n{traceback.format_exc()}")
+                    # We might not be able to send a proper error response if headers were partially sent
+                    # Best effort: Log it. The connection will likely be broken.
+                    status_code = 500 # For logging purposes
             else:
                 status_code = self.send_json_response(404, {'status': 'error', 'message': 'Large file not found'})
             
