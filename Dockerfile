@@ -8,6 +8,7 @@ COPY linkerd_test.py .
 COPY compute_pi.py .
 COPY requirements.txt .
 COPY large_file.dat .
+COPY ooms.py .
 
 RUN pip install -r requirements.txt
 
