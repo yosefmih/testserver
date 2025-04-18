@@ -15,7 +15,7 @@ def allocate_memory(chunk_size_mb=100, delay=0.1):
     Allocate memory in chunks until OOM occurs.
     
     Args:
-        chunk_size_mb: Size of each memory chunk in MiB
+        chunk_size_mb: Size of each memory chunk in MB
         delay: Delay between allocations in seconds
     """
     chunk_size = chunk_size_mb * 1024 * 1024  # Convert MB to bytes
