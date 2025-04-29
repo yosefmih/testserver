@@ -3,8 +3,30 @@ import argparse
 import psycopg2
 import os
 import sys
+import time
 from datetime import datetime
 from decimal import Decimal, getcontext
+
+def fail_after_delay(duration_seconds=60, interval_seconds=10):
+    """
+    Runs for a specified duration, printing logs, then exits with an error.
+    """
+    start_time = time.time()
+    end_time = start_time + duration_seconds
+    print(f"Starting failure simulation. Will run for {duration_seconds} seconds.")
+    
+    while time.time() < end_time:
+        elapsed = time.time() - start_time
+        remaining = end_time - time.time()
+        print(f"[{datetime.now()}] Simulating work... {elapsed:.0f}s elapsed, {remaining:.0f}s remaining.")
+        
+        # Ensure we don't sleep longer than the remaining time
+        sleep_time = min(interval_seconds, max(0, remaining)) 
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+            
+    print(f"[{datetime.now()}] Simulation finished after {duration_seconds} seconds. Exiting with error.")
+    sys.exit(1)
 
 def init_db(conn):
     """Initialize the database table if it doesn't exist"""
@@ -56,8 +78,14 @@ def main():
     parser = argparse.ArgumentParser(description='Compute Pi to a specified number of digits')
     parser.add_argument('--digits', type=int, default=12, 
                       help='Number of digits of Pi to compute (max 30)')
+    parser.add_argument('--fail-after-delay', action='store_true', 
+                      help='Simulate a failure after a 2-minute delay')
     
     args = parser.parse_args()
+    
+    if args.fail_after_delay:
+        fail_after_delay(duration_seconds=120)
+        return
     
     if args.digits > 30:
         print("Maximum supported digits is 30")
