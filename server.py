@@ -286,7 +286,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
     @classmethod
     def prepare_server(cls, delay_seconds=10):
         """Simulate server preparation period"""
-        logger.info(f"Server preparing... will be ready in {delay_seconds} seconds")
+        logger.info(f"Server preparing.... will be ready in {delay_seconds} seconds")
         time.sleep(delay_seconds)
         logger.info("Server preparation complete")
         cls.is_ready = True
