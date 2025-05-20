@@ -12,6 +12,9 @@ import os
 import traceback
 import subprocess
 import shutil
+from urllib.parse import urlparse, parse_qs
+import decimal
+import math
 
 # Configure logging
 logging.basicConfig(
@@ -230,6 +233,66 @@ class SimpleHandler(BaseHTTPRequestHandler):
     # Mesh status - this is determined at startup
     in_mesh = RUNNING_IN_MESH
 
+    @staticmethod
+    def compute_pi(num_decimal_places):
+        """
+        Computes Pi to a specified number of decimal places using the Gauss-Legendre algorithm.
+        Returns Pi as a string (e.g., "3.14159"), truncated.
+        """
+        # num_decimal_places is the number of digits *after* the decimal point.
+        if not isinstance(num_decimal_places, int) or num_decimal_places < 1:
+            # This should ideally be caught by caller validation too
+            raise ValueError("Number of decimal places must be a positive integer.")
+
+        # Precision for calculation: 1 (for '3') + num_decimal_places + guard_digits (e.g., 5)
+        # This is the total number of significant digits for the decimal context.
+        calc_precision = 1 + num_decimal_places + 5
+        
+        ctx = decimal.Context(prec=calc_precision)
+
+        a = ctx.create_decimal(1)
+        b = ctx.divide(ctx.create_decimal(1), ctx.sqrt(ctx.create_decimal(2)))
+        t = ctx.divide(ctx.create_decimal(1), ctx.create_decimal(4))
+        p = ctx.create_decimal(1)
+
+        # Number of iterations for Gauss-Legendre. It converges quadratically.
+        # Iterations needed is roughly log2 of the desired precision.
+        iterations = math.ceil(math.log2(calc_precision))
+
+        for _ in range(iterations):
+            a_prev = a
+            a = ctx.divide(ctx.add(a_prev, b), ctx.create_decimal(2))
+            b = ctx.sqrt(ctx.multiply(a_prev, b))
+            t = ctx.subtract(t, ctx.multiply(p, ctx.power(ctx.subtract(a_prev, a), 2)))
+            p = ctx.multiply(p, ctx.create_decimal(2))
+
+        pi_val = ctx.divide(ctx.power(ctx.add(a, b), 2), ctx.multiply(ctx.create_decimal(4), t))
+        
+        # Convert to string using the context's precision
+        pi_full_str = str(pi_val) # e.g., "3.1415926535" if calc_precision was for that many digits
+
+        # Truncate to "3." + num_decimal_places digits
+        point_index = pi_full_str.find('.')
+        if point_index == -1:
+            logger.error(f"Pi computation result '{pi_full_str}' did not contain a decimal point.")
+            raise ValueError("Pi computation failed to produce expected decimal format.")
+
+        # Desired end index for slicing: point_index (start of '.') + 1 (for '.') + num_decimal_places
+        end_index = point_index + 1 + num_decimal_places
+        
+        # Ensure the slice does not exceed the string length, though calc_precision should prevent this.
+        if end_index > len(pi_full_str):
+            logger.warning(
+                f"Pi string '{pi_full_str}' (len {len(pi_full_str)}) might be too short for {num_decimal_places} decimal places (target end_index {end_index}). "
+                f"This might happen if guard digits were insufficient or calc_precision was too low."
+            )
+            # Return the maximum possible based on computed string, or could raise error
+            return pi_full_str 
+            
+        truncated_pi_str = pi_full_str[:end_index]
+        
+        return truncated_pi_str
+
     def log_request_info(self, status_code, duration):
         """Log information about the request"""
         client_ip = self.client_address[0]
@@ -407,6 +470,87 @@ class SimpleHandler(BaseHTTPRequestHandler):
             else:
                 status_code = self.send_json_response(404, {'status': 'error', 'message': 'Large file not found'})
             
+        elif self.path == '/oom':
+            # OOM test endpoint
+            logger.info("Received OOM request. Starting aggressive memory allocation.")
+            memory_blocks = []
+            chunk_size_mb = 100 # Size of each memory chunk in MB
+            chunk_size = chunk_size_mb * 1024 * 1024  # Convert MB to bytes
+            
+            try:
+                while True:
+                    memory_blocks.append(bytearray(chunk_size))
+                    # Optional: Add a small delay or log memory usage if needed before crash
+                    # time.sleep(0.01) 
+                    
+            except MemoryError:
+                logger.error("MemoryError triggered by OOM endpoint.")
+                # Attempt to send a response, though it might fail
+                status_code = 500 # Or a specific OOM status if appropriate/possible
+                try:
+                    self.send_json_response(status_code, {'status': 'error', 'message': 'Out of Memory'})
+                except Exception as e:
+                    logger.error(f"Failed to send OOM response: {e}")
+                # The process will likely terminate shortly after
+                
+            except Exception as e:
+                 logger.error(f"Unexpected error during OOM allocation: {e}")
+                 status_code = 500
+                 self.send_json_response(status_code, {'status': 'error', 'message': f'Unexpected error: {e}'})
+
+            # Log the request info even if response failed
+            # Note: Duration might be short if it crashes quickly
+            self.log_request_info(status_code, time.time() - start_time)
+
+        elif self.path.startswith('/pi'):
+            parsed = urlparse(self.path)
+            if parsed.path != '/pi':
+                status_code = self.send_json_response(404, {'status': 'not found'})
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+            
+            query_params = parse_qs(parsed.query)
+            digits_param = query_params.get('digits', [None])[0]
+            
+            if not digits_param:
+                status_code = self.send_json_response(400, {'status': 'error', 'message': 'Missing digits parameter'})
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+            
+            try:
+                digits = int(digits_param)
+                if digits < 1 or digits > 1000: # Max 1000 digits for performance
+                    raise ValueError()
+            except ValueError:
+                status_code = self.send_json_response(400, {
+                    'status': 'error', 
+                    'message': 'Digits must be an integer between 1 and 1000'
+                })
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+            
+            try:
+                pi_value = SimpleHandler.compute_pi(digits)
+            except ValueError as e: # Catch errors from compute_pi (e.g., unexpected format)
+                logger.error(f"Error computing pi for {digits} digits: {e}")
+                status_code = self.send_json_response(500, {'status': 'error', 'message': f'Error computing Pi: {e}'})
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+            except Exception as e: # Catch any other unexpected errors
+                logger.error(f"Unexpected error computing pi for {digits} digits: {e}\n{traceback.format_exc()}")
+                status_code = self.send_json_response(500, {'status': 'error', 'message': 'Unexpected server error during Pi computation'})
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+
+            status_code = self.send_json_response(200, {
+                'pi': pi_value,
+                'digits': digits,
+                'hostname': HOSTNAME
+            })
+            self.log_request_info(status_code, time.time() - start_time)
+            # Explicitly return after handling /pi to prevent falling through
+            return
+
         else:
             if self.is_ready:
                 # Apply artificial latency if configured
