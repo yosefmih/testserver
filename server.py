@@ -519,7 +519,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
             
             try:
                 digits = int(digits_param)
-                if digits < 1 or digits > 1000: # Max 1000 digits for performance
+                if digits < 1 or digits > 10000: # Max 1000 digits for performance
                     raise ValueError()
             except ValueError:
                 status_code = self.send_json_response(400, {
