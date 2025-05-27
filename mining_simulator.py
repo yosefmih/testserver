@@ -7,6 +7,17 @@ import string
 import sys
 from datetime import datetime
 import json
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 class MiningSimulator:
     def __init__(self, duration_minutes=5, initial_difficulty=4, failure_probability=0.3):
@@ -24,7 +35,7 @@ class MiningSimulator:
         if self.should_fail:
             # Determine when to fail (random time within duration)
             self.failure_time = self.start_time + random.uniform(30, self.duration_seconds - 30)
-            print(f"[{datetime.now()}] WARNING: This run is scheduled to fail (probability: {failure_probability*100}%)")
+            logger.warning(f"This run is scheduled to fail (probability: {failure_probability*100}%)")
         
     def generate_random_data(self, length=32):
         """Generate random string for mining"""
@@ -47,11 +58,11 @@ class MiningSimulator:
             if avg_block_time < self.target_block_time * 0.5:
                 # Too fast, increase difficulty
                 self.difficulty += 1
-                print(f"[{datetime.now()}] Difficulty increased to {self.difficulty}")
+                logger.info(f"Difficulty increased to {self.difficulty}")
             elif avg_block_time > self.target_block_time * 2:
                 # Too slow, decrease difficulty
                 self.difficulty = max(1, self.difficulty - 1)
-                print(f"[{datetime.now()}] Difficulty decreased to {self.difficulty}")
+                logger.info(f"Difficulty decreased to {self.difficulty}")
     
     def mine_block(self, block_data):
         """Mine a single block"""
@@ -98,14 +109,14 @@ class MiningSimulator:
             "avg_block_time": round(sum(self.block_times[-5:]) / len(self.block_times[-5:]), 2) if self.block_times else 0
         }
         
-        print(f"[STATS] {json.dumps(stats)}")
+        logger.info(f"[STATS] {json.dumps(stats)}")
     
     def run(self):
         """Main mining loop"""
-        print(f"[{datetime.now()}] Starting mining simulator")
-        print(f"[{datetime.now()}] Duration: {self.duration_seconds}s, Initial difficulty: {self.difficulty}")
-        print(f"[{datetime.now()}] Target block time: {self.target_block_time}s")
-        print(f"[{datetime.now()}] Failure probability: {self.failure_probability*100}%")
+        logger.info("Starting mining simulator")
+        logger.info(f"Duration: {self.duration_seconds}s, Initial difficulty: {self.difficulty}")
+        logger.info(f"Target block time: {self.target_block_time}s")
+        logger.info(f"Failure probability: {self.failure_probability*100}%")
         
         last_stats_time = time.time()
         
@@ -119,7 +130,7 @@ class MiningSimulator:
             }
             
             # Mine the block
-            print(f"[{datetime.now()}] Mining block #{self.blocks_found + 1}...")
+            logger.info(f"Mining block #{self.blocks_found + 1}...")
             nonce, hash_value, hash_count = self.mine_block(json.dumps(block_data))
             
             self.total_hashes += hash_count
@@ -131,11 +142,11 @@ class MiningSimulator:
                 self.blocks_found += 1
                 self.last_block_time = time.time()
                 
-                print(f"[{datetime.now()}] Block #{self.blocks_found} found!")
-                print(f"  Hash: {hash_value}")
-                print(f"  Nonce: {nonce}")
-                print(f"  Hashes tried: {hash_count}")
-                print(f"  Time: {block_time:.2f}s")
+                logger.info(f"Block #{self.blocks_found} found!")
+                logger.info(f"  Hash: {hash_value}")
+                logger.info(f"  Nonce: {nonce}")
+                logger.info(f"  Hashes tried: {hash_count}")
+                logger.info(f"  Time: {block_time:.2f}s")
                 
                 # Adjust difficulty
                 self.adjust_difficulty()
@@ -150,11 +161,11 @@ class MiningSimulator:
                 break
         
         # Final stats
-        print(f"\n[{datetime.now()}] Mining completed successfully!")
-        print(f"Total duration: {time.time() - self.start_time:.2f}s")
-        print(f"Blocks found: {self.blocks_found}")
-        print(f"Total hashes: {self.total_hashes}")
-        print(f"Average hash rate: {self.total_hashes / (time.time() - self.start_time):.2f} H/s")
+        logger.info("Mining completed successfully!")
+        logger.info(f"Total duration: {time.time() - self.start_time:.2f}s")
+        logger.info(f"Blocks found: {self.blocks_found}")
+        logger.info(f"Total hashes: {self.total_hashes}")
+        logger.info(f"Average hash rate: {self.total_hashes / (time.time() - self.start_time):.2f} H/s")
         
         # Exit with success
         return 0
@@ -173,15 +184,15 @@ def main():
     args = parser.parse_args()
     
     if args.duration < 1 or args.duration > 60:
-        print("Duration must be between 1 and 60 minutes")
+        logger.error("Duration must be between 1 and 60 minutes")
         sys.exit(1)
     
     if args.difficulty < 1 or args.difficulty > 8:
-        print("Difficulty must be between 1 and 8")
+        logger.error("Difficulty must be between 1 and 8")
         sys.exit(1)
     
     if args.failure_probability < 0 or args.failure_probability > 1:
-        print("Failure probability must be between 0 and 1")
+        logger.error("Failure probability must be between 0 and 1")
         sys.exit(1)
     
     simulator = MiningSimulator(
@@ -195,11 +206,11 @@ def main():
         exit_code = simulator.run()
         sys.exit(exit_code)
     except KeyboardInterrupt:
-        print(f"\n[{datetime.now()}] Mining interrupted by user")
+        logger.info("Mining interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n[{datetime.now()}] ERROR: Mining failed - {e}")
-        print(f"[{datetime.now()}] Exiting with error code 1")
+        logger.error(f"Mining failed - {e}")
+        logger.error("Exiting with error code 1")
         sys.exit(1)
 
 if __name__ == "__main__":
