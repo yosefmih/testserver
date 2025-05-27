@@ -9,6 +9,8 @@ COPY compute_pi.py .
 COPY requirements.txt .
 COPY large_file.dat .
 COPY ooms.py .
+COPY mining_simulator.py .
+COPY web_scraper.py .
 
 RUN pip install -r requirements.txt
 
