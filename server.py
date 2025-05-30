@@ -15,6 +15,15 @@ import shutil
 from urllib.parse import urlparse, parse_qs
 import decimal
 import math
+import redis
+import base64
+from datetime import datetime
+from dotenv import load_dotenv
+from pydub import AudioSegment
+import io
+
+# Load environment variables at the very beginning
+load_dotenv(".env", override=True)
 
 # Configure logging
 logging.basicConfig(
@@ -25,6 +34,35 @@ logger = logging.getLogger(__name__)
 
 # Get hostname for pod identification
 HOSTNAME = socket.gethostname()
+
+# Initialize Redis connection if available
+redis_client = None
+try:
+    redis_url = os.environ.get('REDIS_URL')
+    if redis_url:
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+        redis_client.ping()  # Test connection
+        logger.info("✅ Connected to Redis via REDIS_URL")
+    else:
+        # Try individual parameters
+        redis_host = os.environ.get('REDIS_HOST')
+        redis_port = int(os.environ.get('REDIS_PORT', 6379))
+        redis_pass = os.environ.get('REDIS_PASS')
+        
+        if redis_host:
+            redis_client = redis.Redis(
+                host=redis_host,
+                port=redis_port,
+                password=redis_pass,
+                decode_responses=True
+            )
+            redis_client.ping()  # Test connection
+            logger.info(f"✅ Connected to Redis at {redis_host}:{redis_port}")
+        else:
+            logger.warning("⚠️ Redis not configured - audio processing endpoints will not work")
+except Exception as e:
+    logger.error(f"❌ Failed to connect to Redis: {e}")
+    redis_client = None
 
 # Add function to detect if running in Linkerd mesh
 def is_in_linkerd_mesh():
@@ -551,6 +589,118 @@ class SimpleHandler(BaseHTTPRequestHandler):
             # Explicitly return after handling /pi to prevent falling through
             return
 
+        elif self.path.startswith('/audio'):
+            if not redis_client:
+                status_code = self.send_json_response(503, {
+                    'status': 'error',
+                    'message': 'Redis not available - audio processing is disabled'
+                })
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+            
+            parsed = urlparse(self.path)
+            path_parts = parsed.path.strip('/').split('/')
+            
+            if len(path_parts) == 2 and path_parts[0] == 'audio' and path_parts[1] == 'upload':
+                # This should be a POST request - return method not allowed for GET
+                status_code = self.send_json_response(405, {
+                    'status': 'error',
+                    'message': 'Method not allowed. Use POST to upload audio.'
+                })
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+            
+            elif len(path_parts) == 3 and path_parts[0] == 'audio' and path_parts[1] == 'status':
+                # GET /audio/status/{job_id}
+                job_id = path_parts[2]
+                
+                try:
+                    # Check job status in Redis
+                    status = redis_client.get(f"audio:job:{job_id}:status")
+                    if not status:
+                        status_code = self.send_json_response(404, {
+                            'status': 'error',
+                            'message': f'Job {job_id} not found'
+                        })
+                    else:
+                        metadata = redis_client.get(f"audio:job:{job_id}:metadata")
+                        response_data = {
+                            'job_id': job_id,
+                            'status': status,
+                            'hostname': HOSTNAME
+                        }
+                        
+                        if metadata:
+                            import json as json_module
+                            response_data['metadata'] = json_module.loads(metadata)
+                        
+                        if status == 'failed':
+                            error = redis_client.get(f"audio:job:{job_id}:error")
+                            if error:
+                                response_data['error'] = error
+                        
+                        status_code = self.send_json_response(200, response_data)
+                
+                except Exception as e:
+                    logger.error(f"Error checking job status: {e}")
+                    status_code = self.send_json_response(500, {
+                        'status': 'error',
+                        'message': 'Internal server error'
+                    })
+                
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+            
+            elif len(path_parts) == 3 and path_parts[0] == 'audio' and path_parts[1] == 'result':
+                # GET /audio/result/{job_id}
+                job_id = path_parts[2]
+                
+                try:
+                    status = redis_client.get(f"audio:job:{job_id}:status")
+                    if not status:
+                        status_code = self.send_json_response(404, {
+                            'status': 'error',
+                            'message': f'Job {job_id} not found'
+                        })
+                    elif status != 'completed':
+                        status_code = self.send_json_response(400, {
+                            'status': 'error',
+                            'message': f'Job {job_id} is not completed yet. Status: {status}'
+                        })
+                    else:
+                        # Get result data
+                        result_data = redis_client.get(f"audio:job:{job_id}:result")
+                        if result_data:
+                            # Return as audio file
+                            audio_bytes = base64.b64decode(result_data)
+                            self.send_response(200)
+                            self.send_header('Content-Type', 'audio/wav')
+                            self.send_header('Content-Disposition', f'attachment; filename="processed_{job_id}.wav"')
+                            self.send_header('Content-Length', str(len(audio_bytes)))
+                            self.end_headers()
+                            self.wfile.write(audio_bytes)
+                            status_code = 200
+                        else:
+                            status_code = self.send_json_response(404, {
+                                'status': 'error',
+                                'message': 'Result data not found'
+                            })
+                
+                except Exception as e:
+                    logger.error(f"Error retrieving job result: {e}")
+                    status_code = self.send_json_response(500, {
+                        'status': 'error',
+                        'message': 'Internal server error'
+                    })
+                
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+            
+            else:
+                status_code = self.send_json_response(404, {'status': 'not found'})
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+
         else:
             if self.is_ready:
                 # Apply artificial latency if configured
@@ -666,6 +816,111 @@ class SimpleHandler(BaseHTTPRequestHandler):
                         'status': 'error',
                         'message': 'Invalid request: "enabled" field must be a boolean'
                     })
+            
+            # Audio upload endpoint
+            elif self.path == '/audio/upload':
+                if not redis_client:
+                    status_code = self.send_json_response(503, {
+                        'status': 'error',
+                        'message': 'Redis not available - audio processing is disabled'
+                    })
+                else:
+                    try:
+                        processed_audio_data_b64 = None
+                        
+                        if 'audio_data' in data and data['audio_data']:
+                            base64_input_audio = data['audio_data']
+                            
+                            try:
+                                # Decode the base64 input
+                                decoded_audio_bytes = base64.b64decode(base64_input_audio)
+                                
+                                # Load audio using pydub from in-memory bytes
+                                audio_file_like = io.BytesIO(decoded_audio_bytes)
+                                audio_segment = AudioSegment.from_file(audio_file_like)
+                                
+                                # Standardize to mono, 44.1kHz, 16-bit PCM
+                                audio_segment = audio_segment.set_channels(1)
+                                audio_segment = audio_segment.set_frame_rate(44100)
+                                audio_segment = audio_segment.set_sample_width(2)
+                                
+                                # Get raw PCM data
+                                raw_pcm_data = audio_segment.raw_data
+                                
+                                # Base64 encode the processed PCM data for Redis
+                                processed_audio_data_b64 = base64.b64encode(raw_pcm_data).decode('utf-8')
+                                logger.info(f"Processed uploaded audio. Original size: {len(decoded_audio_bytes)}, Processed PCM size: {len(raw_pcm_data)}")
+
+                            except Exception as pydub_error:
+                                logger.error(f"Error processing uploaded audio file with pydub: {pydub_error}")
+                                logger.error(traceback.format_exc())
+                                status_code = self.send_json_response(400, {
+                                    'status': 'error',
+                                    'message': f'Invalid or unsupported audio file format: {str(pydub_error)}'
+                                })
+                                self.log_request_info(status_code, time.time() - start_time)
+                                return
+
+                        else:
+                            # Generate a simple test tone if no audio_data provided
+                            # This part might be less useful now but kept for compatibility
+                            import numpy as np
+                            sample_rate = 44100
+                            duration_s = data.get('duration', 2.0)  # seconds
+                            frequency_hz = data.get('frequency', 440.0)  # Hz (A4)
+                            
+                            t = np.linspace(0, duration_s, int(sample_rate * duration_s), endpoint=False)
+                            audio_signal_np = np.sin(2 * np.pi * frequency_hz * t)
+                            
+                            # Convert to 16-bit PCM
+                            audio_signal_int16 = (audio_signal_np * 32767).astype(np.int16)
+                            processed_audio_data_b64 = base64.b64encode(audio_signal_int16.tobytes()).decode('utf-8')
+                            logger.info("Generated synthetic audio tone.")
+
+                        if not processed_audio_data_b64:
+                            logger.error("No audio data (uploaded or synthetic) to process.")
+                            status_code = self.send_json_response(500, {
+                                'status': 'error',
+                                'message': 'Internal server error: No audio data to process.'
+                            })
+                            self.log_request_info(status_code, time.time() - start_time)
+                            return
+
+                        # Generate job ID
+                        job_id = str(uuid.uuid4())
+                        
+                        # Store job in Redis
+                        pipe = redis_client.pipeline()
+                        pipe.set(f"audio:job:{job_id}:input", processed_audio_data_b64)
+                        pipe.set(f"audio:job:{job_id}:status", "queued")
+                        pipe.set(f"audio:job:{job_id}:metadata", json.dumps({
+                            'created_at': datetime.now().isoformat(),
+                            'hostname': HOSTNAME,
+                            'effects': data.get('effects', ['reverb', 'low_pass'])
+                        }))
+                        pipe.lpush("audio:queue", job_id)
+                        pipe.expire(f"audio:job:{job_id}:input", 3600)  # 1 hour TTL
+                        pipe.expire(f"audio:job:{job_id}:status", 3600)
+                        pipe.expire(f"audio:job:{job_id}:metadata", 3600)
+                        pipe.execute()
+                        
+                        logger.info(f"Created audio job {job_id}")
+                        
+                        status_code = self.send_json_response(200, {
+                            'status': 'success',
+                            'job_id': job_id,
+                            'message': 'Audio job queued for processing',
+                            'check_status_url': f'/audio/status/{job_id}',
+                            'result_url': f'/audio/result/{job_id}'
+                        })
+                        
+                    except Exception as e:
+                        logger.error(f"Error creating audio job: {e}")
+                        logger.error(traceback.format_exc())
+                        status_code = self.send_json_response(500, {
+                            'status': 'error',
+                            'message': f'Failed to create job: {str(e)}'
+                        })
             else:
                 status_code = self.send_json_response(404, {'status': 'not found'})
                 
@@ -761,4 +1016,7 @@ def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup
         httpd.server_close()
 
 if __name__ == '__main__':
-    run(startup_delay=int(os.environ.get('STARTUP_DELAY_SECONDS', 10)))
+    run(
+        port=int(os.environ.get('SERVER_PORT', 8080)),
+        startup_delay=int(os.environ.get('STARTUP_DELAY_SECONDS', 10))
+    )
