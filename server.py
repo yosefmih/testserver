@@ -1017,6 +1017,6 @@ def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup
 
 if __name__ == '__main__':
     run(
-        port=int(os.environ.get('SERVER_PORT', 8080)),
+        port=int(os.environ.get('PORT', 3000)),
         startup_delay=int(os.environ.get('STARTUP_DELAY_SECONDS', 10))
     )
