@@ -32,7 +32,7 @@ RUN pip wheel --no-cache-dir --wheel-dir=/app/wheels -r requirements.txt
 # ---- Runtime Stage ----
 # Using a 'slim' variant for the runtime image is a great optimization.
 # It's much smaller as it doesn't include build tools or many development libraries.
-FROM python:3.9-slim-bullseye
+FROM python:3.10-slim-bullseye
 
 # Install ffmpeg, which is needed by pydub for MP3 processing
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
@@ -45,6 +45,9 @@ WORKDIR /app
 # This is a key benefit of multi-stage builds.
 COPY --from=builder /app/wheels /app/wheels
 
+# Copy requirements.txt again for the runtime stage pip install
+COPY requirements.txt .
+
 # Install dependencies from the local wheelhouse.
 # - '--no-index' tells pip not to look at PyPI.
 # - '--find-links=/app/wheels' directs pip to use the wheels we just copied.
@@ -54,20 +57,15 @@ RUN pip install --no-cache-dir --no-index --find-links=/app/wheels -r requiremen
     && rm -rf /app/wheels
 
 # Copy application code.
-# CONSIDERATION: Only copy files essential for running the application.
-# Are all these files needed for the server/worker to run in production?
-# Files like client.py, linkerd_test.py, compute_pi.py, large_file.dat,
-# ooms.py, mining_simulator.py, web_scraper.py might be for testing or other utilities.
-# If they are not needed at runtime, removing them will make the image smaller and more secure.
 COPY server.py .
-COPY audio_worker.py . # Assuming audio_worker is also run, perhaps in a different container/CMD
-# COPY client.py .
-# COPY linkerd_test.py .
-# COPY compute_pi.py .
-# COPY large_file.dat . # Large data files should generally not be in images if possible.
-# COPY ooms.py .
-# COPY mining_simulator.py .
-# COPY web_scraper.py .
+COPY client.py .
+COPY linkerd_test.py .
+COPY compute_pi.py .
+COPY large_file.dat .
+COPY ooms.py .
+COPY mining_simulator.py .
+COPY web_scraper.py .
+COPY audio_worker.py .
 
 # EXPOSE informs Docker that the container listens on these network ports at runtime.
 # It's good documentation. The actual publishing is done with 'docker run -p'.
