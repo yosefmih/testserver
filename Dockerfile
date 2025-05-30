@@ -1,7 +1,7 @@
 # ---- Build Stage ----
 # Using a specific Python version and OS release (Debian Bullseye) for reproducibility. Good.
 # 'AS builder' names this stage, which is used later.
-FROM python:3.9-bullseye AS builder
+FROM python:3.10-bullseye AS builder
 
 # Set the working directory in the container. Standard practice.
 WORKDIR /app
