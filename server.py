@@ -832,24 +832,39 @@ class SimpleHandler(BaseHTTPRequestHandler):
                             base64_input_audio = data['audio_data']
                             
                             try:
-                                # Decode the base64 input
+                                # base64_input_audio is a large string from the JSON.
                                 decoded_audio_bytes = base64.b64decode(base64_input_audio)
+                                original_decoded_size = len(decoded_audio_bytes) # For logging
+
+                                # Wrap decoded_audio_bytes in a stream for pydub
+                                audio_file_stream = io.BytesIO(decoded_audio_bytes)
+                                # Since the data is now in audio_file_stream's buffer,
+                                # we can release the reference to decoded_audio_bytes.
+                                del decoded_audio_bytes 
                                 
-                                # Load audio using pydub from in-memory bytes
-                                audio_file_like = io.BytesIO(decoded_audio_bytes)
-                                audio_segment = AudioSegment.from_file(audio_file_like)
+                                # Load audio using pydub and process it.
+                                # Reassigning to the same variable name helps ensure previous segments are eligible for GC.
+                                audio_segment = AudioSegment.from_file(audio_file_stream)
+                                audio_file_stream.close() # Close the BytesIO stream once pydub has read from it.
                                 
-                                # Standardize to mono, 44.1kHz, 16-bit PCM
                                 audio_segment = audio_segment.set_channels(1)
                                 audio_segment = audio_segment.set_frame_rate(44100)
-                                audio_segment = audio_segment.set_sample_width(2)
+                                audio_segment = audio_segment.set_sample_width(2) # Final processed segment
                                 
-                                # Get raw PCM data
+                                # Get raw PCM data from the final processed segment
                                 raw_pcm_data = audio_segment.raw_data
+                                processed_pcm_size = len(raw_pcm_data) # For logging
+                                # The data from audio_segment is now in raw_pcm_data.
+                                # We can release the reference to the pydub AudioSegment object.
+                                del audio_segment
                                 
                                 # Base64 encode the processed PCM data for Redis
                                 processed_audio_data_b64 = base64.b64encode(raw_pcm_data).decode('utf-8')
-                                logger.info(f"Processed uploaded audio. Original size: {len(decoded_audio_bytes)}, Processed PCM size: {len(raw_pcm_data)}")
+                                # The data from raw_pcm_data is now in processed_audio_data_b64.
+                                # We can release the reference to raw_pcm_data.
+                                del raw_pcm_data
+                                
+                                logger.info(f"Processed uploaded audio. Original decoded size: {original_decoded_size}, Processed PCM size: {processed_pcm_size}")
 
                             except Exception as pydub_error:
                                 logger.error(f"Error processing uploaded audio file with pydub: {pydub_error}")
