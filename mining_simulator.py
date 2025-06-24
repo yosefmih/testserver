@@ -398,12 +398,9 @@ def main():
             'port': db_port,
             'database': db_name,
             'user': db_user,
-            'sslmode': 'disable'  # Disable SSL for Cloud SQL Proxy
+            'sslmode': 'disable',  # Disable SSL for Cloud SQL Proxy
+            'password': db_password or ''  # Use empty string if no password provided
         }
-        
-        # Only add password if provided
-        if db_password:
-            db_config['password'] = db_password
         
         logger.info(f"Using PostgreSQL database: {db_user}@{db_host}:{db_port}/{db_name}")
     else:
