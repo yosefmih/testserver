@@ -371,9 +371,9 @@ def main():
         db_user = os.getenv('DB_USER')
         db_password = os.getenv('DB_PASSWORD')
         
-        if not db_name or not db_user or not db_password:
-            logger.error("Database configuration required via environment variables: DB_NAME, DB_USER, DB_PASSWORD")
-            logger.error("Optional: DB_HOST (default: localhost), DB_PORT (default: 5432)")
+        if not db_name or not db_user:
+            logger.error("Database configuration required via environment variables: DB_NAME, DB_USER")
+            logger.error("Optional: DB_HOST (default: localhost), DB_PORT (default: 5432), DB_PASSWORD")
             logger.error("Use --no-db to run without persistence")
             sys.exit(1)
         
@@ -381,9 +381,12 @@ def main():
             'host': db_host,
             'port': db_port,
             'database': db_name,
-            'user': db_user,
-            'password': db_password
+            'user': db_user
         }
+        
+        # Only add password if provided
+        if db_password:
+            db_config['password'] = db_password
         
         logger.info(f"Using PostgreSQL database: {db_user}@{db_host}:{db_port}/{db_name}")
     else:
