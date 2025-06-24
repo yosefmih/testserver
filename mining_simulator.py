@@ -165,6 +165,7 @@ class MiningSimulator:
                 """, (
                     self.difficulty,
                     self.blocks_found,
+                    self.total_hashes,
                     json.dumps(self.block_times),
                     datetime.fromtimestamp(self.last_block_time) if self.last_block_time else None,
                     self.target_block_time,
