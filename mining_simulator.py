@@ -397,7 +397,8 @@ def main():
             'host': db_host,
             'port': db_port,
             'database': db_name,
-            'user': db_user
+            'user': db_user,
+            'sslmode': 'disable'  # Disable SSL for Cloud SQL Proxy
         }
         
         # Only add password if provided
