@@ -55,32 +55,48 @@ class MiningSimulator:
     
     def setup_database(self):
         """Setup database connection and create tables if needed"""
-        try:
-            self.db_conn = psycopg2.connect(**self.db_config)
-            self.db_conn.autocommit = True
-            
-            with self.db_conn.cursor() as cursor:
-                # Create mining_sessions table
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS mining_sessions (
-                        session_id SERIAL PRIMARY KEY,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        difficulty INTEGER NOT NULL,
-                        blocks_found INTEGER DEFAULT 0,
-                        total_hashes BIGINT DEFAULT 0,
-                        block_times JSONB DEFAULT '[]'::jsonb,
-                        last_block_time TIMESTAMP,
-                        target_block_time INTEGER DEFAULT 30,
-                        is_active BOOLEAN DEFAULT TRUE
-                    )
-                """)
+        max_retries = 15
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Attempting database connection (attempt {attempt + 1}/{max_retries})")
+                logger.info(f"Connecting to: {self.db_config['host']}:{self.db_config['port']}")
                 
-                logger.info("Database connection established and tables created")
+                self.db_conn = psycopg2.connect(**self.db_config)
+                self.db_conn.autocommit = True
                 
-        except psycopg2.Error as e:
-            logger.error(f"Database connection failed: {e}")
-            self.db_conn = None
+                with self.db_conn.cursor() as cursor:
+                    # Test the connection
+                    cursor.execute("SELECT 1")
+                    
+                    # Create mining_sessions table
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS mining_sessions (
+                            session_id SERIAL PRIMARY KEY,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            difficulty INTEGER NOT NULL,
+                            blocks_found INTEGER DEFAULT 0,
+                            total_hashes BIGINT DEFAULT 0,
+                            block_times JSONB DEFAULT '[]'::jsonb,
+                            last_block_time TIMESTAMP,
+                            target_block_time INTEGER DEFAULT 30,
+                            is_active BOOLEAN DEFAULT TRUE
+                        )
+                    """)
+                    
+                    logger.info("Database connection established and tables created")
+                    return
+                    
+            except psycopg2.Error as e:
+                logger.warning(f"Database connection attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                else:
+                    logger.error(f"All database connection attempts failed after {max_retries} retries")
+                    self.db_conn = None
     
     def load_state(self):
         """Load existing state from database or create new session"""
