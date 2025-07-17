@@ -24,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class MiningSimulator:
-    def __init__(self, duration_minutes=10, initial_difficulty=4, failure_probability=0.3, db_config=None):
+    def __init__(self, duration_minutes=5, initial_difficulty=4, failure_probability=0.3, db_config=None):
         self.duration_seconds = duration_minutes * 60
         self.difficulty = initial_difficulty  # Number of leading zeros required
         self.blocks_found = 0
