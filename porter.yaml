@@ -26,6 +26,18 @@ build:
   context: ./
   method: docker
   dockerfile: ./Dockerfile
+predeploy:
+  run: python mining_simulator.py
+  cpuCores: 0.16
+  ramMegabytes: 700
+  terminationGracePeriodSeconds: 30
+  sleep: false
+  serviceMeshEnabled: false
+  metricsScraping:
+    enabled: false
+    port: 3000
+    path: /metrics
+    scrapeIntervalSeconds: 60
 env:
 - key: testk
   value: testv
