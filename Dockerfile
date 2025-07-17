@@ -79,6 +79,9 @@ ARG RUN_FILE
 # This RUN command just echoes the value during the build process, it's for debugging build args.
 RUN echo "RUN_FILE is set to ${RUN_FILE:-server.py}" # Added a default for clarity in the log
 
+ARG PORTER_TEST_VAR
+RUN echo "PORTER_TEST_VAR is set to ${PORTER_TEST_VAR:-not set}"
+
 # ARG for GitHub token.
 ARG PORTER_PASS_THOUGH_GITHUB_TOKEN
 # Logging the token during build means it appears in build logs. Be mindful of sensitive tokens.
