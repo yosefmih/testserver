@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "github-release-crawler.fullname" . }}-crawler
+  labels:
+    {{- include "github-release-crawler.labels" . | nindent 4 }}
+    app.kubernetes.io/component: crawler
+spec:
+  type: {{ .Values.crawler.service.type }}
+  ports:
+    - port: {{ .Values.crawler.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "github-release-crawler.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: crawler
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "github-release-crawler.fullname" . }}-slack-notifier
+  labels:
+    {{- include "github-release-crawler.labels" . | nindent 4 }}
+    app.kubernetes.io/component: slack-notifier
+spec:
+  type: {{ .Values.slackNotifier.service.type }}
+  ports:
+    - port: {{ .Values.slackNotifier.service.port }}
+      targetPort: 3001
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "github-release-crawler.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: slack-notifier 

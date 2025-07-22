@@ -1,0 +1,70 @@
+# Default values for github-release-crawler.
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+crawler:
+  replicaCount: 1
+  image:
+    repository: localhost:5000/github-release-crawler
+    pullPolicy: IfNotPresent
+    tag: "v1.7"
+  service:
+    type: ClusterIP
+    port: 80
+  # Health check configuration
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+slackNotifier:
+  replicaCount: 1
+  image:
+    repository: localhost:5000/slack-notifier
+    pullPolicy: Always
+    tag: "v1.3"
+  service:
+    type: ClusterIP
+    port: 80
+
+# Secrets management
+secrets:
+  # Set to true if you want to create a secret for API keys
+  create: true
+  # Name of existing secret to use instead of creating one
+  existingSecret: ""
+  # Key names in the secret
+  anthropicApiKeySecret: "anthropic-api-key"
+  githubTokenSecret: "github-token" 
+
+otel:
+  enabled: true
+  exporterOtlpEndpoint: http://otel-collector:4318
+  exporterOtlpHeaders: ""
+  serviceName: "porter"
+  serviceVersion: "1.0.0"
+  logsExporter: otlp
+  metricsExporter: otlp
+  tracesExporter: otlp
+
+# Database configuration for slack-notifier
+database:
+  host: postgresql
+  port: 5432
+  user: porter
+  name: porter

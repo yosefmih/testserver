@@ -1,0 +1,16 @@
+apiVersion: v2
+name: github-release-crawler
+description: A Helm chart for GitHub Release Crawler - Analyze GitHub repository releases for breaking changes using LLMs
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - github
+  - releases
+  - breaking-changes
+  - llm
+  - analysis
+home: https://github.com/your-org/github-release-crawler
+maintainers:
+  - name: Your Name
+    email: your-email@example.com

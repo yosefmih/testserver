@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "github-release-crawler.fullname" . }}-crawler
+  labels:
+    {{- include "github-release-crawler.labels" . | nindent 4 }}
+    app.kubernetes.io/component: crawler
+spec:
+  replicas: {{ .Values.crawler.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "github-release-crawler.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: crawler
+  template:
+    metadata:
+      labels:
+        {{- include "github-release-crawler.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: crawler
+    spec:
+      serviceAccountName: {{ include "github-release-crawler.serviceAccountName" . }}
+      containers:
+        - name: crawler
+          env:
+          - name: ANTHROPIC_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "github-release-crawler.fullname" . }}-secret
+                key: anthropic-api-key
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "github-release-crawler.fullname" . }}-secret
+                key: github-token
+          - name: NOTIFICATION_SERVICE_URL
+            value: "http://{{ include "github-release-crawler.fullname" . }}-slack-notifier:80"
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: {{ .Values.otel.exporterOtlpEndpoint | quote }}    
+          - name: OTEL_SERVICE_NAME
+            value: {{ .Values.otel.serviceName | quote }}
+          - name: OTEL_SERVICE_VERSION
+            value: {{ .Values.otel.serviceVersion | quote }}
+          image: "{{ .Values.crawler.image.repository }}:{{ .Values.crawler.image.tag }}"
+          imagePullPolicy: {{ .Values.crawler.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          {{- if .Values.crawler.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.crawler.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.crawler.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.crawler.readinessProbe | nindent 12 }}
+          {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "github-release-crawler.fullname" . }}-slack-notifier
+  labels:
+    {{- include "github-release-crawler.labels" . | nindent 4 }}
+    app.kubernetes.io/component: slack-notifier
+spec:
+  replicas: {{ .Values.slackNotifier.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "github-release-crawler.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: slack-notifier
+  template:
+    metadata:
+      labels:
+        {{- include "github-release-crawler.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: slack-notifier
+    spec:
+      serviceAccountName: {{ include "github-release-crawler.serviceAccountName" . }}
+      containers:
+        - name: slack-notifier
+          image: "{{ .Values.slackNotifier.image.repository }}:{{ .Values.slackNotifier.image.tag }}"
+          imagePullPolicy: {{ .Values.slackNotifier.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3001
+              protocol: TCP
+          env:
+            - name: DB_HOST
+              value: {{ .Values.database.host | quote }}
+            - name: DB_PORT
+              value: {{ .Values.database.port | quote }}
+            - name: DB_USER
+              value: {{ .Values.database.user | quote }}
+            - name: DB_NAME
+              value: {{ .Values.database.name | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "github-release-crawler.fullname" . }}-secret
+                  key: postgresql-password 
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.exporterOtlpEndpoint | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.otel.serviceName | quote }}
+            - name: OTEL_SERVICE_VERSION
+              value: {{ .Values.otel.serviceVersion | quote }}
