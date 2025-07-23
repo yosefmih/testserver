@@ -27,7 +27,7 @@ build:
   method: docker
   dockerfile: ./Dockerfile
 predeploy:
-  run: python mining_simulator.py
+  run: python compute_pi.py
   cpuCores: 0.16
   ramMegabytes: 700
   terminationGracePeriodSeconds: 30
