@@ -8,45 +8,67 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-let isBlocked = false;
-
-// Health check endpoint
+// Health check endpoint - production ready
 app.get('/health', (req, res) => {
-  if (isBlocked) {
-    // Perform CPU-intensive computation to overwhelm event loop
-    console.log('Starting CPU-intensive computation...');
-    let result = 0;
-    const iterations = 50000000; // 50 million iterations
-    
-    // Complex mathematical computation
-    for (let i = 0; i < iterations; i++) {
-      result += Math.sqrt(i) * Math.sin(i) * Math.cos(i);
-      
-      // Add some array operations
-      if (i % 100000 === 0) {
-        const arr = new Array(1000).fill(0).map((_, idx) => Math.random() * idx);
-        result += arr.reduce((sum, val) => sum + val, 0);
-      }
-    }
-    
-    console.log('Computation completed, result:', result);
-  }
-  
   res.status(200).json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    pid: process.pid
   });
 });
 
-// Endpoint to toggle event loop blocking
-app.post('/block', (req, res) => {
-  const { block } = req.body;
-  isBlocked = block === true;
+// CPU-intensive computation endpoint that naturally blocks event loop
+app.post('/compute', (req, res) => {
+  const { iterations = 500000000, complexity = 'extreme' } = req.body; // 500 million iterations
+  
+  console.log(`Starting CPU-intensive computation with ${iterations} iterations...`);
+  const startTime = Date.now();
+  
+  let result = 0;
+  
+  // Extremely complex mathematical computation designed to block for ~100 seconds
+  for (let i = 0; i < iterations; i++) {
+    // Heavy trigonometric operations
+    result += Math.sqrt(i) * Math.sin(i) * Math.cos(i) * Math.tan(i / 1000);
+    result += Math.pow(Math.log(i + 1), 2) + Math.exp(i / 10000000);
+    
+    if (complexity === 'extreme' && i % 10000 === 0) {
+      // Very heavy array operations every 10k iterations
+      const arr = new Array(5000).fill(0).map((_, idx) => {
+        let val = Math.pow(Math.random() * idx, 3);
+        val += Math.sqrt(Math.abs(Math.sin(idx))) * Math.cos(idx);
+        return val + Math.log(idx + 1) * Math.exp(idx / 100000);
+      });
+      
+      // Multiple reduce operations
+      result += arr.reduce((sum, val) => sum + Math.sqrt(Math.abs(val)), 0);
+      result += arr.reduce((sum, val) => sum + Math.pow(val, 0.5), 0);
+      
+      // Heavy string operations
+      const str = JSON.stringify(arr.slice(0, 500));
+      const processed = str.split('').map(c => c.charCodeAt(0)).reduce((a, b) => a + b, 0);
+      result += processed;
+      
+      // Matrix-like operations
+      for (let j = 0; j < 100; j++) {
+        for (let k = 0; k < 100; k++) {
+          result += Math.sin(j * k) * Math.cos(j + k);
+        }
+      }
+    }
+  }
+  
+  const duration = Date.now() - startTime;
+  console.log(`Computation completed in ${duration}ms, result:`, result);
   
   res.json({
-    message: `Event loop blocking ${isBlocked ? 'enabled' : 'disabled'}`,
-    blocked: isBlocked
+    message: 'CPU-intensive computation completed',
+    result: result,
+    duration: `${duration}ms`,
+    iterations,
+    complexity
   });
 });
 
@@ -109,7 +131,7 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: 'GET /health',
-      block: 'POST /block',
+      compute: 'POST /compute (CPU-intensive operation)',
       analyze: 'GET /analyze/:symbol'
     }
   });
