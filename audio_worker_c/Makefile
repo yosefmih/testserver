@@ -89,9 +89,21 @@ TARGET_NAME = audio_worker
 # Include paths
 INCLUDES = -I$(INCLUDE_DIR) $(HIREDIS_CFLAGS) $(JSON_C_CFLAGS)
 
-# Dependency checking
+# Dependency checking with better macOS support
 REQUIRED_LIBS = hiredis json-c
-MISSING_LIBS = $(foreach lib,$(REQUIRED_LIBS),$(if $(shell $(PKG_CONFIG) --exists $(lib) 2>/dev/null && echo 1),,$(lib)))
+
+# Check if libraries are available (pkg-config or direct detection)
+HIREDIS_AVAILABLE = $(shell $(PKG_CONFIG) --exists hiredis 2>/dev/null && echo 1 || \
+                     (test -f /usr/include/hiredis/hiredis.h && echo 1) || \
+                     (test -f /opt/homebrew/include/hiredis/hiredis.h && echo 1) || \
+                     echo 0)
+JSON_C_AVAILABLE = $(shell $(PKG_CONFIG) --exists json-c 2>/dev/null && echo 1 || \
+                    (test -f /usr/include/json-c/json.h && echo 1) || \
+                    (test -f /opt/homebrew/include/json-c/json.h && echo 1) || \
+                    echo 0)
+
+# Build list of missing libraries
+MISSING_LIBS = $(if $(filter 0,$(HIREDIS_AVAILABLE)),hiredis) $(if $(filter 0,$(JSON_C_AVAILABLE)),json-c)
 
 # Default target
 .DEFAULT_GOAL := all
@@ -111,14 +123,20 @@ debug: CFLAGS = $(BASE_CFLAGS) $(DEBUG_CFLAGS)
 debug: clean $(TARGET)
 
 check-deps:
-ifneq ($(MISSING_LIBS),)
-	@echo "Missing required libraries: $(MISSING_LIBS)"
+	@echo "🔍 Checking dependencies..."
+	@echo "   hiredis: $(if $(filter 1,$(HIREDIS_AVAILABLE)),✅ found,❌ missing)"
+	@echo "   json-c:  $(if $(filter 1,$(JSON_C_AVAILABLE)),✅ found,❌ missing)"
+ifneq ($(strip $(MISSING_LIBS)),)
+	@echo ""
+	@echo "❌ Missing required libraries: $(MISSING_LIBS)"
 	@echo "Please install missing dependencies:"
 	@echo "  Ubuntu/Debian: sudo apt-get install libhiredis-dev libjson-c-dev"
 	@echo "  RHEL/CentOS: sudo yum install hiredis-devel json-c-devel"
 	@echo "  Alpine: sudo apk add hiredis-dev json-c-dev"
 	@echo "  macOS: brew install hiredis json-c"
 	@exit 1
+else
+	@echo "✅ All dependencies found"
 endif
 
 $(BUILD_DIR):

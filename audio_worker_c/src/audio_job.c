@@ -2,6 +2,7 @@
 #include "audio_processing.h"
 #include "redis_client.h"
 #include "base64.h"
+#include "wav_writer.h"
 #include <json-c/json.h>
 #include <stdlib.h>
 #include <string.h>
@@ -241,13 +242,56 @@ int process_redis_job(redis_client_t *redis_client, const char *job_id) {
     int result = process_audio_job(&job);
     
     if (result == 0) {
-        // Encode output data
-        size_t encoded_size = base64_encoded_size(output_buffer->length * sizeof(sample_t));
+        // Create WAV file from processed PCM data
+        uint8_t *wav_data = NULL;
+        size_t wav_size = 0;
+        
+        // Convert float samples back to 16-bit PCM for WAV
+        int16_t *pcm_samples = malloc(output_buffer->length * sizeof(int16_t));
+        if (!pcm_samples) {
+            fprintf(stderr, "Failed to allocate PCM sample buffer\n");
+            audio_buffer_destroy(input_buffer);
+            audio_buffer_destroy(output_buffer);
+            free(input_data_b64);
+            free(metadata_json);
+            free(decoded_data);
+            redis_store_job_error(redis_client, job_id, "Memory allocation failed");
+            redis_update_job_status(redis_client, job_id, "failed");
+            return -1;
+        }
+        
+        // Convert float samples to 16-bit PCM
+        for (size_t i = 0; i < output_buffer->length; i++) {
+            float sample = output_buffer->data[i];
+            // Clamp to [-1.0, 1.0] and convert to 16-bit
+            if (sample > 1.0f) sample = 1.0f;
+            if (sample < -1.0f) sample = -1.0f;
+            pcm_samples[i] = (int16_t)(sample * 32767.0f);
+        }
+        
+        // Create WAV file
+        if (create_wav_file(pcm_samples, output_buffer->length, 44100, 1, &wav_data, &wav_size) != 0) {
+            fprintf(stderr, "Failed to create WAV file\n");
+            free(pcm_samples);
+            audio_buffer_destroy(input_buffer);
+            audio_buffer_destroy(output_buffer);
+            free(input_data_b64);
+            free(metadata_json);
+            free(decoded_data);
+            redis_store_job_error(redis_client, job_id, "Failed to create WAV file");
+            redis_update_job_status(redis_client, job_id, "failed");
+            return -1;
+        }
+        
+        free(pcm_samples);
+        
+        // Encode WAV data to base64
+        size_t encoded_size = base64_encoded_size(wav_size);
         char *encoded_output = malloc(encoded_size + 1);
         
         if (encoded_output) {
-            base64_encode((unsigned char*)output_buffer->data, 
-                         output_buffer->length * sizeof(sample_t), encoded_output);
+            base64_encode(wav_data, wav_size, encoded_output);
+            encoded_output[encoded_size] = '\0';
             
             // Store result
             redis_store_job_result(redis_client, job_id, encoded_output);
@@ -269,7 +313,9 @@ int process_redis_job(redis_client_t *redis_client, const char *job_id) {
             printf("Job %s completed successfully in %.2f ms\n", job_id, processing_time_ms);
             
             free(encoded_output);
+            free(wav_data);
         } else {
+            free(wav_data);
             redis_store_job_error(redis_client, job_id, "Failed to encode output data");
             redis_update_job_status(redis_client, job_id, "failed");
             result = -1;
