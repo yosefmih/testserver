@@ -1,0 +1,59 @@
+# Build artifacts
+build/
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+
+# Development files
+.git/
+.gitignore
+*.md
+docs/
+examples/
+benchmarks/
+tests/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Package files
+*.tar.gz
+*.zip
+*.tgz
+
+# Coverage and profiling
+*.gcov
+*.gcda
+*.gcno
+coverage/
+prof/
+
+# Static analysis
+cppcheck.xml
+*.plist
