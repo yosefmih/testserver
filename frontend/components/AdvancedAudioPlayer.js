@@ -17,6 +17,8 @@ const AdvancedAudioPlayer = ({ src, title = "Audio Track", onError }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [buffered, setBuffered] = useState([]);
   const [showControls, setShowControls] = useState(true);
+  const [isLooping, setIsLooping] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Refs
   const audioRef = useRef(null);
@@ -129,6 +131,13 @@ const AdvancedAudioPlayer = ({ src, title = "Audio Track", onError }) => {
     audioRef.current.playbackRate = newRate;
   }, []);
 
+  const toggleLoop = useCallback(() => {
+    if (!audioRef.current) return;
+    const newLooping = !isLooping;
+    setIsLooping(newLooping);
+    audioRef.current.loop = newLooping;
+  }, [isLooping]);
+
   // Progress bar handling
   const handleProgressClick = useCallback((e) => {
     if (!progressBarRef.current || !duration) return;
@@ -204,7 +213,7 @@ const AdvancedAudioPlayer = ({ src, title = "Audio Track", onError }) => {
           break;
         case 'KeyL':
           e.preventDefault();
-          setIsLooping(!isLooping);
+          toggleLoop();
           break;
         case 'KeyH':
           e.preventDefault();
@@ -217,7 +226,7 @@ const AdvancedAudioPlayer = ({ src, title = "Audio Track", onError }) => {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [togglePlayPause, skip, handleVolumeChange, volume, toggleMute, isLooping, showShortcuts]);
+  }, [togglePlayPause, skip, handleVolumeChange, volume, toggleMute, toggleLoop, showShortcuts]);
 
   // Mouse event cleanup
   useEffect(() => {
@@ -380,6 +389,13 @@ const AdvancedAudioPlayer = ({ src, title = "Audio Track", onError }) => {
             >
               30s ⏩
             </button>
+            <button 
+              className={`${styles.loopButton} ${isLooping ? styles.active : ''}`}
+              onClick={toggleLoop}
+              title="Toggle loop mode"
+            >
+              🔁
+            </button>
           </div>
 
           <div className={styles.volumeControls}>
@@ -430,9 +446,35 @@ const AdvancedAudioPlayer = ({ src, title = "Audio Track", onError }) => {
 
       {/* Keyboard Shortcuts Help */}
       <div className={styles.shortcuts}>
-        <small>
-          ⌨️ Shortcuts: Space (play/pause), ←→ (skip 10s), ↑↓ (volume), M (mute)
-        </small>
+        <button
+          className={styles.shortcutsToggle}
+          onClick={() => setShowShortcuts(!showShortcuts)}
+        >
+          ⌨️ {showShortcuts ? 'Hide' : 'Show'} Keyboard Shortcuts
+        </button>
+        
+        {showShortcuts && (
+          <div className={styles.shortcutsList}>
+            <div className={styles.shortcutGroup}>
+              <strong>Playback</strong>
+              <span>Space: Play/Pause</span>
+              <span>L: Toggle Loop</span>
+            </div>
+            <div className={styles.shortcutGroup}>
+              <strong>Navigation</strong>
+              <span>← →: Skip 10s</span>
+            </div>
+            <div className={styles.shortcutGroup}>
+              <strong>Audio</strong>
+              <span>↑ ↓: Volume</span>
+              <span>M: Mute/Unmute</span>
+            </div>
+            <div className={styles.shortcutGroup}>
+              <strong>Interface</strong>
+              <span>H: Toggle shortcuts</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
