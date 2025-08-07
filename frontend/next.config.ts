@@ -2,7 +2,12 @@ import type { NextConfig } from "next";
 
 // Read the Python backend URL from an environment variable
 // Fallback to http://localhost:8088 if not set, for local development
-const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8088';
+let PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8088';
+
+// Ensure the URL has a protocol prefix for Next.js rewrites
+if (!PYTHON_BACKEND_URL.startsWith('http://') && !PYTHON_BACKEND_URL.startsWith('https://')) {
+  PYTHON_BACKEND_URL = `http://${PYTHON_BACKEND_URL}`;
+}
 
 const nextConfig: NextConfig = {
   /* config options here */
