@@ -1,0 +1,489 @@
+/* Advanced Audio Player Styles */
+.player {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  padding: 24px;
+  color: white;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  max-width: 600px;
+  margin: 20px auto;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.player:hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+}
+
+.minimal {
+  padding: 16px;
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-bottom: 16px;
+}
+
+.trackInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trackTitle {
+  font-size: 18px;
+  font-weight: 600;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.loading {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.toggleControls {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.toggleControls:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Waveform */
+.waveform {
+  margin: 8px 0;
+}
+
+/* Progress Bar */
+.progressContainer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.timeDisplay {
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 45px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+}
+
+.progressBar {
+  flex: 1;
+  cursor: pointer;
+  padding: 12px 0;
+  position: relative;
+}
+
+.progressTrack {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.buffered {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.progress {
+  height: 100%;
+  background: linear-gradient(90deg, #00d4ff, #5b86e5);
+  border-radius: 3px;
+  transition: width 0.1s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.progressHandle {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+
+.progressBar:hover .progressHandle {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+/* Controls */
+.controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.playbackControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.playButton {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+  border: none;
+  color: white;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  font-size: 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(238, 90, 82, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.playButton:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(238, 90, 82, 0.6);
+}
+
+.playButton:active {
+  transform: scale(0.95);
+}
+
+.playButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.playing {
+  background: linear-gradient(135deg, #4CAF50, #45a049);
+  box-shadow: 0 4px 16px rgba(76, 175, 80, 0.4);
+}
+
+.playing:hover {
+  box-shadow: 0 6px 20px rgba(76, 175, 80, 0.6);
+}
+
+.skipButton {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.skipButton:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.skipButton:active {
+  transform: translateY(0);
+}
+
+.loopButton {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.loopButton:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.loopButton.active {
+  background: linear-gradient(135deg, #4CAF50, #45a049);
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.4);
+}
+
+.loopButton.active:hover {
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.6);
+}
+
+/* Volume Controls */
+.volumeControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.muteButton {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.muteButton:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.volumeBar {
+  width: 80px;
+  cursor: pointer;
+  padding: 8px 0;
+}
+
+.volumeTrack {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  position: relative;
+}
+
+.volumeProgress {
+  height: 100%;
+  background: linear-gradient(90deg, #ff9a9e, #fecfef);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+.volumeDisplay {
+  font-size: 12px;
+  min-width: 35px;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+/* Speed Controls */
+.speedControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.speedLabel {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.speedSelect {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.speedSelect:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.speedSelect option {
+  background: #333;
+  color: white;
+}
+
+/* Shortcuts */
+.shortcuts {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: center;
+  opacity: 0.9;
+}
+
+.shortcutsToggle {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.shortcutsToggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.shortcutsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+  text-align: left;
+}
+
+.shortcutGroup {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.shortcutGroup strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #ffd700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shortcutGroup span {
+  display: block;
+  font-size: 11px;
+  margin: 4px 0;
+  opacity: 0.9;
+  font-family: 'Courier New', monospace;
+}
+
+/* Error State */
+.error {
+  text-align: center;
+  padding: 40px 20px;
+  background: rgba(255, 82, 82, 0.2);
+  border: 1px solid rgba(255, 82, 82, 0.3);
+  border-radius: 8px;
+  color: #ffcccb;
+  font-weight: 500;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .player {
+    padding: 16px;
+    margin: 10px;
+  }
+  
+  .controls {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  
+  .playbackControls {
+    justify-content: center;
+  }
+  
+  .volumeControls,
+  .speedControls {
+    justify-content: center;
+  }
+  
+  .progressContainer {
+    gap: 8px;
+  }
+  
+  .timeDisplay {
+    min-width: 40px;
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+  
+  .volumeBar {
+    width: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .playButton {
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+  }
+  
+  .skipButton,
+  .loopButton {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .shortcutsList {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .shortcutGroup {
+    padding: 8px;
+  }
+  
+  .trackTitle {
+    font-size: 16px;
+  }
+  
+  .shortcuts {
+    display: none;
+  }
+  
+  .waveform {
+    margin: 6px 0;
+  }
+}

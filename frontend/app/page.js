@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import styles from './page.module.css';
 import { apiClient } from '../lib/api'; // Import the new API client
+import AdvancedAudioPlayer from '../components/AdvancedAudioPlayer';
 
 // Helper function to convert ArrayBuffer to Base64
 function arrayBufferToBase64(buffer) {
@@ -33,7 +34,6 @@ export default function AudioProcessorPage() {
   const [processingResultUrl, setProcessingResultUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [statusPollInterval, setStatusPollInterval] = useState(null);
-  const audioPlayerRef = useRef(null); // Ref for the audio element
 
   console.log('[page.js] NEXT_PUBLIC_TEST_VAR:', process.env.NEXT_PUBLIC_TEST_VAR);
 
@@ -150,43 +150,10 @@ export default function AudioProcessorPage() {
     else alert("No Job ID to check status for.");
   };
 
-  const handleSkipAudio = (skipAmount) => {
-    if (audioPlayerRef.current) {
-      console.log('Audio Element State on Skip:', {
-        readyState: audioPlayerRef.current.readyState,
-        duration: audioPlayerRef.current.duration,
-        currentTime: audioPlayerRef.current.currentTime,
-        networkState: audioPlayerRef.current.networkState,
-        error: audioPlayerRef.current.error,
-        paused: audioPlayerRef.current.paused,
-        ended: audioPlayerRef.current.ended,
-        seeking: audioPlayerRef.current.seeking,
-        src: audioPlayerRef.current.src
-      });
-      const newTime = audioPlayerRef.current.currentTime + skipAmount;
-      audioPlayerRef.current.currentTime = Math.max(0, newTime);
-    } else {
-      console.log('Audio player ref not available on skip attempt.');
-    }
-  };
-
-  // Audio event handlers for debugging
-  const onAudioLoadedMetadata = (event) => {
-    console.log('Audio event: loadedmetadata', {
-      duration: event.target.duration,
-      readyState: event.target.readyState,
-    });
-  };
-
-  const onAudioCanPlay = (event) => {
-    console.log('Audio event: canplay', {
-      duration: event.target.duration,
-      readyState: event.target.readyState,
-    });
-  };
-
+  // Audio error handler for advanced player
   const onAudioError = (event) => {
-    console.error('Audio event: error', event.target.error);
+    console.error('Audio player error:', event);
+    setJobError('Audio playback failed');
   };
 
   return (
@@ -267,21 +234,11 @@ export default function AudioProcessorPage() {
             <a href={processingResultUrl} download={`processed_${jobId}.wav`} className={styles.downloadLink}>
               Download Processed Audio
             </a>
-            <audio 
-              ref={audioPlayerRef} 
-              controls 
-              src={processingResultUrl} 
-              className={styles.audioPlayer}
-              onLoadedMetadata={onAudioLoadedMetadata}
-              onCanPlay={onAudioCanPlay}
+            <AdvancedAudioPlayer 
+              src={processingResultUrl}
+              title={`Processed Audio - ${jobId}`}
               onError={onAudioError}
-            >
-                Your browser does not support the audio element.
-            </audio>
-            <div className={styles.skipButtonsContainer}>
-              <button onClick={() => handleSkipAudio(-10)} className={styles.skipButton}>Skip -10s</button>
-              <button onClick={() => handleSkipAudio(10)} className={styles.skipButton}>Skip +10s</button>
-            </div>
+            />
           </section>
         )}
       </main>
