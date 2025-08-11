@@ -1,8 +1,8 @@
 version: v2
-name: txx4
+name: txx
 services:
-- name: txx
-  run: python /app/server.py
+- name: web
+  run: python server.py
   type: web
   instances: 1
   cpuCores: 0.2
@@ -18,30 +18,8 @@ services:
     memoryThresholdPercent: 0
     gpuThresholdPercent: 0
     vramThresholdPercent: 0
-  domains:
-  - name: testthisapp.com
-  - name: testthisappdfdfdfdfdfdfd.com
   sleep: false
 build:
   context: ./
   method: docker
   dockerfile: ./Dockerfile
-predeploy:
-  run: python compute_pi.py
-  cpuCores: 0.16
-  ramMegabytes: 700
-  terminationGracePeriodSeconds: 30
-  sleep: false
-  serviceMeshEnabled: false
-  metricsScraping:
-    enabled: false
-    port: 3000
-    path: /metrics
-    scrapeIntervalSeconds: 60
-env:
-- key: testk
-  value: testv
-- key: testk2
-  value: testv2
-autoRollback:
-  enabled: false

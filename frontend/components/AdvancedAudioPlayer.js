@@ -89,15 +89,24 @@ const AdvancedAudioPlayer = ({ src, title = "Audio Track", onError }) => {
   }, [isPlaying, isLoading]);
 
   const seek = useCallback((time) => {
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = Math.max(0, Math.min(time, duration));
-    setCurrentTime(audioRef.current.currentTime);
+    if (!audioRef.current || !duration) return;
+    const newTime = Math.max(0, Math.min(time, duration));
+    console.log(`Seeking to: ${newTime}s`);
+    try {
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    } catch (error) {
+      console.error('Seek error:', error);
+    }
   }, [duration]);
 
   const skip = useCallback((seconds) => {
-    const newTime = currentTime + seconds;
-    seek(newTime);
-  }, [currentTime, seek]);
+    if (!audioRef.current || !duration) return;
+    const newTime = Math.max(0, Math.min(currentTime + seconds, duration));
+    console.log(`Skipping ${seconds}s: ${currentTime} -> ${newTime}`);
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  }, [currentTime, duration]);
 
   const handleVolumeChange = useCallback((newVolume) => {
     const vol = Math.max(0, Math.min(1, newVolume));

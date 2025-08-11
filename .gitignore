@@ -39,3 +39,4 @@ CLAUDE.md
 *.flac.gz
 
 audio_worker_c/build/
+spec/*
