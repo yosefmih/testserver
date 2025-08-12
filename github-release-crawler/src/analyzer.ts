@@ -1,8 +1,17 @@
 import { GitHubClient } from './github-client';
 import { AnthropicClient, AnalysisResult } from './anthropic-client';
 import { trace } from '@opentelemetry/api';
+import { Langfuse } from 'langfuse';
+import { v4 as uuidv4 } from 'uuid';
 
 const tracer = trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter');
+
+// Initialize Langfuse client
+const langfuse = new Langfuse({
+  secretKey: process.env.LANGFUSE_SECRET_KEY || '',
+  publicKey: process.env.LANGFUSE_PUBLIC_KEY || '',
+  baseUrl: process.env.LANGFUSE_BASE_URL || 'http://localhost:8080'
+});
 
 export interface AnalyzeOptions {
   githubUrl: string;
@@ -24,10 +33,22 @@ export class BreakingChangesAnalyzer {
 
   async analyze(options: AnalyzeOptions): Promise<AnalysisResult> {
     return tracer.startActiveSpan('analyzer.analyze', async (span) => {
+      // Create Langfuse trace (following official pattern)
+      const traceId = uuidv4();
+      const langfuseTrace = langfuse.trace({
+        id: traceId,
+        name: "github-release-analysis",
+        metadata: {
+          githubUrl: options.githubUrl,
+          currentVersion: options.currentVersion
+        }
+      });
+
       try {
         span.setAttributes({
           'analyzer.githubUrl': options.githubUrl,
-          'analyzer.currentVersion': options.currentVersion
+          'analyzer.currentVersion': options.currentVersion,
+          'langfuse.trace.id': traceId
         });
 
         if (!this.anthropicClient) {
@@ -65,8 +86,23 @@ export class BreakingChangesAnalyzer {
           'analyzer.releases.analyzed': releases.length
         });
 
-        const analysis = await this.anthropicClient.analyzeReleaseNotes(releaseNotes);
+        // Add metadata to Langfuse trace
+        langfuseTrace.update({
+          metadata: {
+            releaseCount: releases.length,
+            versions: releaseNotes.map(r => r.version)
+          }
+        });
+
+        const analysis = await this.anthropicClient.analyzeReleaseNotes(releaseNotes, langfuseTrace);
         
+        // Add score to trace
+        langfuseTrace.score({
+          name: 'breaking-changes-found',
+          value: analysis.breakingChanges.length,
+          comment: `Found ${analysis.breakingChanges.length} breaking changes with ${analysis.riskLevel} risk level`
+        });
+
         span.setAttributes({
           'analyzer.result.breakingChanges': analysis.breakingChanges.length,
           'analyzer.result.riskLevel': analysis.riskLevel

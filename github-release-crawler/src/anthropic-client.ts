@@ -1,7 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { trace } from '@opentelemetry/api';
+import { Langfuse } from 'langfuse';
 
 const tracer = trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter');
+
+// Initialize Langfuse client
+const langfuse = new Langfuse({
+  secretKey: process.env.LANGFUSE_SECRET_KEY || '',
+  publicKey: process.env.LANGFUSE_PUBLIC_KEY || '',
+  baseUrl: process.env.LANGFUSE_BASE_URL || 'http://localhost:8080'
+});
 
 export interface BreakingChange {
   version: string;
@@ -27,7 +35,7 @@ export class AnthropicClient {
     });
   }
 
-  async analyzeReleaseNotes(releaseNotes: Array<{ version: string; notes: string; publishedAt: string }>): Promise<AnalysisResult> {
+  async analyzeReleaseNotes(releaseNotes: Array<{ version: string; notes: string; publishedAt: string }>, langfuseTrace?: any): Promise<AnalysisResult> {
     return tracer.startActiveSpan('anthropic.analyzeReleaseNotes', async (span) => {
       try {
         span.setAttributes({
@@ -35,6 +43,19 @@ export class AnthropicClient {
         });
 
         const prompt = this.buildAnalysisPrompt(releaseNotes);
+
+        // Create Langfuse span and generation (following official pattern)
+        let langfuseSpan;
+        let langfuseGeneration;
+        
+        if (langfuseTrace) {
+          langfuseSpan = langfuseTrace.span({ name: "Anthropic-Analysis" });
+          langfuseGeneration = langfuseSpan.generation({
+            name: "claude-breaking-changes",
+            model: "claude-3-5-sonnet-20241022",
+            input: prompt,
+          });
+        }
         
         const response = await this.client.messages.create({
           model: 'claude-3-5-sonnet-20241022',
@@ -47,6 +68,18 @@ export class AnthropicClient {
 
         const analysisText = response.content[0].type === 'text' ? response.content[0].text : '';
         const analysis = this.parseAnalysisResponse(analysisText);
+
+        // End Langfuse generation with output and usage
+        if (langfuseGeneration) {
+          langfuseGeneration.end({
+            output: analysis,
+            usageDetails: {
+              input: response.usage?.input_tokens || 0,
+              output: response.usage?.output_tokens || 0,
+            },
+          });
+          langfuseSpan.end();
+        }
 
         span.setAttributes({
           'anthropic.analysis.breakingChanges.count': analysis.breakingChanges.length,
