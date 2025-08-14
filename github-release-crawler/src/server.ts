@@ -12,6 +12,10 @@ import { initializeTelemetry } from './telemetry';
 import { NotificationClient, NotificationRequest } from './notification-client';
 
 dotenv.config();
+console.log('🔍 Environment check:');
+console.log('  LANGFUSE_SECRET_KEY:', process.env.LANGFUSE_SECRET_KEY ? 'SET' : 'NOT SET');
+console.log('  LANGFUSE_PUBLIC_KEY:', process.env.LANGFUSE_PUBLIC_KEY ? 'SET' : 'NOT SET');
+console.log('  LANGFUSE_BASE_URL:', process.env.LANGFUSE_BASE_URL || 'NOT SET');
 initializeTelemetry();
   
 const app = express();
