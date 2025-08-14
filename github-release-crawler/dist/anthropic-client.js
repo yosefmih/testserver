@@ -4,13 +4,24 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AnthropicClient = void 0;
-const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const api_1 = require("@opentelemetry/api");
-const tracer = api_1.trace.getTracer('anthropic-client');
+const langfuse_1 = require("langfuse");
+const openai_1 = __importDefault(require("openai"));
+const tracer = api_1.trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter');
 class AnthropicClient {
     constructor(apiKey) {
-        this.client = new sdk_1.default({
+        const openaiClient = new openai_1.default({
             apiKey,
+            baseURL: 'https://api.anthropic.com/v1/',
+        });
+        // Wrap with Langfuse for automatic tracing with explicit config
+        this.client = (0, langfuse_1.observeOpenAI)(openaiClient, {
+            traceName: 'github-release-analysis',
+            clientInitParams: {
+                secretKey: process.env.LANGFUSE_SECRET_KEY,
+                publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+                baseUrl: process.env.LANGFUSE_BASE_URL
+            }
         });
     }
     async analyzeReleaseNotes(releaseNotes) {
@@ -20,7 +31,7 @@ class AnthropicClient {
                     'anthropic.releases.count': releaseNotes.length
                 });
                 const prompt = this.buildAnalysisPrompt(releaseNotes);
-                const response = await this.client.messages.create({
+                const response = await this.client.chat.completions.create({
                     model: 'claude-3-5-sonnet-20241022',
                     max_tokens: 4000,
                     messages: [{
@@ -28,8 +39,10 @@ class AnthropicClient {
                             content: prompt
                         }]
                 });
-                const analysisText = response.content[0].type === 'text' ? response.content[0].text : '';
+                const analysisText = response.choices[0].message.content || '';
                 const analysis = this.parseAnalysisResponse(analysisText);
+                // Flush traces to Langfuse
+                await this.client.flushAsync();
                 span.setAttributes({
                     'anthropic.analysis.breakingChanges.count': analysis.breakingChanges.length,
                     'anthropic.analysis.riskLevel': analysis.riskLevel

@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GitHubClient = void 0;
 const axios_1 = __importDefault(require("axios"));
 const api_1 = require("@opentelemetry/api");
-const tracer = api_1.trace.getTracer('github-client');
+const tracer = api_1.trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter');
 class GitHubClient {
     constructor(token) {
         this.client = axios_1.default.create({

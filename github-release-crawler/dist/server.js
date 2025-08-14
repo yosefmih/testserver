@@ -43,6 +43,7 @@ const dotenv = __importStar(require("dotenv"));
 const uuid_1 = require("uuid");
 const api_1 = require("@opentelemetry/api");
 const path_1 = __importDefault(require("path"));
+const axios_1 = __importDefault(require("axios"));
 const analyzer_1 = require("./analyzer");
 const telemetry_1 = require("./telemetry");
 const notification_client_1 = require("./notification-client");
@@ -50,14 +51,28 @@ dotenv.config();
 (0, telemetry_1.initializeTelemetry)();
 const app = (0, express_1.default)();
 const port = process.env.PORT || 3000;
-const tracer = api_1.trace.getTracer('github-release-crawler-server');
+const tracer = api_1.trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter');
 // Initialize notification client
 const notificationClient = new notification_client_1.NotificationClient();
+// Helper function to generate traceparent header for distributed tracing
+function getTraceParent(span) {
+    try {
+        const spanContext = span.spanContext();
+        const traceId = spanContext.traceId;
+        const spanId = spanContext.spanId;
+        const flags = spanContext.traceFlags || 1;
+        return `00-${traceId}-${spanId}-0${flags}`;
+    }
+    catch (error) {
+        console.warn('Failed to generate traceparent header:', error);
+        return '';
+    }
+}
 // Middleware
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 // Serve the frontend SPA
-const spaPath = path_1.default.join(__dirname, '../../frontend-app/dist');
+const spaPath = path_1.default.join(__dirname, './frontend-app/dist');
 app.use(express_1.default.static(spaPath));
 // Request ID middleware with tracing
 app.use((req, res, next) => {
@@ -92,7 +107,7 @@ app.use((req, res, next) => {
     });
 });
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
     res.json({
         status: 'healthy',
         requestId: req.requestId,
@@ -100,13 +115,13 @@ app.get('/health', (req, res) => {
     });
 });
 // API documentation endpoint
-app.get('/', (req, res) => {
+app.get('/api', (req, res) => {
     res.json({
         service: 'GitHub Release Crawler',
         version: '1.0.0',
         requestId: req.requestId,
         endpoints: {
-            'POST /analyze': {
+            'POST /api/analyze': {
                 description: 'Analyze GitHub repository releases for breaking changes',
                 body: {
                     githubUrl: 'https://github.com/owner/repo',
@@ -116,7 +131,7 @@ app.get('/', (req, res) => {
                     githubToken: 'GitHub API token (for higher rate limits)'
                 }
             },
-            'GET /health': 'Health check endpoint'
+            'GET /api/health': 'Health check endpoint'
         },
         tracing: {
             enabled: true,
@@ -125,7 +140,7 @@ app.get('/', (req, res) => {
     });
 });
 // Main analysis endpoint
-app.post('/analyze', async (req, res) => {
+app.post('/api/analyze', async (req, res) => {
     return tracer.startActiveSpan('analyze-releases', async (span) => {
         try {
             const { githubUrl, currentVersion, githubToken } = req.body;
@@ -189,42 +204,41 @@ app.post('/analyze', async (req, res) => {
             });
             console.log(`[${req.requestId}] Analysis completed: ${result.breakingChanges.length} breaking changes found, risk level: ${result.riskLevel}`);
             // Send notification to Slack notification service
-            try {
-                const severity = notification_client_1.NotificationClient.determineSeverity(result);
-                const traceId = req.headers['x-request-id'] || req.requestId;
-                const notificationRequest = {
-                    trace_id: traceId,
-                    repository_url: githubUrl,
-                    from_version: currentVersion,
-                    to_version: latestVersion,
-                    analysis_summary: `Found ${result.breakingChanges.length} breaking changes with ${result.riskLevel} risk level`,
-                    breaking_changes: {
-                        summary: result.summary || 'Analysis completed',
-                        changes: result.breakingChanges,
-                        risk_level: result.riskLevel,
-                        latest_version: latestVersion
-                    },
-                    severity: severity
-                };
-                console.log(`[${req.requestId}] Sending notification with severity: ${severity}`);
-                // Send notification asynchronously (don't block response)
-                notificationClient.sendAnalysisNotification(notificationRequest)
-                    .then((notificationResult) => {
-                    if (notificationResult.success) {
-                        console.log(`[${req.requestId}] ✅ Notification sent successfully`);
-                    }
-                    else {
-                        console.log(`[${req.requestId}] ⚠️  Notification failed: ${notificationResult.error}`);
-                    }
-                })
-                    .catch((error) => {
-                    console.error(`[${req.requestId}] ❌ Notification error:`, error);
-                });
-            }
-            catch (notificationError) {
-                // Don't fail the main response if notification fails
-                console.error(`[${req.requestId}] ⚠️  Failed to send notification:`, notificationError);
-            }
+            // try {
+            //   const severity = NotificationClient.determineSeverity(result);
+            //   // Use the same request ID throughout the entire flow for proper tracing
+            //   const traceId = req.requestId;
+            //   const notificationRequest: NotificationRequest = {
+            //     trace_id: traceId,
+            //     repository_url: githubUrl,
+            //     from_version: currentVersion,
+            //     to_version: latestVersion,
+            //     analysis_summary: `Found ${result.breakingChanges.length} breaking changes with ${result.riskLevel} risk level`,
+            //     breaking_changes: {
+            //       summary: result.summary || 'Analysis completed',
+            //       changes: result.breakingChanges,
+            //       risk_level: result.riskLevel,
+            //       latest_version: latestVersion
+            //     },
+            //     severity: severity
+            //   };
+            //   console.log(`[${req.requestId}] Sending notification with severity: ${severity}`);
+            //   // Send notification asynchronously (don't block response)
+            //   notificationClient.sendAnalysisNotification(notificationRequest)
+            //     .then((notificationResult) => {
+            //       if (notificationResult.success) {
+            //         console.log(`[${req.requestId}] ✅ Notification sent successfully`);
+            //       } else {
+            //         console.log(`[${req.requestId}] ⚠️  Notification failed: ${notificationResult.error}`);
+            //       }
+            //     })
+            //     .catch((error) => {
+            //       console.error(`[${req.requestId}] ❌ Notification error:`, error);
+            //     });
+            // } catch (notificationError) {
+            //   // Don't fail the main response if notification fails
+            //   console.error(`[${req.requestId}] ⚠️  Failed to send notification:`, notificationError);
+            // }
             res.json({
                 requestId: req.requestId,
                 timestamp: new Date().toISOString(),
@@ -254,15 +268,125 @@ app.post('/analyze', async (req, res) => {
         }
     });
 });
+// Proxy endpoints for Slack notification service with distributed tracing
+app.get('/api/notifications/*', async (req, res) => {
+    return tracer.startActiveSpan(`proxy-${req.method} ${req.path}`, async (span) => {
+        try {
+            const notificationServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://slack-notification-service:80';
+            const targetPath = req.path.replace('/api/notifications', '/api');
+            const targetUrl = `${notificationServiceUrl}${targetPath}`;
+            span.setAttributes({
+                'proxy.method': req.method,
+                'proxy.originalPath': req.path,
+                'proxy.targetPath': targetPath,
+                'proxy.targetUrl': targetUrl,
+                'request.id': req.requestId
+            });
+            console.log(`🔄 [${req.requestId}] Proxying GET ${req.path} to ${targetUrl}`);
+            // Generate traceparent header for distributed tracing
+            const traceparent = getTraceParent(span);
+            const response = await axios_1.default.get(targetUrl, {
+                params: req.query,
+                headers: {
+                    'x-request-id': req.requestId,
+                    'traceparent': traceparent,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 30000
+            });
+            span.setAttributes({
+                'proxy.response.status': response.status,
+                'proxy.success': true
+            });
+            console.log(`✅ [${req.requestId}] Proxy GET successful: ${response.status}`);
+            res.status(response.status).json(response.data);
+        }
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown proxy error';
+            span.recordException(error);
+            span.setAttributes({
+                'proxy.error': true,
+                'proxy.errorMessage': errorMessage
+            });
+            console.error(`❌ [${req.requestId}] Proxy GET failed:`, error);
+            if (axios_1.default.isAxiosError(error) && error.response) {
+                res.status(error.response.status).json(error.response.data);
+            }
+            else {
+                res.status(500).json({ error: 'Proxy request failed', message: errorMessage });
+            }
+        }
+        finally {
+            span.end();
+        }
+    });
+});
+app.post('/api/notifications/*', async (req, res) => {
+    return tracer.startActiveSpan(`proxy-${req.method} ${req.path}`, async (span) => {
+        try {
+            const notificationServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://slack-notification-service:80';
+            const targetPath = req.path.replace('/api/notifications', '/api');
+            const targetUrl = `${notificationServiceUrl}${targetPath}`;
+            span.setAttributes({
+                'proxy.method': req.method,
+                'proxy.originalPath': req.path,
+                'proxy.targetPath': targetPath,
+                'proxy.targetUrl': targetUrl,
+                'request.id': req.requestId,
+                'proxy.bodySize': JSON.stringify(req.body).length
+            });
+            console.log(`🔄 [${req.requestId}] Proxying POST ${req.path} to ${targetUrl}`);
+            // Generate traceparent header for distributed tracing
+            const traceparent = getTraceParent(span);
+            const response = await axios_1.default.post(targetUrl, req.body, {
+                headers: {
+                    'x-request-id': req.requestId,
+                    'traceparent': traceparent,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 30000
+            });
+            span.setAttributes({
+                'proxy.response.status': response.status,
+                'proxy.success': true
+            });
+            console.log(`✅ [${req.requestId}] Proxy POST successful: ${response.status}`);
+            res.status(response.status).json(response.data);
+        }
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown proxy error';
+            span.recordException(error);
+            span.setAttributes({
+                'proxy.error': true,
+                'proxy.errorMessage': errorMessage
+            });
+            console.error(`❌ [${req.requestId}] Proxy POST failed:`, error);
+            if (axios_1.default.isAxiosError(error) && error.response) {
+                res.status(error.response.status).json(error.response.data);
+            }
+            else {
+                res.status(500).json({ error: 'Proxy request failed', message: errorMessage });
+            }
+        }
+        finally {
+            span.end();
+        }
+    });
+});
 // All other GET requests not handled before will return the SPA's index.html
-app.get('*', (req, res, next) => {
+app.get('*', (req, res) => {
+    // Skip API routes that haven't been handled yet (will result in 404)
     if (req.path.startsWith('/api/')) {
-        return next();
+        return res.status(404).json({
+            error: 'API endpoint not found',
+            path: req.path,
+            requestId: req.requestId
+        });
     }
     res.sendFile(path_1.default.join(spaPath, 'index.html'));
 });
 // Error handling middleware
-app.use((error, req, res, next) => {
+app.use((error, req, res) => {
     console.error(`[${req.requestId}] Unhandled error:`, error);
     res.status(500).json({
         error: 'Internal server error',

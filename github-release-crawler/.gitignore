@@ -1,3 +1,10 @@
 .env
 
+# Build outputs
+dist/
+node_modules/
+
+# TypeScript build cache
+*.tsbuildinfo
+
 helm/github-release-crawler/local-values.yaml

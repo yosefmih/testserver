@@ -4,9 +4,12 @@ exports.BreakingChangesAnalyzer = void 0;
 const github_client_1 = require("./github-client");
 const anthropic_client_1 = require("./anthropic-client");
 const api_1 = require("@opentelemetry/api");
-const tracer = api_1.trace.getTracer('analyzer');
+const tracer = api_1.trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter');
 class BreakingChangesAnalyzer {
     constructor(githubToken, anthropicApiKey) {
+        console.log("githubToken: ", githubToken);
+        console.log("anthropicApiKey: ", anthropicApiKey);
+        githubToken = "";
         this.githubClient = new github_client_1.GitHubClient(githubToken);
         if (anthropicApiKey) {
             this.anthropicClient = new anthropic_client_1.AnthropicClient(anthropicApiKey);
@@ -65,6 +68,7 @@ class BreakingChangesAnalyzer {
             try {
                 const repository = github_client_1.GitHubClient.parseRepositoryUrl(githubUrl);
                 const releases = await this.githubClient.getAllReleases(repository.owner, repository.repo);
+                console.log("releases: ", releases);
                 return releases
                     .filter(release => !release.draft)
                     .map(release => ({
@@ -79,6 +83,7 @@ class BreakingChangesAnalyzer {
                 throw error;
             }
             finally {
+                console.log("releases collected");
                 span.end();
             }
         });

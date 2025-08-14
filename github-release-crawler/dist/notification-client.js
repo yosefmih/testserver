@@ -13,7 +13,7 @@ class NotificationClient {
         console.log('🔧 Notification client initialized:', this.baseUrl);
     }
     async sendAnalysisNotification(notification) {
-        const tracer = api_1.trace.getTracer('github-release-crawler', '1.0.0');
+        const tracer = api_1.trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter', '1.0.0');
         return tracer.startActiveSpan('notification.sendAnalysis', async (span) => {
             try {
                 console.log('📧 Sending analysis notification to service:', {
@@ -84,7 +84,7 @@ class NotificationClient {
         });
     }
     async testConnection() {
-        const tracer = api_1.trace.getTracer('github-release-crawler', '1.0.0');
+        const tracer = api_1.trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter', '1.0.0');
         return tracer.startActiveSpan('notification.testConnection', async (span) => {
             try {
                 console.log('🧪 Testing notification service connection...');

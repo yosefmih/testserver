@@ -42,7 +42,7 @@ function initializeTelemetry() {
     }, 2000); // Wait 2 seconds for SDK to fully initialize
     // Log export attempts every 10 seconds for debugging
     setInterval(() => {
-        const tracer = api_1.trace.getTracer('github-release-crawler-debug', '1.0.0');
+        const tracer = api_1.trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter', '1.0.0');
         const span = tracer.startSpan('debug-heartbeat', {
             attributes: {
                 'debug.type': 'heartbeat',
@@ -54,7 +54,7 @@ function initializeTelemetry() {
     }, 30000); // Every 30 seconds
 }
 function createTestSpan() {
-    const tracer = api_1.trace.getTracer('github-release-crawler', '1.0.0');
+    const tracer = api_1.trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter', '1.0.0');
     console.log('📊 Creating test span to verify OTEL export...');
     const span = tracer.startSpan('telemetry-test-span', {
         attributes: {
@@ -72,7 +72,7 @@ function createTestSpan() {
     console.log('✅ Test span created and ended. Check your OTEL collector logs for export confirmation.');
 }
 function createCustomSpan(name, operation) {
-    const tracer = api_1.trace.getTracer('github-release-crawler', '1.0.0');
+    const tracer = api_1.trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter', '1.0.0');
     return tracer.startActiveSpan(name, async (span) => {
         try {
             console.log(`📈 Starting span: ${name}`);

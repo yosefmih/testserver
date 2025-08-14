@@ -13,7 +13,7 @@ import { NotificationClient, NotificationRequest } from './notification-client';
 
 dotenv.config();
 initializeTelemetry();
-
+  
 const app = express();
 const port = process.env.PORT || 3000;
 const tracer = trace.getTracer(process.env.OTEL_SERVICE_NAME || 'porter');
@@ -203,45 +203,45 @@ app.post('/api/analyze', async (req: Request, res: Response) => {
       console.log(`[${req.requestId}] Analysis completed: ${result.breakingChanges.length} breaking changes found, risk level: ${result.riskLevel}`);
 
       // Send notification to Slack notification service
-      try {
-        const severity = NotificationClient.determineSeverity(result);
-        // Use the same request ID throughout the entire flow for proper tracing
-        const traceId = req.requestId;
+      // try {
+      //   const severity = NotificationClient.determineSeverity(result);
+      //   // Use the same request ID throughout the entire flow for proper tracing
+      //   const traceId = req.requestId;
         
-        const notificationRequest: NotificationRequest = {
-          trace_id: traceId,
-          repository_url: githubUrl,
-          from_version: currentVersion,
-          to_version: latestVersion,
-          analysis_summary: `Found ${result.breakingChanges.length} breaking changes with ${result.riskLevel} risk level`,
-          breaking_changes: {
-            summary: result.summary || 'Analysis completed',
-            changes: result.breakingChanges,
-            risk_level: result.riskLevel,
-            latest_version: latestVersion
-          },
-          severity: severity
-        };
+      //   const notificationRequest: NotificationRequest = {
+      //     trace_id: traceId,
+      //     repository_url: githubUrl,
+      //     from_version: currentVersion,
+      //     to_version: latestVersion,
+      //     analysis_summary: `Found ${result.breakingChanges.length} breaking changes with ${result.riskLevel} risk level`,
+      //     breaking_changes: {
+      //       summary: result.summary || 'Analysis completed',
+      //       changes: result.breakingChanges,
+      //       risk_level: result.riskLevel,
+      //       latest_version: latestVersion
+      //     },
+      //     severity: severity
+      //   };
 
-        console.log(`[${req.requestId}] Sending notification with severity: ${severity}`);
+      //   console.log(`[${req.requestId}] Sending notification with severity: ${severity}`);
         
-        // Send notification asynchronously (don't block response)
-        notificationClient.sendAnalysisNotification(notificationRequest)
-          .then((notificationResult) => {
-            if (notificationResult.success) {
-              console.log(`[${req.requestId}] ✅ Notification sent successfully`);
-            } else {
-              console.log(`[${req.requestId}] ⚠️  Notification failed: ${notificationResult.error}`);
-            }
-          })
-          .catch((error) => {
-            console.error(`[${req.requestId}] ❌ Notification error:`, error);
-          });
+      //   // Send notification asynchronously (don't block response)
+      //   notificationClient.sendAnalysisNotification(notificationRequest)
+      //     .then((notificationResult) => {
+      //       if (notificationResult.success) {
+      //         console.log(`[${req.requestId}] ✅ Notification sent successfully`);
+      //       } else {
+      //         console.log(`[${req.requestId}] ⚠️  Notification failed: ${notificationResult.error}`);
+      //       }
+      //     })
+      //     .catch((error) => {
+      //       console.error(`[${req.requestId}] ❌ Notification error:`, error);
+      //     });
 
-      } catch (notificationError) {
-        // Don't fail the main response if notification fails
-        console.error(`[${req.requestId}] ⚠️  Failed to send notification:`, notificationError);
-      }
+      // } catch (notificationError) {
+      //   // Don't fail the main response if notification fails
+      //   console.error(`[${req.requestId}] ⚠️  Failed to send notification:`, notificationError);
+      // }
 
       res.json({
         requestId: req.requestId,
