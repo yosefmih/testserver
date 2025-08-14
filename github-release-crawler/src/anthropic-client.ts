@@ -23,6 +23,9 @@ export class AnthropicClient {
   private client: OpenAI;
 
   constructor(apiKey: string) {
+    console.log('🔍 Testing Langfuse connectivity...');
+    this.testLangfuseConnectivity();
+
     const openaiClient = new OpenAI({
       apiKey,
       baseURL: 'https://api.anthropic.com/v1/',
@@ -37,6 +40,15 @@ export class AnthropicClient {
         baseUrl: process.env.LANGFUSE_BASE_URL
       }
     });
+  }
+
+  private async testLangfuseConnectivity() {
+    try {
+      const response = await fetch(`${process.env.LANGFUSE_BASE_URL}/api/public/health`);
+      console.log('✅ Langfuse health check:', response.status);
+    } catch (error) {
+      console.error('❌ Langfuse connectivity failed:', error instanceof Error ? error.message : error);
+    }
   }
 
   async analyzeReleaseNotes(releaseNotes: Array<{ version: string; notes: string; publishedAt: string }>): Promise<AnalysisResult> {
@@ -61,7 +73,13 @@ export class AnthropicClient {
         const analysis = this.parseAnalysisResponse(analysisText);
 
         // Flush traces to Langfuse
-        await (this.client as any).flushAsync();
+        console.log('🔍 Flushing traces to Langfuse...');
+        try {
+          await (this.client as any).flushAsync();
+          console.log('✅ Traces flushed successfully');
+        } catch (flushError) {
+          console.error('❌ Flush error:', flushError);
+        }
 
         span.setAttributes({
           'anthropic.analysis.breakingChanges.count': analysis.breakingChanges.length,
