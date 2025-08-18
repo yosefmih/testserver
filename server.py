@@ -474,7 +474,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
             
             self.end_headers()
             self.wfile.write(json.dumps({
-                'status': 'success',
+                'status': 'success_but_at_what_cost',
                 'echo_disabled': True,
                 'in_mesh': self.in_mesh
             }).encode('utf-8'))
@@ -716,6 +716,17 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 self.log_request_info(status_code, time.time() - start_time)
                 return
 
+        elif self.path == '/hot-reload-test':
+            # HOT RELOAD TEST ROUTE 🔥
+            status_code = self.send_json_response(200, {
+                'message': '🔥 HOT RELOAD IS WORKING PERFECTLY - ISH! 🚀',
+                'timestamp': time.time(),
+                'hostname': HOSTNAME,
+                'hot_reload_enabled': True,
+                'reload_test_count': random.randint(1, 100),
+                'server_ready': self.is_ready
+            })
+
         else:
             if self.is_ready:
                 # Apply artificial latency if configured
@@ -738,7 +749,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                             self.send_header(f'Echo-{header}', self.headers[header])
                 
                 self.end_headers()
-                self.wfile.write(f"<html><body><h1>HOWDY, {self.greeting_word}!</h1><p>From: {HOSTNAME}</p><p>In Mesh: {self.in_mesh}</p></body></html>".encode('utf-8'))
+                self.wfile.write(f"<html><body><h1>🚀 HOT RELOAD DEMO - HOWDY, {self.greeting_word}!</h1><p>From: {HOSTNAME}</p><p>In Mesh: {self.in_mesh}</p><p><a href='/hot-reload-test'>Test Hot Reload</a></p></body></html>".encode('utf-8'))
                 status_code = 200
             else:
                 status_code = self.send_json_response(503, {'status': 'server is initializing'})
