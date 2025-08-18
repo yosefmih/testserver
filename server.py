@@ -704,7 +704,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
         elif self.path == '/hot-reload-test':
             # HOT RELOAD TEST ROUTE 🔥
             status_code = self.send_json_response(200, {
-                'message': '🔥 HOT RELOAD IS WORKING PERFECTLY! 🚀',
+                'message': '🔥 HOT RELOAD IS WORKING PERFECTLY - ISH! 🚀',
                 'timestamp': time.time(),
                 'hostname': HOSTNAME,
                 'hot_reload_enabled': True,
