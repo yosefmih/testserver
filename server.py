@@ -589,6 +589,21 @@ class SimpleHandler(BaseHTTPRequestHandler):
             # Explicitly return after handling /pi to prevent falling through
             return
 
+        elif self.path.startswith('/run/'):
+            # Extract model ID from path: /run/{model_id}
+            path_parts = self.path.strip('/').split('/')
+            if len(path_parts) == 2 and path_parts[0] == 'run':
+                model_id = path_parts[1]
+                pod_name = os.environ.get('PORTER_POD_NAME', HOSTNAME)
+                status_code = self.send_json_response(200, {
+                    'model_id': model_id,
+                    'pod_name': pod_name,
+                    'hostname': HOSTNAME,
+                    'status': 'success'
+                })
+            else:
+                status_code = self.send_json_response(404, {'status': 'not found'})
+            
         elif self.path.startswith('/audio'):
             if not redis_client:
                 status_code = self.send_json_response(503, {
