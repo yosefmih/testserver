@@ -38,13 +38,17 @@ WORKDIR /app
 
 # Copy the benchmark script
 COPY porter_benchmark.py .
+COPY fast_tsc_server.py .
 
 # Create cache directory for volume mount
 RUN mkdir -p /cache
 
 # Set environment variables for the benchmark
-ENV VOLUME_MOUNT_POINT="/cache"
+ENV VOLUME_MOUNT_POINT="/tmp/nvme"
 ENV TSGO_PATH="/usr/local/bin/tsgo"
+
+# Expose server port (fast_tsc_server.py)
+EXPOSE 3000
 
 # Verify installations
 RUN bun --version && tsgo --version && python3 --version
