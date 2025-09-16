@@ -1,0 +1,53 @@
+FROM node:20-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    curl \
+    rsync \
+    unzip \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install bun
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:$PATH"
+
+# Install tsgo (TypeScript native compiler)
+RUN npm install -g @typescript/native-preview
+
+# Find tsgo location and create symlink if needed
+RUN TSGO_LOCATION=$(find /usr/local/lib/node_modules/@typescript/native-preview -name "tsgo" -type f 2>/dev/null | head -1) && \
+    if [ -n "$TSGO_LOCATION" ]; then \
+        echo "Found tsgo at: $TSGO_LOCATION" && \
+        ln -sf "$TSGO_LOCATION" /usr/local/bin/tsgo && \
+        chmod +x /usr/local/bin/tsgo; \
+    else \
+        echo "tsgo binary not found in expected location"; \
+        find /usr/local/lib/node_modules/@typescript/native-preview -name "*tsgo*" -type f; \
+    fi
+
+# Verify tsgo is accessible
+RUN which tsgo && tsgo --version
+
+# Create working directory
+WORKDIR /app
+
+# Copy the benchmark script
+COPY porter_benchmark.py .
+
+# Create cache directory for volume mount
+RUN mkdir -p /cache
+
+# Set environment variables for the benchmark
+ENV VOLUME_MOUNT_POINT="/cache"
+ENV TSGO_PATH="/usr/local/bin/tsgo"
+
+# Verify installations
+RUN bun --version && tsgo --version && python3 --version
+
+# Default command
+CMD ["python3", "porter_benchmark.py"]
