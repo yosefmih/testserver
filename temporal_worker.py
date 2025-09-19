@@ -8,29 +8,38 @@ import asyncio
 import logging
 import os
 from datetime import timedelta
-from temporalio import activity, workflow
+from temporalio import workflow
 from temporalio.client import Client
 from temporalio.worker import Worker
+from temporalio.activity import activity
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Temporal configuration - all from environment for Temporal Cloud
-TEMPORAL_HOST = os.getenv("TEMPORAL_HOST")  # e.g., "your-namespace.tmprl.cloud:7233"
-TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE")  # e.g., "your-namespace.accounting"
-TASK_QUEUE = os.getenv("TASK_QUEUE")  # e.g., "order-processing-queue"
-TEMPORAL_API_KEY = os.getenv("TEMPORAL_API_KEY")  # Required for Temporal Cloud
-
-# Validate required environment variables
-if not TEMPORAL_HOST:
-    raise ValueError("TEMPORAL_HOST environment variable is required")
-if not TEMPORAL_NAMESPACE:
-    raise ValueError("TEMPORAL_NAMESPACE environment variable is required")
-if not TASK_QUEUE:
-    raise ValueError("TASK_QUEUE environment variable is required")
-if not TEMPORAL_API_KEY:
-    raise ValueError("TEMPORAL_API_KEY environment variable is required for Temporal Cloud")
+# Temporal configuration - will be validated when worker starts
+def get_temporal_config():
+    """Get and validate Temporal configuration from environment."""
+    host = os.getenv("TEMPORAL_HOST")  # e.g., "your-namespace.tmprl.cloud:7233"
+    namespace = os.getenv("TEMPORAL_NAMESPACE")  # e.g., "your-namespace.accounting"
+    task_queue = os.getenv("TASK_QUEUE")  # e.g., "order-processing-queue"
+    api_key = os.getenv("TEMPORAL_API_KEY")  # Required for Temporal Cloud
+    
+    # Validate required environment variables
+    missing = []
+    if not host:
+        missing.append("TEMPORAL_HOST")
+    if not namespace:
+        missing.append("TEMPORAL_NAMESPACE") 
+    if not task_queue:
+        missing.append("TASK_QUEUE")
+    if not api_key:
+        missing.append("TEMPORAL_API_KEY")
+    
+    if missing:
+        raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+    
+    return host, namespace, task_queue, api_key
 
 
 @activity
@@ -96,21 +105,24 @@ async def create_worker():
     """
     Create and configure the Temporal worker.
     """
-    logger.info(f"Connecting to Temporal at {TEMPORAL_HOST}")
-    logger.info(f"Using namespace: {TEMPORAL_NAMESPACE}")
-    logger.info(f"Using task queue: {TASK_QUEUE}")
+    # Get and validate configuration
+    host, namespace, task_queue, api_key = get_temporal_config()
+    
+    logger.info(f"Connecting to Temporal at {host}")
+    logger.info(f"Using namespace: {namespace}")
+    logger.info(f"Using task queue: {task_queue}")
 
     # Create client with API key for Temporal Cloud
     client = await Client.connect(
-        TEMPORAL_HOST, 
-        namespace=TEMPORAL_NAMESPACE,
-        api_key=TEMPORAL_API_KEY
+        host, 
+        namespace=namespace,
+        api_key=api_key
     )
 
     # Create worker with workflows and activities
     worker = Worker(
         client,
-        task_queue=TASK_QUEUE,
+        task_queue=task_queue,
         workflows=[OrderProcessingWorkflow],
         activities=[process_order_activity, send_notification_activity],
     )

@@ -15,38 +15,28 @@ from temporal_worker import OrderProcessingWorkflow
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Temporal configuration - all from environment for Temporal Cloud
-TEMPORAL_HOST = os.getenv("TEMPORAL_HOST")  # e.g., "your-namespace.tmprl.cloud:7233"
-TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE")  # e.g., "your-namespace.accounting"
-TASK_QUEUE = os.getenv("TASK_QUEUE")  # e.g., "order-processing-queue"
-TEMPORAL_API_KEY = os.getenv("TEMPORAL_API_KEY")  # Required for Temporal Cloud
-
-# Validate required environment variables
-if not TEMPORAL_HOST:
-    raise ValueError("TEMPORAL_HOST environment variable is required")
-if not TEMPORAL_NAMESPACE:
-    raise ValueError("TEMPORAL_NAMESPACE environment variable is required")
-if not TASK_QUEUE:
-    raise ValueError("TASK_QUEUE environment variable is required")
-if not TEMPORAL_API_KEY:
-    raise ValueError("TEMPORAL_API_KEY environment variable is required for Temporal Cloud")
+# Import configuration function from worker
+from temporal_worker import get_temporal_config
 
 
 async def create_client():
     """Create and return a Temporal client."""
-    logger.info(f"Connecting to Temporal at {TEMPORAL_HOST}")
+    # Get and validate configuration
+    host, namespace, task_queue, api_key = get_temporal_config()
+    
+    logger.info(f"Connecting to Temporal at {host}")
     
     # Create client with API key for Temporal Cloud
     client = await Client.connect(
-        TEMPORAL_HOST, 
-        namespace=TEMPORAL_NAMESPACE,
-        api_key=TEMPORAL_API_KEY
+        host, 
+        namespace=namespace,
+        api_key=api_key
     )
-    logger.info(f"Connected to Temporal namespace: {TEMPORAL_NAMESPACE}")
-    return client
+    logger.info(f"Connected to Temporal namespace: {namespace}")
+    return client, task_queue
 
 
-async def start_single_workflow(client: Client, order_id: str = None):
+async def start_single_workflow(client: Client, task_queue: str, order_id: str = None):
     """Start a single order processing workflow."""
     if not order_id:
         order_id = f"order-{uuid.uuid4().hex[:8]}"
@@ -57,21 +47,21 @@ async def start_single_workflow(client: Client, order_id: str = None):
         OrderProcessingWorkflow.run,
         order_id,
         id=f"order-workflow-{order_id}",
-        task_queue=TASK_QUEUE,
+        task_queue=task_queue,
     )
     
     logger.info(f"Workflow started with ID: {handle.id}")
     return handle
 
 
-async def start_multiple_workflows(client: Client, count: int = 10):
+async def start_multiple_workflows(client: Client, task_queue: str, count: int = 10):
     """Start multiple workflows to create backlog for KEDA testing."""
     logger.info(f"Starting {count} workflows to create task queue backlog...")
     
     handles = []
     for i in range(count):
         order_id = f"bulk-order-{i:03d}-{uuid.uuid4().hex[:6]}"
-        handle = await start_single_workflow(client, order_id)
+        handle = await start_single_workflow(client, task_queue, order_id)
         handles.append(handle)
     
     logger.info(f"Started {len(handles)} workflows")
@@ -96,7 +86,7 @@ async def wait_for_workflows(handles):
     return results
 
 
-async def create_continuous_load(client: Client, interval_seconds: int = 5):
+async def create_continuous_load(client: Client, task_queue: str, interval_seconds: int = 5):
     """Create continuous workflow submissions for sustained load testing."""
     logger.info(f"Starting continuous load generation (interval: {interval_seconds}s)")
     logger.info("Press Ctrl+C to stop...")
@@ -106,7 +96,7 @@ async def create_continuous_load(client: Client, interval_seconds: int = 5):
         while True:
             counter += 1
             order_id = f"continuous-order-{counter:04d}-{uuid.uuid4().hex[:6]}"
-            await start_single_workflow(client, order_id)
+            await start_single_workflow(client, task_queue, order_id)
             
             if counter % 10 == 0:
                 logger.info(f"Submitted {counter} workflows so far...")
@@ -121,7 +111,7 @@ async def main():
     """Main function with different workflow submission modes."""
     import sys
     
-    client = await create_client()
+    client, task_queue = await create_client()
     
     # Parse command line arguments
     if len(sys.argv) < 2:
@@ -136,18 +126,18 @@ async def main():
     
     if mode == "single":
         order_id = sys.argv[2] if len(sys.argv) > 2 else None
-        handle = await start_single_workflow(client, order_id)
+        handle = await start_single_workflow(client, task_queue, order_id)
         result = await handle.result()
         logger.info(f"Final result: {result}")
         
     elif mode == "bulk":
         count = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-        handles = await start_multiple_workflows(client, count)
+        handles = await start_multiple_workflows(client, task_queue, count)
         await wait_for_workflows(handles)
         
     elif mode == "continuous":
         interval = int(sys.argv[2]) if len(sys.argv) > 2 else 5
-        await create_continuous_load(client, interval)
+        await create_continuous_load(client, task_queue, interval)
         
     elif mode == "wait":
         # Just demonstrate the client connection
