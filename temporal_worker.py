@@ -11,7 +11,7 @@ from datetime import timedelta
 from temporalio import workflow
 from temporalio.client import Client
 from temporalio.worker import Worker
-from temporalio.activity import activity
+from temporalio import activity
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -42,7 +42,7 @@ def get_temporal_config():
     return host, namespace, task_queue, api_key
 
 
-@activity
+@activity.defn
 async def process_order_activity(order_id: str) -> str:
     """
     Simple activity that simulates order processing.
@@ -57,7 +57,7 @@ async def process_order_activity(order_id: str) -> str:
     return result
 
 
-@activity
+@activity.defn
 async def send_notification_activity(message: str) -> str:
     """
     Simple activity that simulates sending a notification.
@@ -72,7 +72,7 @@ async def send_notification_activity(message: str) -> str:
     return result
 
 
-@workflow
+@workflow.defn
 class OrderProcessingWorkflow:
     """
     Simple workflow that processes orders and sends notifications.
