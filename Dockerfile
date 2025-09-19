@@ -66,6 +66,8 @@ COPY ooms.py .
 COPY mining_simulator.py .
 COPY web_scraper.py .
 COPY audio_worker.py .
+COPY temporal_worker.py .
+COPY temporal_client.py .
 
 # EXPOSE informs Docker that the container listens on these network ports at runtime.
 # It's good documentation. The actual publishing is done with 'docker run -p'.
