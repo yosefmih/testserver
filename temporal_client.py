@@ -10,6 +10,11 @@ import os
 import uuid
 from temporalio.client import Client
 from temporal_worker import OrderProcessingWorkflow
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (development only)
+if os.path.exists('.env'):
+    load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +35,8 @@ async def create_client():
     client = await Client.connect(
         host, 
         namespace=namespace,
-        api_key=api_key
+        api_key=api_key,
+        tls=True  # Enable TLS for Temporal Cloud
     )
     logger.info(f"Connected to Temporal namespace: {namespace}")
     return client, task_queue

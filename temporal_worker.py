@@ -12,6 +12,11 @@ from temporalio import workflow
 from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio import activity
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (development only)
+if os.path.exists('.env'):
+    load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -116,7 +121,8 @@ async def create_worker():
     client = await Client.connect(
         host, 
         namespace=namespace,
-        api_key=api_key
+        api_key=api_key,
+        tls=True  # Enable TLS for Temporal Cloud
     )
 
     # Create worker with workflows and activities
@@ -139,7 +145,9 @@ async def main():
     
     try:
         worker = await create_worker()
-        logger.info(f"Worker started and listening on task queue: {TASK_QUEUE}")
+        # Get task queue name from config
+        _, _, task_queue, _ = get_temporal_config()
+        logger.info(f"Worker started and listening on task queue: {task_queue}")
         
         # Run the worker
         await worker.run()
