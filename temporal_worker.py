@@ -7,12 +7,15 @@ Demonstrates basic workflow and activity patterns.
 import asyncio
 import logging
 import os
+import math
+import random
 from datetime import timedelta
 from temporalio import workflow
 from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio import activity
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor
 
 # Load environment variables from .env file (development only)
 if os.path.exists('.env'):
@@ -45,6 +48,226 @@ def get_temporal_config():
         raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
     
     return host, namespace, task_queue, api_key
+
+
+@activity.defn
+def mc_simulate_shard(params: dict) -> dict:
+    """
+    Monte Carlo shard simulation activity.
+    Computes option payoffs over a batch of paths using GBM.
+    Heavy CPU/memory lives here (sync def to run off the event loop).
+    """
+    # Required params
+    shard_index: int = params["shard_index"]
+    paths_in_shard: int = params["paths_in_shard"]
+    steps_per_path: int = params["steps_per_path"]
+    s0: float = float(params.get("S0", 100.0))
+    k: float = float(params.get("K", 100.0))
+    mu: float = float(params.get("mu", 0.05))
+    sigma: float = float(params.get("sigma", 0.2))
+    r: float = float(params.get("r", 0.01))
+    t: float = float(params.get("T", 1.0))
+    payoff_type: str = params.get("payoff", "european_call")
+    discount: bool = bool(params.get("discount", True))
+    master_seed: int = int(params.get("master_seed", 42))
+    heartbeat_every: int = int(params.get("heartbeat_every_paths", 10_000))
+    store_full_paths: bool = bool(params.get("store_full_paths", False))
+
+    # Time step
+    dt: float = t / float(steps_per_path)
+    drift_dt: float = (mu - 0.5 * sigma * sigma) * dt
+    vol_sqrt_dt: float = sigma * math.sqrt(dt)
+
+    # RNG per-shard for determinism
+    seed = (master_seed * 1_000_003) ^ (shard_index * 97_019)
+    rng = random.Random(seed)
+
+    # Aggregates
+    count = 0
+    sum_payoff = 0.0
+    sumsq_payoff = 0.0
+
+    # Optional memory-heavy storage (for testing memory footprint)
+    # Allocate a dense list for full paths if requested
+    # Size: paths_in_shard * steps_per_path floats
+    full_paths = None
+    if store_full_paths:
+        try:
+            full_paths = [0.0] * (paths_in_shard * steps_per_path)
+        except MemoryError as e:
+            # Surface a clear error with sizing info
+            raise RuntimeError(
+                f"OOM allocating full_paths: paths={paths_in_shard}, steps={steps_per_path}, bytes~={(paths_in_shard*steps_per_path*8)}"
+            ) from e
+
+    # Simulation loop
+    for p in range(paths_in_shard):
+        s = s0
+        running_sum = 0.0
+        base_index = p * steps_per_path if store_full_paths else 0
+
+        for step in range(steps_per_path):
+            z = rng.gauss(0.0, 1.0)
+            s = s * math.exp(drift_dt + vol_sqrt_dt * z)
+            running_sum += s
+            if store_full_paths:
+                full_paths[base_index + step] = s
+
+        if payoff_type == "european_call":
+            payoff = max(s - k, 0.0)
+        elif payoff_type == "european_put":
+            payoff = max(k - s, 0.0)
+        elif payoff_type == "asian_call":
+            avg_price = running_sum / float(steps_per_path)
+            payoff = max(avg_price - k, 0.0)
+        elif payoff_type == "asian_put":
+            avg_price = running_sum / float(steps_per_path)
+            payoff = max(k - avg_price, 0.0)
+        else:
+            raise ValueError(f"Unsupported payoff type: {payoff_type}")
+
+        if discount:
+            payoff *= math.exp(-r * t)
+
+        count += 1
+        sum_payoff += payoff
+        sumsq_payoff += payoff * payoff
+
+        if heartbeat_every > 0 and (count % heartbeat_every == 0):
+            try:
+                activity.heartbeat({"shard_index": shard_index, "processed_paths": count})
+            except Exception:
+                # Heartbeat best-effort; ignore heartbeat failures
+                pass
+
+    return {
+        "shard_index": shard_index,
+        "count": count,
+        "sum_payoff": sum_payoff,
+        "sumsq_payoff": sumsq_payoff,
+    }
+
+
+def _norm_cdf(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def _black_scholes_call_price(s0: float, k: float, r: float, sigma: float, t: float) -> float:
+    if t <= 0.0 or sigma <= 0.0:
+        return max(s0 - k, 0.0)
+    d1 = (math.log(s0 / k) + (r + 0.5 * sigma * sigma) * t) / (sigma * math.sqrt(t))
+    d2 = d1 - sigma * math.sqrt(t)
+    return s0 * _norm_cdf(d1) - k * math.exp(-r * t) * _norm_cdf(d2)
+
+
+@workflow.defn
+class MonteCarloWorkflow:
+    """
+    Orchestrates Monte Carlo shard activities and aggregates results.
+    """
+
+    @workflow.run
+    async def run(self, params: dict) -> dict:
+        # Extract and default parameters
+        num_paths_total: int = int(params.get("num_paths_total", 2_000_000))
+        steps_per_path: int = int(params.get("steps_per_path", 252))
+        paths_per_shard: int = int(params.get("paths_per_shard", 200_000))
+        max_concurrency: int = int(params.get("max_concurrency", 0))  # 0 = submit all
+        heartbeat_every: int = int(params.get("heartbeat_every_paths", 10_000))
+
+        # Financial params
+        s0: float = float(params.get("S0", 100.0))
+        k: float = float(params.get("K", 100.0))
+        mu: float = float(params.get("mu", 0.05))
+        sigma: float = float(params.get("sigma", 0.2))
+        r: float = float(params.get("r", 0.01))
+        t: float = float(params.get("T", 1.0))
+        payoff_type: str = params.get("payoff", "european_call")
+        discount: bool = bool(params.get("discount", True))
+        master_seed: int = int(params.get("master_seed", 42))
+        store_full_paths: bool = bool(params.get("store_full_paths", False))
+
+        if num_paths_total <= 0 or steps_per_path <= 0 or paths_per_shard <= 0:
+            raise ValueError("num_paths_total, steps_per_path, and paths_per_shard must be > 0")
+
+        # Build shard specs
+        num_shards = (num_paths_total + paths_per_shard - 1) // paths_per_shard
+        shard_futures = []
+        submitted = 0
+
+        for shard_index in range(num_shards):
+            remaining = num_paths_total - submitted
+            take = paths_per_shard if remaining > paths_per_shard else remaining
+            submitted += take
+
+            shard_params = {
+                "shard_index": shard_index,
+                "paths_in_shard": take,
+                "steps_per_path": steps_per_path,
+                "S0": s0,
+                "K": k,
+                "mu": mu,
+                "sigma": sigma,
+                "r": r,
+                "T": t,
+                "payoff": payoff_type,
+                "discount": discount,
+                "master_seed": master_seed,
+                "heartbeat_every_paths": heartbeat_every,
+                "store_full_paths": store_full_paths,
+            }
+
+            # Timeout heuristic: scale with work size
+            seconds = max(60, int(steps_per_path * take / 50_000))
+
+            fut = workflow.execute_activity(
+                mc_simulate_shard,
+                shard_params,
+                start_to_close_timeout=timedelta(seconds=seconds),
+                heartbeat_timeout=timedelta(seconds=max(30, heartbeat_every // 1000 + 30)),
+                retry_policy={
+                    "initial_interval": timedelta(seconds=5),
+                    "backoff_coefficient": 2.0,
+                    "maximum_interval": timedelta(minutes=2),
+                    "maximum_attempts": 5,
+                },
+            )
+            shard_futures.append(fut)
+
+        # Await all
+        results = await asyncio.gather(*shard_futures)
+
+        # Aggregate
+        total_count = 0
+        total_sum = 0.0
+        total_sumsq = 0.0
+        for part in results:
+            total_count += int(part["count"])
+            total_sum += float(part["sum_payoff"])
+            total_sumsq += float(part["sumsq_payoff"])
+
+        mean = total_sum / total_count if total_count else 0.0
+        variance = (total_sumsq / total_count - mean * mean) if total_count else 0.0
+        stddev = math.sqrt(max(variance, 0.0))
+        stderr = stddev / math.sqrt(total_count) if total_count else 0.0
+
+        out = {
+            "num_paths_total": total_count,
+            "steps_per_path": steps_per_path,
+            "payoff": payoff_type,
+            "estimate": mean,
+            "stddev": stddev,
+            "stderr": stderr,
+            "confidence_95": [mean - 1.96 * stderr, mean + 1.96 * stderr],
+            "shards": len(results),
+        }
+
+        # Optional analytic check: Black-Scholes for european call only, risk-neutral drift
+        if payoff_type == "european_call":
+            out["black_scholes_call"] = _black_scholes_call_price(s0, k, r, sigma, t)
+            out["abs_error_vs_bs"] = abs(out["estimate"] - out["black_scholes_call"])  # type: ignore
+
+        return out
 
 
 @activity.defn
@@ -126,11 +349,13 @@ async def create_worker():
     )
 
     # Create worker with workflows and activities
+    activity_threads = int(os.getenv("ACTIVITY_THREADS", "8"))
     worker = Worker(
         client,
         task_queue=task_queue,
-        workflows=[OrderProcessingWorkflow],
-        activities=[process_order_activity, send_notification_activity],
+        workflows=[OrderProcessingWorkflow, MonteCarloWorkflow],
+        activities=[process_order_activity, send_notification_activity, mc_simulate_shard],
+        activity_executor=ThreadPoolExecutor(max_workers=activity_threads),
     )
 
     logger.info("Temporal worker created successfully")

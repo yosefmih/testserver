@@ -9,7 +9,7 @@ import logging
 import os
 import uuid
 from temporalio.client import Client
-from temporal_worker import OrderProcessingWorkflow
+from temporal_worker import OrderProcessingWorkflow, MonteCarloWorkflow
 from dotenv import load_dotenv
 
 # Load environment variables from .env file (development only)
@@ -40,6 +40,41 @@ async def create_client():
     )
     logger.info(f"Connected to Temporal namespace: {namespace}")
     return client, task_queue
+
+
+async def start_mc_workflow(client: Client, task_queue: str, params: dict, workflow_id_suffix: str = ""):
+    """Start a Monte Carlo workflow with given params."""
+    wf_id = f"mc-workflow-{uuid.uuid4().hex[:8]}"
+    if workflow_id_suffix:
+        wf_id = f"{wf_id}-{workflow_id_suffix}"
+    logger.info(f"Starting Monte Carlo workflow id={wf_id} params={{'num_paths_total': {params.get('num_paths_total')}, 'steps_per_path': {params.get('steps_per_path')}, 'paths_per_shard': {params.get('paths_per_shard')}}}")
+    handle = await client.start_workflow(
+        MonteCarloWorkflow.run,
+        params,
+        id=wf_id,
+        task_queue=task_queue,
+    )
+    return handle
+
+
+def mc_default_params() -> dict:
+    return {
+        "num_paths_total": int(os.getenv("MC_NUM_PATHS", "2000000")),
+        "steps_per_path": int(os.getenv("MC_STEPS", "252")),
+        "paths_per_shard": int(os.getenv("MC_PATHS_PER_SHARD", "200000")),
+        "max_concurrency": int(os.getenv("MC_MAX_CONCURRENCY", "0")),
+        "heartbeat_every_paths": int(os.getenv("MC_HEARTBEAT_EVERY", "10000")),
+        "S0": float(os.getenv("MC_S0", "100.0")),
+        "K": float(os.getenv("MC_K", "100.0")),
+        "mu": float(os.getenv("MC_MU", "0.05")),
+        "sigma": float(os.getenv("MC_SIGMA", "0.2")),
+        "r": float(os.getenv("MC_R", "0.01")),
+        "T": float(os.getenv("MC_T", "1.0")),
+        "payoff": os.getenv("MC_PAYOFF", "european_call"),
+        "discount": True,
+        "master_seed": int(os.getenv("MC_SEED", "42")),
+        "store_full_paths": os.getenv("MC_STORE_FULL_PATHS", "false").lower() in ("1", "true", "yes"),
+    }
 
 
 async def start_single_workflow(client: Client, task_queue: str, order_id: str = None):
@@ -126,6 +161,10 @@ async def main():
         print("  python temporal_client.py bulk [count]")
         print("  python temporal_client.py continuous [interval_seconds]")
         print("  python temporal_client.py wait")
+        print("  python temporal_client.py mc single [num_paths steps paths_per_shard]")
+        print("  python temporal_client.py mc bulk [count]")
+        print("  python temporal_client.py mc continuous [interval_seconds]")
+        print("  python temporal_client.py mc validate")
         return
     
     mode = sys.argv[1]
@@ -148,6 +187,56 @@ async def main():
     elif mode == "wait":
         # Just demonstrate the client connection
         logger.info("Client connected successfully. Use other modes to submit workflows.")
+    elif mode == "mc":
+        if len(sys.argv) < 3:
+            logger.error("mc requires a subcommand: single|bulk|continuous|validate")
+            return
+        sub = sys.argv[2]
+        if sub == "single":
+            params = mc_default_params()
+            # Optional positional overrides
+            if len(sys.argv) > 3:
+                params["num_paths_total"] = int(sys.argv[3])
+            if len(sys.argv) > 4:
+                params["steps_per_path"] = int(sys.argv[4])
+            if len(sys.argv) > 5:
+                params["paths_per_shard"] = int(sys.argv[5])
+            handle = await start_mc_workflow(client, task_queue, params)
+            result = await handle.result()
+            logger.info(f"Monte Carlo result: estimate={result.get('estimate')} stddev={result.get('stddev')} stderr={result.get('stderr')} shards={result.get('shards')}")
+            if "black_scholes_call" in result:
+                logger.info(f"BS={result['black_scholes_call']} abs_err={result.get('abs_error_vs_bs')}")
+        elif sub == "bulk":
+            count = int(sys.argv[3]) if len(sys.argv) > 3 else 10
+            params = mc_default_params()
+            handles = []
+            for i in range(count):
+                handle = await start_mc_workflow(client, task_queue, params, workflow_id_suffix=f"{i:03d}")
+                handles.append(handle)
+            await wait_for_workflows(handles)
+        elif sub == "continuous":
+            interval = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+            logger.info(f"Starting continuous Monte Carlo submissions every {interval}s. Ctrl+C to stop.")
+            try:
+                idx = 0
+                params = mc_default_params()
+                while True:
+                    idx += 1
+                    await start_mc_workflow(client, task_queue, params, workflow_id_suffix=f"loop-{idx:06d}")
+                    if idx % 10 == 0:
+                        logger.info(f"Submitted {idx} Monte Carlo workflows so far...")
+                    await asyncio.sleep(interval)
+            except KeyboardInterrupt:
+                logger.info(f"Stopped after submitting {idx} Monte Carlo workflows")
+        elif sub == "validate":
+            params = mc_default_params()
+            params["num_paths_total"] = max(200_000, int(params["num_paths_total"]))
+            params["payoff"] = "european_call"
+            handle = await start_mc_workflow(client, task_queue, params, workflow_id_suffix="validate")
+            result = await handle.result()
+            logger.info(f"Validate: MC={result.get('estimate')} BS={result.get('black_scholes_call')} abs_err={result.get('abs_error_vs_bs')} stderr={result.get('stderr')}")
+        else:
+            logger.error(f"Unknown mc subcommand: {sub}")
         
     else:
         logger.error(f"Unknown mode: {mode}")
