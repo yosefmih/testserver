@@ -21,6 +21,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 from pydub import AudioSegment
 import io
+import urllib.request
+import urllib.error
 
 # Load environment variables at the very beginning
 load_dotenv(".env", override=True)
@@ -431,6 +433,13 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 'trace_propagation': self.trace_propagation,
                 'hostname': HOSTNAME,
                 'in_mesh': self.in_mesh
+            })
+            
+        elif self.path == '/porter-image-tag':
+            # Minimal endpoint for blue/green verification
+            status_code = self.send_json_response(200, {
+                'porter_image_tag': os.environ.get('PORTER_IMAGE_TAG', ''),
+                'hostname': HOSTNAME
             })
             
         # Add a mesh-specific endpoint
@@ -1006,6 +1015,35 @@ def run_metrics_server(metrics_collector, port=9090):
     logger.info(f"Metrics server running on port {port}")
     server.serve_forever()
 
+def _peer_check_loop(peer_url, expected_tag, batch_size=10, period_seconds=30, timeout_seconds=2.0):
+    url = f"{peer_url.rstrip('/')}/porter-image-tag"
+    logger.info(f"[PEER-CHECK] starting; peer_url={url} expected_tag={expected_tag}")
+    while True:
+        for _ in range(batch_size):
+            try:
+                req = urllib.request.Request(url)
+                req.add_header('User-Agent', 'porter-peer-check')
+                with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+                    status = getattr(resp, 'status', None) or resp.getcode()
+                    body = resp.read().decode('utf-8', errors='replace')
+                try:
+                    data = json.loads(body)
+                    got_tag = data.get('porter_image_tag', '')
+                    peer_host = data.get('hostname', '')
+                except Exception:
+                    got_tag = None
+                    peer_host = ''
+                if got_tag is None:
+                    logger.error(f"[PEER-CHECK ERROR] expected={expected_tag} url={url} status={status} parse_error=invalid_json body_snippet={body[:200]}")
+                elif str(got_tag) == str(expected_tag):
+                    logger.info(f"[PEER-CHECK] match expected={expected_tag} got={got_tag} peer_host={peer_host} url={url} status={status}")
+                else:
+                    logger.error(f"[PEER-CHECK MISMATCH] expected={expected_tag} got={got_tag} peer_host={peer_host} url={url} status={status}")
+            except Exception as e:
+                logger.error(f"[PEER-CHECK ERROR] expected={expected_tag} url={url} error={e}")
+            time.sleep(0.2)
+        time.sleep(period_seconds)
+
 def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup_delay=10):
     # Get startup_delay from environment if available
     startup_delay = int(os.environ.get('STARTUP_DELAY_SECONDS', startup_delay))
@@ -1030,6 +1068,17 @@ def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup
         daemon=True
     )
     metrics_thread.start()
+
+    # Start the peer image-tag checker if configured
+    peer_url = os.environ.get('PORTER_PEER_APP_URL', '').strip()
+    expected_tag = os.environ.get('PORTER_IMAGE_TAG', '')
+    if peer_url:
+        peer_thread = threading.Thread(
+            target=_peer_check_loop,
+            args=(peer_url, expected_tag),
+            daemon=True
+        )
+        peer_thread.start()
 
     # Start the main server
     server_address = ('', port)
