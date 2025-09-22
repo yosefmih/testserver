@@ -439,7 +439,6 @@ class SimpleHandler(BaseHTTPRequestHandler):
             # Minimal endpoint for blue/green verification
             status_code = self.send_json_response(200, {
                 'porter_image_tag': os.environ.get('PORTER_IMAGE_TAG', ''),
-                'hostname': HOSTNAME
             })
             
         # Add a mesh-specific endpoint
