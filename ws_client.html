@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .connection-panel {
+            padding: 25px;
+            background: #f7f7f7;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .connection-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .connection-row input[type="text"] {
+            flex: 1;
+            min-width: 200px;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .connection-row input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .connection-row select {
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+        
+        button {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-connect {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-connect:hover {
+            background: #059669;
+            transform: translateY(-2px);
+        }
+        
+        .btn-disconnect {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-disconnect:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+        }
+        
+        .btn-send {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .btn-send:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+        }
+        
+        .btn-clear {
+            background: #f59e0b;
+            color: white;
+        }
+        
+        .btn-clear:hover {
+            background: #d97706;
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        
+        .status.connected {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status.disconnected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .status.connecting {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            min-height: 600px;
+        }
+        
+        .message-panel {
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .message-panel h2 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 1.2em;
+        }
+        
+        .message-input-area {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .message-input-area textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        .message-input-area textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .messages {
+            flex: 1;
+            background: #1e1e1e;
+            border-radius: 6px;
+            padding: 15px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            color: #d4d4d4;
+        }
+        
+        .message {
+            margin-bottom: 12px;
+            padding: 10px;
+            border-radius: 4px;
+            background: #2d2d2d;
+            border-left: 3px solid #667eea;
+        }
+        
+        .message.sent {
+            border-left-color: #10b981;
+        }
+        
+        .message.received {
+            border-left-color: #3b82f6;
+        }
+        
+        .message.error {
+            border-left-color: #ef4444;
+        }
+        
+        .message.system {
+            border-left-color: #f59e0b;
+        }
+        
+        .message-time {
+            color: #888;
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+        
+        .message-content {
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .divider {
+            width: 1px;
+            background: #e0e0e0;
+        }
+        
+        .stats {
+            padding: 20px 25px;
+            background: #f7f7f7;
+            border-top: 1px solid #e0e0e0;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .divider {
+                width: 100%;
+                height: 1px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔌 WebSocket Test Client</h1>
+            <p>Test WebSocket connections with echo, stream, and chat endpoints</p>
+        </div>
+        
+        <div class="connection-panel">
+            <div class="connection-row">
+                <input type="text" id="wsUrl" placeholder="ws://localhost:8080" value="ws://localhost:8080">
+                <select id="endpoint">
+                    <option value="/ws/echo">Echo</option>
+                    <option value="/ws/stream">Stream</option>
+                    <option value="/ws/chat">Chat Room</option>
+                </select>
+                <button id="connectBtn" class="btn-connect">Connect</button>
+                <button id="disconnectBtn" class="btn-disconnect" disabled>Disconnect</button>
+                <span id="status" class="status disconnected">Disconnected</span>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="message-panel">
+                <h2>📤 Send Messages</h2>
+                <div class="message-input-area">
+                    <textarea id="messageInput" placeholder="Type your message here...">Hello from client!</textarea>
+                    <div class="button-group">
+                        <button id="sendBtn" class="btn-send" disabled>Send Message</button>
+                        <button id="clearSentBtn" class="btn-clear">Clear</button>
+                    </div>
+                </div>
+                <h2>📨 Sent Messages</h2>
+                <div id="sentMessages" class="messages"></div>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <div class="message-panel">
+                <h2>📥 Received Messages</h2>
+                <div class="button-group" style="margin-bottom: 10px;">
+                    <button id="clearReceivedBtn" class="btn-clear">Clear</button>
+                </div>
+                <div id="receivedMessages" class="messages"></div>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-label">Messages Sent</div>
+                <div class="stat-value" id="sentCount">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Messages Received</div>
+                <div class="stat-value" id="receivedCount">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Connection Time</div>
+                <div class="stat-value" id="connectionTime">0s</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let sentCount = 0;
+        let receivedCount = 0;
+        let connectionStartTime = null;
+        let connectionTimer = null;
+
+        const wsUrlInput = document.getElementById('wsUrl');
+        const endpointSelect = document.getElementById('endpoint');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const messageInput = document.getElementById('messageInput');
+        const sentMessages = document.getElementById('sentMessages');
+        const receivedMessages = document.getElementById('receivedMessages');
+        const statusSpan = document.getElementById('status');
+        const sentCountSpan = document.getElementById('sentCount');
+        const receivedCountSpan = document.getElementById('receivedCount');
+        const connectionTimeSpan = document.getElementById('connectionTime');
+
+        function updateStatus(status, text) {
+            statusSpan.className = `status ${status}`;
+            statusSpan.textContent = text;
+        }
+
+        function formatTime() {
+            const now = new Date();
+            return now.toLocaleTimeString();
+        }
+
+        function addMessage(container, type, content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.innerHTML = `
+                <div class="message-time">[${formatTime()}]</div>
+                <div class="message-content">${content}</div>
+            `;
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function updateConnectionTime() {
+            if (connectionStartTime) {
+                const elapsed = Math.floor((Date.now() - connectionStartTime) / 1000);
+                connectionTimeSpan.textContent = `${elapsed}s`;
+            }
+        }
+
+        connectBtn.addEventListener('click', () => {
+            const url = wsUrlInput.value + endpointSelect.value;
+            
+            try {
+                updateStatus('connecting', 'Connecting...');
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    updateStatus('connected', 'Connected');
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    sendBtn.disabled = false;
+                    wsUrlInput.disabled = true;
+                    endpointSelect.disabled = true;
+                    
+                    connectionStartTime = Date.now();
+                    connectionTimer = setInterval(updateConnectionTime, 1000);
+                    
+                    addMessage(receivedMessages, 'system', `Connected to ${url}`);
+                };
+
+                ws.onmessage = (event) => {
+                    receivedCount++;
+                    receivedCountSpan.textContent = receivedCount;
+                    
+                    try {
+                        const data = JSON.parse(event.data);
+                        addMessage(receivedMessages, 'received', JSON.stringify(data, null, 2));
+                    } catch (e) {
+                        addMessage(receivedMessages, 'received', event.data);
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    addMessage(receivedMessages, 'error', `WebSocket error occurred`);
+                };
+
+                ws.onclose = () => {
+                    updateStatus('disconnected', 'Disconnected');
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    sendBtn.disabled = true;
+                    wsUrlInput.disabled = false;
+                    endpointSelect.disabled = false;
+                    
+                    if (connectionTimer) {
+                        clearInterval(connectionTimer);
+                        connectionTimer = null;
+                    }
+                    
+                    addMessage(receivedMessages, 'system', 'Disconnected from server');
+                };
+            } catch (error) {
+                updateStatus('disconnected', 'Connection Failed');
+                addMessage(receivedMessages, 'error', `Failed to connect: ${error.message}`);
+            }
+        });
+
+        disconnectBtn.addEventListener('click', () => {
+            if (ws) {
+                ws.close();
+            }
+        });
+
+        sendBtn.addEventListener('click', () => {
+            const message = messageInput.value;
+            if (ws && ws.readyState === WebSocket.OPEN && message) {
+                ws.send(message);
+                sentCount++;
+                sentCountSpan.textContent = sentCount;
+                addMessage(sentMessages, 'sent', message);
+            }
+        });
+
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                sendBtn.click();
+            }
+        });
+
+        document.getElementById('clearSentBtn').addEventListener('click', () => {
+            sentMessages.innerHTML = '';
+        });
+
+        document.getElementById('clearReceivedBtn').addEventListener('click', () => {
+            receivedMessages.innerHTML = '';
+        });
+    </script>
+</body>
+</html>

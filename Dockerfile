@@ -58,6 +58,7 @@ RUN pip install --no-cache-dir --no-index --find-links=/app/wheels -r requiremen
 
 # Copy application code.
 COPY server.py .
+COPY server_ws.py .
 COPY client.py .
 COPY linkerd_test.py .
 COPY compute_pi.py .
@@ -73,7 +74,7 @@ COPY temporal_client.py .
 # It's good documentation. The actual publishing is done with 'docker run -p'.
 # Your server.py seems to default to port 3000 or use SERVER_PORT.
 EXPOSE 3000
-# What is port 9090 used for? If not used by server.py or audio_worker.py, it could be removed.
+EXPOSE 8080
 EXPOSE 9090
 
 # ARG allows passing variables at build-time (docker build --build-arg RUN_FILE=...).
