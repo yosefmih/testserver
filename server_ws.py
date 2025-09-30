@@ -174,10 +174,18 @@ async def handle_chat_room(websocket, client_id):
 
 async def main():
     port = int(os.environ.get('WS_PORT', 8080))
+    
     logger.info(f"Starting WebSocket server on port {port}")
     logger.info(f"Available endpoints: /ws/echo, /ws/stream, /ws/chat")
+    logger.info(f"Ping interval: None (disabled for timeout testing)")
     
-    async with serve(websocket_handler, "0.0.0.0", port):
+    async with serve(
+        websocket_handler, 
+        "0.0.0.0", 
+        port,
+        ping_interval=None,
+        ping_timeout=None
+    ):
         await asyncio.Future()
 
 if __name__ == '__main__':
