@@ -9,7 +9,7 @@ import logging
 import os
 import uuid
 from temporalio.client import Client
-from temporal_worker import OrderProcessingWorkflow, MonteCarloWorkflow
+from temporal_worker import OrderProcessingWorkflow, MonteCarloWorkflow, WebScraperWorkflow
 from dotenv import load_dotenv
 
 # Load environment variables from .env file (development only)
@@ -148,6 +148,39 @@ async def create_continuous_load(client: Client, task_queue: str, interval_secon
         logger.info(f"Stopped continuous load generation after {counter} workflows")
 
 
+def scraper_default_config() -> dict:
+    return {
+        "seed_urls": os.getenv("SCRAPER_SEED_URLS", "https://example.com").split(","),
+        "max_depth": int(os.getenv("SCRAPER_MAX_DEPTH", "3")),
+        "max_pages": int(os.getenv("SCRAPER_MAX_PAGES", "100")),
+        "batch_size": int(os.getenv("SCRAPER_BATCH_SIZE", "10")),
+        "db_host": os.getenv("DB_HOST", "localhost"),
+        "db_port": int(os.getenv("DB_PORT", "5432")),
+        "db_name": os.getenv("DB_NAME", "scraper_db"),
+        "db_user": os.getenv("DB_USER", "postgres"),
+        "db_pass": os.getenv("DB_PASS", "postgres"),
+        "politeness_delay_ms": int(os.getenv("SCRAPER_POLITENESS_MS", "1000")),
+    }
+
+
+async def start_scraper_workflow(client: Client, task_queue: str, config: dict = None):
+    """Start a web scraper workflow."""
+    if config is None:
+        config = scraper_default_config()
+    
+    wf_id = f"scraper-workflow-{uuid.uuid4().hex[:8]}"
+    logger.info(f"Starting web scraper workflow id={wf_id}")
+    logger.info(f"Config: seed_urls={config['seed_urls']}, max_depth={config['max_depth']}, max_pages={config['max_pages']}")
+    
+    handle = await client.start_workflow(
+        WebScraperWorkflow.run,
+        config,
+        id=wf_id,
+        task_queue=task_queue,
+    )
+    return handle
+
+
 async def main():
     """Main function with different workflow submission modes."""
     import sys
@@ -160,6 +193,7 @@ async def main():
         print("  python temporal_client.py single [order_id]")
         print("  python temporal_client.py bulk [count]")
         print("  python temporal_client.py continuous [interval_seconds]")
+        print("  python temporal_client.py scraper")
         print("  python temporal_client.py wait")
         print("  python temporal_client.py mc single [num_paths steps paths_per_shard]")
         print("  python temporal_client.py mc bulk [count]")
@@ -183,9 +217,14 @@ async def main():
     elif mode == "continuous":
         interval = int(sys.argv[2]) if len(sys.argv) > 2 else 5
         await create_continuous_load(client, task_queue, interval)
+    
+    elif mode == "scraper":
+        config = scraper_default_config()
+        handle = await start_scraper_workflow(client, task_queue, config)
+        result = await handle.result()
+        logger.info(f"Scraper workflow completed: {result}")
         
     elif mode == "wait":
-        # Just demonstrate the client connection
         logger.info("Client connected successfully. Use other modes to submit workflows.")
     elif mode == "mc":
         if len(sys.argv) < 3:
@@ -194,7 +233,6 @@ async def main():
         sub = sys.argv[2]
         if sub == "single":
             params = mc_default_params()
-            # Optional positional overrides
             if len(sys.argv) > 3:
                 params["num_paths_total"] = int(sys.argv[3])
             if len(sys.argv) > 4:
@@ -244,3 +282,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
