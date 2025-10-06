@@ -503,16 +503,14 @@ class OrderProcessingWorkflow:
 
     @workflow.run
     async def run(self, order_id: str) -> str:
-        logger.info(f"Starting order processing workflow for order: {order_id}")
+        workflow.logger.info(f"Starting order processing workflow for order: {order_id}")
 
-        # Process the order
         order_result = await workflow.execute_activity(
             process_order_activity,
             order_id,
             start_to_close_timeout=timedelta(seconds=30),
         )
 
-        # Send notification
         notification_result = await workflow.execute_activity(
             send_notification_activity,
             f"Order {order_id} has been processed",
@@ -520,7 +518,7 @@ class OrderProcessingWorkflow:
         )
 
         final_result = f"Workflow completed: {order_result}, {notification_result}"
-        logger.info(final_result)
+        workflow.logger.info(final_result)
         return final_result
 
 
