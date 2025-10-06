@@ -185,6 +185,7 @@ def init_scraper_db(config_dict: dict) -> dict:
 def enqueue_urls(config_dict: dict, urls: List[dict]) -> dict:
     import hashlib
     
+    logger.info(f"Enqueuing {len(urls)} URLs")
     config = ScraperConfig(**config_dict)
     conn = get_db_connection(config)
     
@@ -205,11 +206,13 @@ def enqueue_urls(config_dict: dict, urls: List[dict]) -> dict:
                     
                     if cur.rowcount > 0:
                         enqueued += 1
+                        logger.info(f"Enqueued: {url}")
                 except Exception as e:
                     logger.error(f"Error enqueuing {url}: {e}")
             
             conn.commit()
         
+        logger.info(f"Enqueued {enqueued}/{len(urls)} URLs")
         return {"enqueued": enqueued, "total_attempted": len(urls)}
     finally:
         conn.close()
@@ -217,6 +220,7 @@ def enqueue_urls(config_dict: dict, urls: List[dict]) -> dict:
 
 @activity.defn
 def fetch_url_batch(config_dict: dict, batch_size: int) -> List[dict]:
+    logger.info(f"Fetching batch of {batch_size} URLs")
     config = ScraperConfig(**config_dict)
     conn = get_db_connection(config)
     
@@ -241,7 +245,9 @@ def fetch_url_batch(config_dict: dict, batch_size: int) -> List[dict]:
             rows = cur.fetchall()
             conn.commit()
             
-            return [{"url": row[0], "depth": row[1]} for row in rows]
+            result = [{"url": row[0], "depth": row[1]} for row in rows]
+            logger.info(f"Fetched {len(result)} URLs from queue")
+            return result
     finally:
         conn.close()
 
@@ -254,6 +260,7 @@ def scrape_url(config_dict: dict, url: str, depth: int) -> dict:
     import re
     import hashlib
     
+    logger.info(f"Scraping URL: {url} (depth={depth})")
     config = ScraperConfig(**config_dict)
     start_time = time.time()
     
@@ -308,12 +315,18 @@ def scrape_url(config_dict: dict, url: str, depth: int) -> dict:
         result.error = str(e)
         result.response_time_ms = int((time.time() - start_time) * 1000)
         logger.error(f"Error scraping {url}: {e}")
+    except Exception as e:
+        result.error = str(e)
+        result.response_time_ms = int((time.time() - start_time) * 1000)
+        logger.error(f"Unexpected error scraping {url}: {e}", exc_info=True)
     
+    logger.info(f"Scraped {url}: status={result.status_code}, links={result.links_found}, error={result.error}")
     return asdict(result)
 
 
 @activity.defn
 def save_scrape_results(config_dict: dict, results: List[dict]) -> dict:
+    logger.info(f"Saving {len(results)} scrape results")
     config = ScraperConfig(**config_dict)
     conn = get_db_connection(config)
     
@@ -364,6 +377,7 @@ def save_scrape_results(config_dict: dict, results: List[dict]) -> dict:
             
             conn.commit()
         
+        logger.info(f"Saved {saved} results, discovered {len(new_urls_to_enqueue)} new URLs")
         return {
             "saved": saved,
             "new_urls_discovered": len(new_urls_to_enqueue),
