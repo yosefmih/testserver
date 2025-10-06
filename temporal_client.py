@@ -158,7 +158,8 @@ async def main():
         print("  python temporal_client.py single [order_id]")
         print("  python temporal_client.py bulk [count]")
         print("  python temporal_client.py continuous [interval_seconds]")
-        print("  python temporal_client.py scraper")
+        print("  python temporal_client.py scraper <seed_urls> [max_depth] [max_pages] [batch_size]")
+        print("    Example: python temporal_client.py scraper https://example.com,https://another.com 2 50 5")
         print("  python temporal_client.py wait")
         return
     
@@ -180,7 +181,23 @@ async def main():
         await create_continuous_load(client, task_queue, interval)
     
     elif mode == "scraper":
+        if len(sys.argv) < 3:
+            logger.error("scraper requires seed_urls as argument")
+            logger.info("Usage: python temporal_client.py scraper <seed_urls> [max_depth] [max_pages] [batch_size]")
+            logger.info("Example: python temporal_client.py scraper https://example.com,https://another.com 2 50 5")
+            return
+        
+        seed_urls = sys.argv[2].split(",")
+        max_depth = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+        max_pages = int(sys.argv[4]) if len(sys.argv) > 4 else 100
+        batch_size = int(sys.argv[5]) if len(sys.argv) > 5 else 10
+        
         config = scraper_default_config()
+        config["seed_urls"] = seed_urls
+        config["max_depth"] = max_depth
+        config["max_pages"] = max_pages
+        config["batch_size"] = batch_size
+        
         handle = await start_scraper_workflow(client, task_queue, config)
         result = await handle.result()
         logger.info(f"Scraper workflow completed: {result}")
