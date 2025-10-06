@@ -26,28 +26,28 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Temporal configuration - will be validated when worker starts
+ORDER_PROCESSING_TASK_QUEUE = "order-processing-queue-v2"
+WEB_SCRAPER_TASK_QUEUE = "web-scraper-queue"
+
+
 def get_temporal_config():
     """Get and validate Temporal configuration from environment."""
-    host = os.getenv("TEMPORAL_HOST")  # e.g., "your-namespace.tmprl.cloud:7233"
-    namespace = os.getenv("TEMPORAL_NAMESPACE")  # e.g., "your-namespace.accounting"
-    task_queue = os.getenv("TASK_QUEUE")  # e.g., "order-processing-queue"
-    api_key = os.getenv("TEMPORAL_API_KEY")  # Required for Temporal Cloud
+    host = os.getenv("TEMPORAL_HOST")
+    namespace = os.getenv("TEMPORAL_NAMESPACE")
+    api_key = os.getenv("TEMPORAL_API_KEY")
     
-    # Validate required environment variables
     missing = []
     if not host:
         missing.append("TEMPORAL_HOST")
     if not namespace:
         missing.append("TEMPORAL_NAMESPACE") 
-    if not task_queue:
-        missing.append("TASK_QUEUE")
     if not api_key:
         missing.append("TEMPORAL_API_KEY")
     
     if missing:
         raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
     
-    return host, namespace, task_queue, api_key
+    return host, namespace, api_key
 
 
 @activity.defn
@@ -419,7 +419,8 @@ class WebScraperWorkflow:
         await workflow.execute_activity(
             enqueue_urls,
             args=[config_dict, seed_urls],
-            start_to_close_timeout=timedelta(seconds=30)
+            start_to_close_timeout=timedelta(seconds=30),
+            task_queue=workflow.info().task_queue
         )
         
         total_scraped = 0
@@ -432,7 +433,8 @@ class WebScraperWorkflow:
             url_batch = await workflow.execute_activity(
                 fetch_url_batch,
                 args=[config_dict, config.batch_size],
-                start_to_close_timeout=timedelta(seconds=30)
+                start_to_close_timeout=timedelta(seconds=30),
+                task_queue=workflow.info().task_queue
             )
             
             if not url_batch:
@@ -446,6 +448,7 @@ class WebScraperWorkflow:
                     args=[config_dict, url_info["url"], url_info["depth"]],
                     start_to_close_timeout=timedelta(seconds=30),
                     heartbeat_timeout=timedelta(seconds=15),
+                    task_queue=workflow.info().task_queue,
                     retry_policy={
                         "initial_interval": timedelta(seconds=2),
                         "maximum_interval": timedelta(seconds=30),
@@ -464,14 +467,16 @@ class WebScraperWorkflow:
                 save_result = await workflow.execute_activity(
                     save_scrape_results,
                     args=[config_dict, valid_results],
-                    start_to_close_timeout=timedelta(seconds=60)
+                    start_to_close_timeout=timedelta(seconds=60),
+                    task_queue=workflow.info().task_queue
                 )
                 
                 if save_result["new_urls"]:
                     await workflow.execute_activity(
                         enqueue_urls,
                         args=[config_dict, save_result["new_urls"]],
-                        start_to_close_timeout=timedelta(seconds=30)
+                        start_to_close_timeout=timedelta(seconds=30),
+                        task_queue=workflow.info().task_queue
                     )
                 
                 total_scraped += len(valid_results)
@@ -480,14 +485,16 @@ class WebScraperWorkflow:
                 stats = await workflow.execute_activity(
                     get_scraper_stats,
                     config_dict,
-                    start_to_close_timeout=timedelta(seconds=10)
+                    start_to_close_timeout=timedelta(seconds=10),
+                    task_queue=workflow.info().task_queue
                 )
                 workflow.logger.info(f"Stats: {stats}")
         
         final_stats = await workflow.execute_activity(
             get_scraper_stats,
             config_dict,
-            start_to_close_timeout=timedelta(seconds=10)
+            start_to_close_timeout=timedelta(seconds=10),
+            task_queue=workflow.info().task_queue
         )
         
         return {
@@ -512,12 +519,14 @@ class OrderProcessingWorkflow:
             process_order_activity,
             order_id,
             start_to_close_timeout=timedelta(seconds=30),
+            task_queue=workflow.info().task_queue
         )
 
         notification_result = await workflow.execute_activity(
             send_notification_activity,
             f"Order {order_id} has been processed",
             start_to_close_timeout=timedelta(seconds=30),
+            task_queue=workflow.info().task_queue
         )
 
         final_result = f"Workflow completed: {order_result}, {notification_result}"
@@ -529,29 +538,36 @@ async def create_worker():
     """
     Create and configure the Temporal worker.
     """
-    # Get and validate configuration
-    host, namespace, task_queue, api_key = get_temporal_config()
+    host, namespace, api_key = get_temporal_config()
     
     logger.info(f"Connecting to Temporal at {host}")
     logger.info(f"Using namespace: {namespace}")
-    logger.info(f"Using task queue: {task_queue}")
 
-    # Create client with API key for Temporal Cloud
     client = await Client.connect(
         host, 
         namespace=namespace,
         api_key=api_key,
-        tls=True  # Enable TLS for Temporal Cloud
+        tls=True
     )
 
     activity_threads = int(os.getenv("ACTIVITY_THREADS", "8"))
-    worker = Worker(
+    
+    order_worker = Worker(
         client,
-        task_queue=task_queue,
-        workflows=[OrderProcessingWorkflow, WebScraperWorkflow],
+        task_queue=ORDER_PROCESSING_TASK_QUEUE,
+        workflows=[OrderProcessingWorkflow],
         activities=[
             process_order_activity, 
-            send_notification_activity,
+            send_notification_activity
+        ],
+        activity_executor=ThreadPoolExecutor(max_workers=activity_threads),
+    )
+    
+    scraper_worker = Worker(
+        client,
+        task_queue=WEB_SCRAPER_TASK_QUEUE,
+        workflows=[WebScraperWorkflow],
+        activities=[
             init_scraper_db,
             enqueue_urls,
             fetch_url_batch,
@@ -562,8 +578,9 @@ async def create_worker():
         activity_executor=ThreadPoolExecutor(max_workers=activity_threads),
     )
 
-    logger.info("Temporal worker created successfully")
-    return worker
+    logger.info(f"Order processing worker created on task queue: {ORDER_PROCESSING_TASK_QUEUE}")
+    logger.info(f"Web scraper worker created on task queue: {WEB_SCRAPER_TASK_QUEUE}")
+    return [order_worker, scraper_worker]
 
 
 def initialize_scraper_db():
@@ -649,11 +666,10 @@ async def main():
     try:
         initialize_scraper_db()
         
-        worker = await create_worker()
-        _, _, task_queue, _ = get_temporal_config()
-        logger.info(f"Worker started and listening on task queue: {task_queue}")
+        workers = await create_worker()
+        logger.info("Workers started and listening...")
         
-        await worker.run()
+        await asyncio.gather(*[worker.run() for worker in workers])
         
     except KeyboardInterrupt:
         logger.info("Worker stopped by user")

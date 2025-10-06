@@ -9,40 +9,39 @@ import logging
 import os
 import uuid
 from temporalio.client import Client
-from temporal_worker import OrderProcessingWorkflow, WebScraperWorkflow
+from temporal_worker import (
+    OrderProcessingWorkflow, 
+    WebScraperWorkflow,
+    get_temporal_config,
+    ORDER_PROCESSING_TASK_QUEUE,
+    WEB_SCRAPER_TASK_QUEUE
+)
 from dotenv import load_dotenv
 
-# Load environment variables from .env file (development only)
 if os.path.exists('.env'):
     load_dotenv()
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Import configuration function from worker
-from temporal_worker import get_temporal_config
 
 
 async def create_client():
     """Create and return a Temporal client."""
-    # Get and validate configuration
-    host, namespace, task_queue, api_key = get_temporal_config()
+    host, namespace, api_key = get_temporal_config()
     
     logger.info(f"Connecting to Temporal at {host}")
     
-    # Create client with API key for Temporal Cloud
     client = await Client.connect(
         host, 
         namespace=namespace,
         api_key=api_key,
-        tls=True  # Enable TLS for Temporal Cloud
+        tls=True
     )
     logger.info(f"Connected to Temporal namespace: {namespace}")
-    return client, task_queue
+    return client
 
 
-async def start_single_workflow(client: Client, task_queue: str, order_id: str = None):
+async def start_single_workflow(client: Client, order_id: str = None):
     """Start a single order processing workflow."""
     if not order_id:
         order_id = f"order-{uuid.uuid4().hex[:8]}"
@@ -53,21 +52,21 @@ async def start_single_workflow(client: Client, task_queue: str, order_id: str =
         OrderProcessingWorkflow.run,
         order_id,
         id=f"order-workflow-{order_id}",
-        task_queue=task_queue,
+        task_queue=ORDER_PROCESSING_TASK_QUEUE,
     )
     
     logger.info(f"Workflow started with ID: {handle.id}")
     return handle
 
 
-async def start_multiple_workflows(client: Client, task_queue: str, count: int = 10):
+async def start_multiple_workflows(client: Client, count: int = 10):
     """Start multiple workflows to create backlog for KEDA testing."""
     logger.info(f"Starting {count} workflows to create task queue backlog...")
     
     handles = []
     for i in range(count):
         order_id = f"bulk-order-{i:03d}-{uuid.uuid4().hex[:6]}"
-        handle = await start_single_workflow(client, task_queue, order_id)
+        handle = await start_single_workflow(client, order_id)
         handles.append(handle)
     
     logger.info(f"Started {len(handles)} workflows")
@@ -92,7 +91,7 @@ async def wait_for_workflows(handles):
     return results
 
 
-async def create_continuous_load(client: Client, task_queue: str, interval_seconds: int = 5):
+async def create_continuous_load(client: Client, interval_seconds: int = 5):
     """Create continuous workflow submissions for sustained load testing."""
     logger.info(f"Starting continuous load generation (interval: {interval_seconds}s)")
     logger.info("Press Ctrl+C to stop...")
@@ -102,7 +101,7 @@ async def create_continuous_load(client: Client, task_queue: str, interval_secon
         while True:
             counter += 1
             order_id = f"continuous-order-{counter:04d}-{uuid.uuid4().hex[:6]}"
-            await start_single_workflow(client, task_queue, order_id)
+            await start_single_workflow(client, order_id)
             
             if counter % 10 == 0:
                 logger.info(f"Submitted {counter} workflows so far...")
@@ -128,7 +127,7 @@ def scraper_default_config() -> dict:
     }
 
 
-async def start_scraper_workflow(client: Client, task_queue: str, config: dict = None):
+async def start_scraper_workflow(client: Client, config: dict = None):
     """Start a web scraper workflow."""
     if config is None:
         config = scraper_default_config()
@@ -141,7 +140,7 @@ async def start_scraper_workflow(client: Client, task_queue: str, config: dict =
         WebScraperWorkflow.run,
         config,
         id=wf_id,
-        task_queue=task_queue,
+        task_queue=WEB_SCRAPER_TASK_QUEUE,
     )
     return handle
 
@@ -150,7 +149,7 @@ async def main():
     """Main function with different workflow submission modes."""
     import sys
     
-    client, task_queue = await create_client()
+    client = await create_client()
     
     # Parse command line arguments
     if len(sys.argv) < 2:
@@ -167,18 +166,18 @@ async def main():
     
     if mode == "single":
         order_id = sys.argv[2] if len(sys.argv) > 2 else None
-        handle = await start_single_workflow(client, task_queue, order_id)
+        handle = await start_single_workflow(client, order_id)
         result = await handle.result()
         logger.info(f"Final result: {result}")
         
     elif mode == "bulk":
         count = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-        handles = await start_multiple_workflows(client, task_queue, count)
+        handles = await start_multiple_workflows(client, count)
         await wait_for_workflows(handles)
         
     elif mode == "continuous":
         interval = int(sys.argv[2]) if len(sys.argv) > 2 else 5
-        await create_continuous_load(client, task_queue, interval)
+        await create_continuous_load(client, interval)
     
     elif mode == "scraper":
         if len(sys.argv) < 3:
@@ -198,7 +197,7 @@ async def main():
         config["max_pages"] = max_pages
         config["batch_size"] = batch_size
         
-        handle = await start_scraper_workflow(client, task_queue, config)
+        handle = await start_scraper_workflow(client, config)
         result = await handle.result()
         logger.info(f"Scraper workflow completed: {result}")
         
