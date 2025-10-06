@@ -15,11 +15,6 @@ from temporalio import activity
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
-import requests
-from urllib.parse import urlparse, urljoin, urldefrag
-import re
-import hashlib
-import psycopg2
 from dataclasses import dataclass, asdict
 
 # Load environment variables from .env file (development only)
@@ -115,6 +110,7 @@ class ScraperConfig:
 
 
 def get_db_connection(config: ScraperConfig):
+    import psycopg2
     return psycopg2.connect(
         host=config.db_host,
         port=config.db_port,
@@ -125,6 +121,7 @@ def get_db_connection(config: ScraperConfig):
 
 
 def get_url_hash(url: str) -> str:
+    import hashlib
     return hashlib.sha256(url.encode('utf-8')).hexdigest()
 
 
@@ -186,6 +183,8 @@ def init_scraper_db(config_dict: dict) -> dict:
 
 @activity.defn
 def enqueue_urls(config_dict: dict, urls: List[dict]) -> dict:
+    import hashlib
+    
     config = ScraperConfig(**config_dict)
     conn = get_db_connection(config)
     
@@ -250,6 +249,10 @@ def fetch_url_batch(config_dict: dict, batch_size: int) -> List[dict]:
 @activity.defn
 def scrape_url(config_dict: dict, url: str, depth: int) -> dict:
     import time
+    import requests
+    from urllib.parse import urlparse, urljoin, urldefrag
+    import re
+    import hashlib
     
     config = ScraperConfig(**config_dict)
     start_time = time.time()
@@ -565,6 +568,8 @@ async def create_worker():
 
 def initialize_scraper_db():
     """Initialize scraper database tables on worker startup."""
+    import psycopg2
+    
     db_host = os.getenv("DB_HOST")
     db_port = os.getenv("DB_PORT", "5432")
     db_name = os.getenv("DB_NAME")
