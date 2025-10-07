@@ -428,14 +428,12 @@ class WebScraperWorkflow:
     @workflow.run
     async def run(self, config_dict: dict) -> dict:
         config = ScraperConfig(**config_dict)
-        task_queue = WEB_SCRAPER_TASK_QUEUE
         
         seed_urls = [{"url": url, "depth": 0} for url in config.seed_urls]
         await workflow.execute_activity(
             enqueue_urls,
             args=[config_dict, seed_urls],
-            start_to_close_timeout=timedelta(seconds=30),
-            task_queue=task_queue
+            start_to_close_timeout=timedelta(seconds=30)
         )
         
         total_scraped = 0
@@ -448,8 +446,7 @@ class WebScraperWorkflow:
             url_batch = await workflow.execute_activity(
                 fetch_url_batch,
                 args=[config_dict, config.batch_size],
-                start_to_close_timeout=timedelta(seconds=30),
-                task_queue=task_queue
+                start_to_close_timeout=timedelta(seconds=30)
             )
             
             if not url_batch:
@@ -463,7 +460,6 @@ class WebScraperWorkflow:
                     args=[config_dict, url_info["url"], url_info["depth"]],
                     start_to_close_timeout=timedelta(seconds=30),
                     heartbeat_timeout=timedelta(seconds=15),
-                    task_queue=task_queue,
                     retry_policy={
                         "initial_interval": timedelta(seconds=2),
                         "maximum_interval": timedelta(seconds=30),
@@ -482,16 +478,14 @@ class WebScraperWorkflow:
                 save_result = await workflow.execute_activity(
                     save_scrape_results,
                     args=[config_dict, valid_results],
-                    start_to_close_timeout=timedelta(seconds=60),
-                    task_queue=task_queue
+                    start_to_close_timeout=timedelta(seconds=60)
                 )
                 
                 if save_result["new_urls"]:
                     await workflow.execute_activity(
                         enqueue_urls,
                         args=[config_dict, save_result["new_urls"]],
-                        start_to_close_timeout=timedelta(seconds=30),
-                        task_queue=task_queue
+                        start_to_close_timeout=timedelta(seconds=30)
                     )
                 
                 total_scraped += len(valid_results)
@@ -500,16 +494,14 @@ class WebScraperWorkflow:
                 stats = await workflow.execute_activity(
                     get_scraper_stats,
                     config_dict,
-                    start_to_close_timeout=timedelta(seconds=10),
-                    task_queue=task_queue
+                    start_to_close_timeout=timedelta(seconds=10)
                 )
                 workflow.logger.info(f"Stats: {stats}")
         
         final_stats = await workflow.execute_activity(
             get_scraper_stats,
             config_dict,
-            start_to_close_timeout=timedelta(seconds=10),
-            task_queue=task_queue
+            start_to_close_timeout=timedelta(seconds=10)
         )
         
         return {
@@ -529,20 +521,17 @@ class OrderProcessingWorkflow:
     @workflow.run
     async def run(self, order_id: str) -> str:
         workflow.logger.info(f"Starting order processing workflow for order: {order_id}")
-        task_queue = ORDER_PROCESSING_TASK_QUEUE
 
         order_result = await workflow.execute_activity(
             process_order_activity,
             order_id,
-            start_to_close_timeout=timedelta(seconds=30),
-            task_queue=task_queue
+            start_to_close_timeout=timedelta(seconds=30)
         )
 
         notification_result = await workflow.execute_activity(
             send_notification_activity,
             f"Order {order_id} has been processed",
-            start_to_close_timeout=timedelta(seconds=30),
-            task_queue=task_queue
+            start_to_close_timeout=timedelta(seconds=30)
         )
 
         final_result = f"Workflow completed: {order_result}, {notification_result}"
