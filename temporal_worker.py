@@ -468,9 +468,9 @@ class WebScraperWorkflow:
                 )
                 scrape_tasks.append(task)
                 
-                await asyncio.sleep(config.politeness_delay_ms / 1000.0)
+                await workflow.asyncio.sleep(config.politeness_delay_ms / 1000.0)
             
-            scrape_results = await asyncio.gather(*scrape_tasks, return_exceptions=True)
+            scrape_results = await workflow.asyncio.gather(*scrape_tasks, return_exceptions=True)
             
             valid_results = [r for r in scrape_results if not isinstance(r, Exception)]
             
