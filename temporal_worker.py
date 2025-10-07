@@ -12,6 +12,7 @@ from temporalio import workflow
 from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio import activity
+from temporalio.common import RetryPolicy
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
@@ -432,8 +433,10 @@ class WebScraperWorkflow:
         seed_urls = [{"url": url, "depth": 0} for url in config.seed_urls]
         await workflow.execute_activity(
             enqueue_urls,
-            args=[config_dict, seed_urls],
-            start_to_close_timeout=timedelta(seconds=30)
+            config_dict,
+            seed_urls,
+            start_to_close_timeout=timedelta(seconds=30),
+            task_queue=workflow.info().task_queue
         )
         
         total_scraped = 0
@@ -445,8 +448,10 @@ class WebScraperWorkflow:
             
             url_batch = await workflow.execute_activity(
                 fetch_url_batch,
-                args=[config_dict, config.batch_size],
-                start_to_close_timeout=timedelta(seconds=30)
+            config_dict,
+            config.batch_size,
+            start_to_close_timeout=timedelta(seconds=30),
+            task_queue=workflow.info().task_queue
             )
             
             if not url_batch:
@@ -457,14 +462,17 @@ class WebScraperWorkflow:
             for url_info in url_batch:
                 task = workflow.execute_activity(
                     scrape_url,
-                    args=[config_dict, url_info["url"], url_info["depth"]],
+                    config_dict,
+                    url_info["url"],
+                    url_info["depth"],
                     start_to_close_timeout=timedelta(seconds=30),
                     heartbeat_timeout=timedelta(seconds=15),
-                    retry_policy={
-                        "initial_interval": timedelta(seconds=2),
-                        "maximum_interval": timedelta(seconds=30),
-                        "maximum_attempts": 3,
-                    }
+                    retry_policy=RetryPolicy(
+                        initial_interval=timedelta(seconds=2),
+                        maximum_interval=timedelta(seconds=30),
+                        maximum_attempts=3,
+                    ),
+                    task_queue=workflow.info().task_queue
                 )
                 scrape_tasks.append(task)
                 
@@ -477,15 +485,19 @@ class WebScraperWorkflow:
             if valid_results:
                 save_result = await workflow.execute_activity(
                     save_scrape_results,
-                    args=[config_dict, valid_results],
-                    start_to_close_timeout=timedelta(seconds=60)
+                    config_dict,
+                    valid_results,
+                    start_to_close_timeout=timedelta(seconds=60),
+                    task_queue=workflow.info().task_queue
                 )
                 
                 if save_result["new_urls"]:
                     await workflow.execute_activity(
                         enqueue_urls,
-                        args=[config_dict, save_result["new_urls"]],
-                        start_to_close_timeout=timedelta(seconds=30)
+                        config_dict,
+                        save_result["new_urls"],
+                        start_to_close_timeout=timedelta(seconds=30),
+                        task_queue=workflow.info().task_queue
                     )
                 
                 total_scraped += len(valid_results)
@@ -494,14 +506,16 @@ class WebScraperWorkflow:
                 stats = await workflow.execute_activity(
                     get_scraper_stats,
                     config_dict,
-                    start_to_close_timeout=timedelta(seconds=10)
+                    start_to_close_timeout=timedelta(seconds=10),
+                    task_queue=workflow.info().task_queue
                 )
                 workflow.logger.info(f"Stats: {stats}")
         
         final_stats = await workflow.execute_activity(
             get_scraper_stats,
             config_dict,
-            start_to_close_timeout=timedelta(seconds=10)
+            start_to_close_timeout=timedelta(seconds=10),
+            task_queue=workflow.info().task_queue
         )
         
         return {
