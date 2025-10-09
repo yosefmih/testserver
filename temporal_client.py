@@ -10,11 +10,9 @@ import os
 import uuid
 from temporalio.client import Client
 from temporal_worker import (
-    OrderProcessingWorkflow, 
-    WebScraperWorkflow,
+    OrderProcessingWorkflow,
     get_temporal_config,
-    ORDER_PROCESSING_TASK_QUEUE,
-    WEB_SCRAPER_TASK_QUEUE
+    ORDER_PROCESSING_TASK_QUEUE
 )
 from dotenv import load_dotenv
 
@@ -41,16 +39,24 @@ async def create_client():
     return client
 
 
-async def start_single_workflow(client: Client, order_id: str = None):
-    """Start a single order processing workflow."""
-    if not order_id:
+async def start_single_workflow(client: Client, order_data: dict = None):
+    if not order_data:
         order_id = f"order-{uuid.uuid4().hex[:8]}"
+        order_data = {
+            "order_id": order_id,
+            "items": [
+                {"sku": "PROD-001", "quantity": 2},
+                {"sku": "PROD-002", "quantity": 1}
+            ],
+            "amount": 199.99
+        }
     
+    order_id = order_data["order_id"]
     logger.info(f"Starting workflow for order: {order_id}")
     
     handle = await client.start_workflow(
         OrderProcessingWorkflow.run,
-        order_id,
+        order_data,
         id=f"order-workflow-{order_id}",
         task_queue=ORDER_PROCESSING_TASK_QUEUE,
     )
@@ -60,13 +66,19 @@ async def start_single_workflow(client: Client, order_id: str = None):
 
 
 async def start_multiple_workflows(client: Client, count: int = 10):
-    """Start multiple workflows to create backlog for KEDA testing."""
     logger.info(f"Starting {count} workflows to create task queue backlog...")
     
     handles = []
     for i in range(count):
         order_id = f"bulk-order-{i:03d}-{uuid.uuid4().hex[:6]}"
-        handle = await start_single_workflow(client, order_id)
+        order_data = {
+            "order_id": order_id,
+            "items": [
+                {"sku": f"PROD-{i%10:03d}", "quantity": (i % 5) + 1}
+            ],
+            "amount": 49.99 + (i * 10.5)
+        }
+        handle = await start_single_workflow(client, order_data)
         handles.append(handle)
     
     logger.info(f"Started {len(handles)} workflows")
@@ -92,7 +104,6 @@ async def wait_for_workflows(handles):
 
 
 async def create_continuous_load(client: Client, interval_seconds: int = 5):
-    """Create continuous workflow submissions for sustained load testing."""
     logger.info(f"Starting continuous load generation (interval: {interval_seconds}s)")
     logger.info("Press Ctrl+C to stop...")
     
@@ -101,7 +112,14 @@ async def create_continuous_load(client: Client, interval_seconds: int = 5):
         while True:
             counter += 1
             order_id = f"continuous-order-{counter:04d}-{uuid.uuid4().hex[:6]}"
-            await start_single_workflow(client, order_id)
+            order_data = {
+                "order_id": order_id,
+                "items": [
+                    {"sku": f"PROD-{counter%20:03d}", "quantity": (counter % 3) + 1}
+                ],
+                "amount": 29.99 + (counter % 100)
+            }
+            await start_single_workflow(client, order_data)
             
             if counter % 10 == 0:
                 logger.info(f"Submitted {counter} workflows so far...")
@@ -110,39 +128,6 @@ async def create_continuous_load(client: Client, interval_seconds: int = 5):
             
     except KeyboardInterrupt:
         logger.info(f"Stopped continuous load generation after {counter} workflows")
-
-
-def scraper_default_config() -> dict:
-    return {
-        "seed_urls": os.getenv("SCRAPER_SEED_URLS", "https://example.com").split(","),
-        "max_depth": int(os.getenv("SCRAPER_MAX_DEPTH", "3")),
-        "max_pages": int(os.getenv("SCRAPER_MAX_PAGES", "100")),
-        "batch_size": int(os.getenv("SCRAPER_BATCH_SIZE", "10")),
-        "db_host": os.getenv("DB_HOST", "localhost"),
-        "db_port": int(os.getenv("DB_PORT", "5432")),
-        "db_name": os.getenv("DB_NAME", "scraper_db"),
-        "db_user": os.getenv("DB_USER", "postgres"),
-        "db_pass": os.getenv("DB_PASS", "postgres"),
-        "politeness_delay_ms": int(os.getenv("SCRAPER_POLITENESS_MS", "1000")),
-    }
-
-
-async def start_scraper_workflow(client: Client, config: dict = None):
-    """Start a web scraper workflow."""
-    if config is None:
-        config = scraper_default_config()
-    
-    wf_id = f"scraper-workflow-{uuid.uuid4().hex[:8]}"
-    logger.info(f"Starting web scraper workflow id={wf_id}")
-    logger.info(f"Config: seed_urls={config['seed_urls']}, max_depth={config['max_depth']}, max_pages={config['max_pages']}")
-    
-    handle = await client.start_workflow(
-        WebScraperWorkflow.run,
-        config,
-        id=wf_id,
-        task_queue=WEB_SCRAPER_TASK_QUEUE,
-    )
-    return handle
 
 
 async def main():
@@ -154,19 +139,16 @@ async def main():
     # Parse command line arguments
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  python temporal_client.py single [order_id]")
+        print("  python temporal_client.py single")
         print("  python temporal_client.py bulk [count]")
         print("  python temporal_client.py continuous [interval_seconds]")
-        print("  python temporal_client.py scraper <seed_urls> [max_depth] [max_pages] [batch_size]")
-        print("    Example: python temporal_client.py scraper https://example.com,https://another.com 2 50 5")
         print("  python temporal_client.py wait")
         return
     
     mode = sys.argv[1]
     
     if mode == "single":
-        order_id = sys.argv[2] if len(sys.argv) > 2 else None
-        handle = await start_single_workflow(client, order_id)
+        handle = await start_single_workflow(client)
         result = await handle.result()
         logger.info(f"Final result: {result}")
         
@@ -178,28 +160,6 @@ async def main():
     elif mode == "continuous":
         interval = int(sys.argv[2]) if len(sys.argv) > 2 else 5
         await create_continuous_load(client, interval)
-    
-    elif mode == "scraper":
-        if len(sys.argv) < 3:
-            logger.error("scraper requires seed_urls as argument")
-            logger.info("Usage: python temporal_client.py scraper <seed_urls> [max_depth] [max_pages] [batch_size]")
-            logger.info("Example: python temporal_client.py scraper https://example.com,https://another.com 2 50 5")
-            return
-        
-        seed_urls = sys.argv[2].split(",")
-        max_depth = int(sys.argv[3]) if len(sys.argv) > 3 else 3
-        max_pages = int(sys.argv[4]) if len(sys.argv) > 4 else 100
-        batch_size = int(sys.argv[5]) if len(sys.argv) > 5 else 10
-        
-        config = scraper_default_config()
-        config["seed_urls"] = seed_urls
-        config["max_depth"] = max_depth
-        config["max_pages"] = max_pages
-        config["batch_size"] = batch_size
-        
-        handle = await start_scraper_workflow(client, config)
-        result = await handle.result()
-        logger.info(f"Scraper workflow completed: {result}")
         
     elif mode == "wait":
         logger.info("Client connected successfully. Use other modes to submit workflows.")

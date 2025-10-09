@@ -15,8 +15,7 @@ from temporalio import activity
 from temporalio.common import RetryPolicy
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional
-from dataclasses import dataclass, asdict
+import random
 
 # Load environment variables from .env file (development only)
 if os.path.exists('.env'):
@@ -28,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 # Temporal configuration - will be validated when worker starts
 ORDER_PROCESSING_TASK_QUEUE = "order-processing-queue-v2"
-WEB_SCRAPER_TASK_QUEUE = "web-scraper-queue"
 
 
 def get_temporal_config():
@@ -68,488 +66,214 @@ async def process_order_activity(order_id: str) -> str:
 
 @activity.defn
 async def send_notification_activity(message: str) -> str:
-    """
-    Simple activity that simulates sending a notification.
-    """
     logger.info(f"Sending notification: {message}")
-    
-    # Simulate notification sending
     await asyncio.sleep(1)
-    
     result = f"Notification sent: {message}"
     logger.info(result)
     return result
 
 
-@dataclass
-class ScrapeResult:
-    url: str
-    url_hash: str
-    status_code: Optional[int]
-    title: Optional[str]
-    content_length: int
-    links_found: int
-    depth: int
-    response_time_ms: int
-    error: Optional[str]
-    domain: str
-    extracted_links: List[str]
-
-
-@dataclass
-class ScraperConfig:
-    seed_urls: List[str]
-    max_depth: int
-    max_pages: int
-    batch_size: int
-    db_host: str
-    db_port: int
-    db_name: str
-    db_user: str
-    db_pass: str
-    politeness_delay_ms: int = 1000
-
-
-def get_db_connection(config: ScraperConfig):
-    import psycopg2
-    return psycopg2.connect(
-        host=config.db_host,
-        port=config.db_port,
-        dbname=config.db_name,
-        user=config.db_user,
-        password=config.db_pass
-    )
-
-
-def get_url_hash(url: str) -> str:
-    import hashlib
-    return hashlib.sha256(url.encode('utf-8')).hexdigest()
+@activity.defn
+async def validate_inventory_activity(order_id: str, items: list) -> dict:
+    logger.info(f"Validating inventory for order {order_id}: {items}")
+    await asyncio.sleep(random.uniform(2, 5))
+    
+    all_available = random.random() > 0.1
+    result = {
+        "order_id": order_id,
+        "all_items_available": all_available,
+        "items_checked": len(items)
+    }
+    logger.info(f"Inventory validation result: {result}")
+    return result
 
 
 @activity.defn
-def init_scraper_db(config_dict: dict) -> dict:
-    config = ScraperConfig(**config_dict)
-    conn = get_db_connection(config)
+async def authorize_payment_activity(order_id: str, amount: float) -> dict:
+    logger.info(f"Authorizing payment for order {order_id}: ${amount}")
+    await asyncio.sleep(random.uniform(3, 8))
     
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS scraped_pages (
-                    id SERIAL PRIMARY KEY,
-                    url TEXT NOT NULL,
-                    url_hash VARCHAR(64) NOT NULL,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    status_code INTEGER,
-                    title TEXT,
-                    content_length INTEGER,
-                    links_found INTEGER,
-                    depth INTEGER,
-                    response_time_ms INTEGER,
-                    error TEXT,
-                    domain VARCHAR(255),
-                    UNIQUE(url_hash)
-                )
-            """)
-            
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_url_hash ON scraped_pages(url_hash)
-            """)
-            
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_timestamp ON scraped_pages(timestamp)
-            """)
-            
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS scrape_queue (
-                    id SERIAL PRIMARY KEY,
-                    url TEXT NOT NULL,
-                    url_hash VARCHAR(64) NOT NULL,
-                    depth INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    claimed_at TIMESTAMP,
-                    UNIQUE(url_hash)
-                )
-            """)
-            
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_queue_claimed ON scrape_queue(claimed_at)
-            """)
-            
-            conn.commit()
-            
-        return {"status": "initialized", "timestamp": datetime.now().isoformat()}
-    finally:
-        conn.close()
+    success = random.random() > 0.05
+    result = {
+        "order_id": order_id,
+        "amount": amount,
+        "authorized": success,
+        "transaction_id": f"txn-{random.randint(100000, 999999)}"
+    }
+    logger.info(f"Payment authorization result: {result}")
+    return result
 
 
 @activity.defn
-def enqueue_urls(config_dict: dict, urls: List[dict]) -> dict:
-    import hashlib
+async def reserve_inventory_activity(order_id: str, items: list) -> dict:
+    logger.info(f"Reserving inventory for order {order_id}")
+    await asyncio.sleep(random.uniform(2, 4))
     
-    logger.info(f"Enqueuing {len(urls)} URLs")
-    config = ScraperConfig(**config_dict)
-    conn = get_db_connection(config)
-    
-    try:
-        enqueued = 0
-        with conn.cursor() as cur:
-            for url_info in urls:
-                url = url_info["url"]
-                depth = url_info["depth"]
-                url_hash = get_url_hash(url)
-                
-                try:
-                    cur.execute("""
-                        INSERT INTO scrape_queue (url, url_hash, depth)
-                        VALUES (%s, %s, %s)
-                        ON CONFLICT (url_hash) DO NOTHING
-                    """, (url, url_hash, depth))
-                    
-                    if cur.rowcount > 0:
-                        enqueued += 1
-                        logger.info(f"Enqueued: {url}")
-                except Exception as e:
-                    logger.error(f"Error enqueuing {url}: {e}")
-            
-            conn.commit()
-        
-        logger.info(f"Enqueued {enqueued}/{len(urls)} URLs")
-        return {"enqueued": enqueued, "total_attempted": len(urls)}
-    finally:
-        conn.close()
+    result = {
+        "order_id": order_id,
+        "items_reserved": len(items),
+        "reservation_id": f"res-{random.randint(100000, 999999)}"
+    }
+    logger.info(f"Inventory reservation result: {result}")
+    return result
 
 
 @activity.defn
-def fetch_url_batch(config_dict: dict, batch_size: int) -> List[dict]:
-    logger.info(f"Fetching batch of {batch_size} URLs")
-    config = ScraperConfig(**config_dict)
-    conn = get_db_connection(config)
+async def capture_payment_activity(order_id: str, transaction_id: str, amount: float) -> dict:
+    logger.info(f"Capturing payment for order {order_id}, txn: {transaction_id}")
+    await asyncio.sleep(random.uniform(2, 6))
     
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                WITH claimed AS (
-                    SELECT id, url, depth
-                    FROM scrape_queue
-                    WHERE claimed_at IS NULL
-                    ORDER BY depth ASC, created_at ASC
-                    LIMIT %s
-                    FOR UPDATE SKIP LOCKED
-                )
-                UPDATE scrape_queue
-                SET claimed_at = NOW()
-                FROM claimed
-                WHERE scrape_queue.id = claimed.id
-                RETURNING scrape_queue.url, scrape_queue.depth
-            """, (batch_size,))
-            
-            rows = cur.fetchall()
-            conn.commit()
-            
-            result = [{"url": row[0], "depth": row[1]} for row in rows]
-            logger.info(f"Fetched {len(result)} URLs from queue")
-            return result
-    finally:
-        conn.close()
+    result = {
+        "order_id": order_id,
+        "transaction_id": transaction_id,
+        "amount": amount,
+        "captured": True,
+        "receipt_id": f"rec-{random.randint(100000, 999999)}"
+    }
+    logger.info(f"Payment capture result: {result}")
+    return result
 
 
 @activity.defn
-def scrape_url(config_dict: dict, url: str, depth: int) -> dict:
-    import time
-    import requests
-    from urllib.parse import urlparse, urljoin, urldefrag
-    import re
-    import hashlib
+async def prepare_shipment_activity(order_id: str, items: list) -> dict:
+    logger.info(f"Preparing shipment for order {order_id}")
+    await asyncio.sleep(random.uniform(5, 10))
     
-    logger.info(f"Scraping URL: {url} (depth={depth})")
-    config = ScraperConfig(**config_dict)
-    start_time = time.time()
-    
-    result = ScrapeResult(
-        url=url,
-        url_hash=get_url_hash(url),
-        status_code=None,
-        title=None,
-        content_length=0,
-        links_found=0,
-        depth=depth,
-        response_time_ms=0,
-        error=None,
-        domain=urlparse(url).netloc,
-        extracted_links=[]
-    )
-    
-    try:
-        activity.heartbeat({"url": url, "status": "fetching"})
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (compatible; TemporalScraperBot/1.0)'
-        }
-        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
-        
-        response_time = int((time.time() - start_time) * 1000)
-        result.response_time_ms = response_time
-        result.status_code = response.status_code
-        result.content_length = len(response.content)
-        
-        if response.status_code == 200:
-            activity.heartbeat({"url": url, "status": "parsing"})
-            
-            title_match = re.search(r'<title[^>]*>([^<]+)</title>', response.text, re.IGNORECASE)
-            result.title = title_match.group(1).strip() if title_match else None
-            
-            href_pattern = re.compile(r'href=[\'"]?([^\'" >]+)', re.IGNORECASE)
-            links = []
-            
-            for match in href_pattern.finditer(response.text):
-                link = match.group(1)
-                absolute_link = urljoin(response.url, link)
-                absolute_link, _ = urldefrag(absolute_link)
-                
-                if absolute_link.startswith(('http://', 'https://')):
-                    links.append(absolute_link)
-            
-            result.extracted_links = links[:50]
-            result.links_found = len(result.extracted_links)
-    
-    except requests.RequestException as e:
-        result.error = str(e)
-        result.response_time_ms = int((time.time() - start_time) * 1000)
-        logger.error(f"Error scraping {url}: {e}")
-    except Exception as e:
-        result.error = str(e)
-        result.response_time_ms = int((time.time() - start_time) * 1000)
-        logger.error(f"Unexpected error scraping {url}: {e}", exc_info=True)
-    
-    logger.info(f"Scraped {url}: status={result.status_code}, links={result.links_found}, error={result.error}")
-    return asdict(result)
+    result = {
+        "order_id": order_id,
+        "items_packed": len(items),
+        "tracking_number": f"TRK{random.randint(1000000000, 9999999999)}",
+        "estimated_ship_date": "2024-01-15"
+    }
+    logger.info(f"Shipment preparation result: {result}")
+    return result
 
 
 @activity.defn
-def save_scrape_results(config_dict: dict, results: List[dict]) -> dict:
-    logger.info(f"Saving {len(results)} scrape results")
-    config = ScraperConfig(**config_dict)
-    conn = get_db_connection(config)
+async def update_customer_activity(order_id: str, status: str, details: dict) -> dict:
+    logger.info(f"Updating customer for order {order_id}, status: {status}")
+    await asyncio.sleep(random.uniform(1, 3))
     
-    try:
-        saved = 0
-        new_urls_to_enqueue = []
-        
-        with conn.cursor() as cur:
-            for result_dict in results:
-                result = ScrapeResult(**result_dict)
-                
-                try:
-                    cur.execute("""
-                        INSERT INTO scraped_pages 
-                        (url, url_hash, status_code, title, content_length, links_found, 
-                         depth, response_time_ms, error, domain)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (url_hash) DO NOTHING
-                    """, (
-                        result.url,
-                        result.url_hash,
-                        result.status_code,
-                        result.title,
-                        result.content_length,
-                        result.links_found,
-                        result.depth,
-                        result.response_time_ms,
-                        result.error,
-                        result.domain
-                    ))
-                    
-                    if cur.rowcount > 0:
-                        saved += 1
-                    
-                    cur.execute("""
-                        DELETE FROM scrape_queue WHERE url_hash = %s
-                    """, (result.url_hash,))
-                    
-                    if result.extracted_links and result.depth < config.max_depth:
-                        for link in result.extracted_links:
-                            new_urls_to_enqueue.append({
-                                "url": link,
-                                "depth": result.depth + 1
-                            })
-                
-                except Exception as e:
-                    logger.error(f"Error saving result for {result.url}: {e}")
-            
-            conn.commit()
-        
-        logger.info(f"Saved {saved} results, discovered {len(new_urls_to_enqueue)} new URLs")
-        return {
-            "saved": saved,
-            "new_urls_discovered": len(new_urls_to_enqueue),
-            "new_urls": new_urls_to_enqueue
-        }
-    finally:
-        conn.close()
-
-
-@activity.defn
-def get_scraper_stats(config_dict: dict) -> dict:
-    config = ScraperConfig(**config_dict)
-    conn = get_db_connection(config)
-    
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM scraped_pages")
-            total_scraped = cur.fetchone()[0]
-            
-            cur.execute("SELECT COUNT(*) FROM scrape_queue WHERE claimed_at IS NULL")
-            queue_size = cur.fetchone()[0]
-            
-            cur.execute("""
-                SELECT domain, COUNT(*) as count 
-                FROM scraped_pages 
-                GROUP BY domain 
-                ORDER BY count DESC 
-                LIMIT 5
-            """)
-            top_domains = [{"domain": row[0], "count": row[1]} for row in cur.fetchall()]
-            
-            cur.execute("SELECT AVG(response_time_ms) FROM scraped_pages WHERE response_time_ms > 0")
-            avg_response_time = cur.fetchone()[0] or 0
-        
-        return {
-            "total_scraped": total_scraped,
-            "queue_size": queue_size,
-            "top_domains": top_domains,
-            "avg_response_time_ms": round(float(avg_response_time), 2)
-        }
-    finally:
-        conn.close()
-
-
-@workflow.defn
-class WebScraperWorkflow:
-    
-    @workflow.run
-    async def run(self, config_dict: dict) -> dict:
-        config = ScraperConfig(**config_dict)
-        
-        seed_urls = [{"url": url, "depth": 0} for url in config.seed_urls]
-        await workflow.execute_activity(
-            enqueue_urls,
-            config_dict,
-            seed_urls,
-            start_to_close_timeout=timedelta(seconds=30),
-            task_queue=workflow.info().task_queue
-        )
-        
-        total_scraped = 0
-        batch_num = 0
-        
-        while total_scraped < config.max_pages:
-            batch_num += 1
-            workflow.logger.info(f"Processing batch {batch_num}")
-            
-            url_batch = await workflow.execute_activity(
-                fetch_url_batch,
-            config_dict,
-            config.batch_size,
-            start_to_close_timeout=timedelta(seconds=30),
-            task_queue=workflow.info().task_queue
-            )
-            
-            if not url_batch:
-                workflow.logger.info("No more URLs to scrape")
-                break
-            
-            scrape_tasks = []
-            for url_info in url_batch:
-                task = workflow.execute_activity(
-                    scrape_url,
-                    config_dict,
-                    url_info["url"],
-                    url_info["depth"],
-                    start_to_close_timeout=timedelta(seconds=30),
-                    heartbeat_timeout=timedelta(seconds=15),
-                    retry_policy=RetryPolicy(
-                        initial_interval=timedelta(seconds=2),
-                        maximum_interval=timedelta(seconds=30),
-                        maximum_attempts=3,
-                    ),
-                    task_queue=workflow.info().task_queue
-                )
-                scrape_tasks.append(task)
-                
-                await workflow.asyncio.sleep(config.politeness_delay_ms / 1000.0)
-            
-            scrape_results = await workflow.asyncio.gather(*scrape_tasks, return_exceptions=True)
-            
-            valid_results = [r for r in scrape_results if not isinstance(r, Exception)]
-            
-            if valid_results:
-                save_result = await workflow.execute_activity(
-                    save_scrape_results,
-                    config_dict,
-                    valid_results,
-                    start_to_close_timeout=timedelta(seconds=60),
-                    task_queue=workflow.info().task_queue
-                )
-                
-                if save_result["new_urls"]:
-                    await workflow.execute_activity(
-                        enqueue_urls,
-                        config_dict,
-                        save_result["new_urls"],
-                        start_to_close_timeout=timedelta(seconds=30),
-                        task_queue=workflow.info().task_queue
-                    )
-                
-                total_scraped += len(valid_results)
-            
-            if batch_num % 5 == 0:
-                stats = await workflow.execute_activity(
-                    get_scraper_stats,
-                    config_dict,
-                    start_to_close_timeout=timedelta(seconds=10),
-                    task_queue=workflow.info().task_queue
-                )
-                workflow.logger.info(f"Stats: {stats}")
-        
-        final_stats = await workflow.execute_activity(
-            get_scraper_stats,
-            config_dict,
-            start_to_close_timeout=timedelta(seconds=10),
-            task_queue=workflow.info().task_queue
-        )
-        
-        return {
-            "status": "completed",
-            "batches_processed": batch_num,
-            "total_scraped": total_scraped,
-            "final_stats": final_stats
-        }
+    result = {
+        "order_id": order_id,
+        "status": status,
+        "customer_notified": True,
+        "notification_channels": ["email", "sms"]
+    }
+    logger.info(f"Customer update result: {result}")
+    return result
 
 
 @workflow.defn
 class OrderProcessingWorkflow:
-    """
-    Simple workflow that processes orders and sends notifications.
-    """
 
     @workflow.run
-    async def run(self, order_id: str) -> str:
+    async def run(self, order_data: dict) -> dict:
+        order_id = order_data.get("order_id")
+        items = order_data.get("items", [])
+        amount = order_data.get("amount", 0.0)
+        
         workflow.logger.info(f"Starting order processing workflow for order: {order_id}")
-
-        order_result = await workflow.execute_activity(
-            process_order_activity,
+        
+        inventory_result = await workflow.execute_activity(
+            validate_inventory_activity,
             order_id,
+            items,
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=RetryPolicy(
+                initial_interval=timedelta(seconds=1),
+                maximum_interval=timedelta(seconds=10),
+                maximum_attempts=3,
+            ),
+        )
+        
+        if not inventory_result["all_items_available"]:
+            await workflow.execute_activity(
+                update_customer_activity,
+                order_id,
+                "inventory_unavailable",
+                {"reason": "Some items are out of stock"},
+                start_to_close_timeout=timedelta(seconds=30)
+            )
+            return {
+                "order_id": order_id,
+                "status": "failed",
+                "reason": "inventory_unavailable"
+            }
+        
+        payment_auth = await workflow.execute_activity(
+            authorize_payment_activity,
+            order_id,
+            amount,
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=RetryPolicy(
+                initial_interval=timedelta(seconds=1),
+                maximum_interval=timedelta(seconds=10),
+                maximum_attempts=3,
+            ),
+        )
+        
+        if not payment_auth["authorized"]:
+            await workflow.execute_activity(
+                update_customer_activity,
+                order_id,
+                "payment_failed",
+                {"reason": "Payment authorization failed"},
+                start_to_close_timeout=timedelta(seconds=30)
+            )
+            return {
+                "order_id": order_id,
+                "status": "failed",
+                "reason": "payment_authorization_failed"
+            }
+        
+        reservation = await workflow.execute_activity(
+            reserve_inventory_activity,
+            order_id,
+            items,
             start_to_close_timeout=timedelta(seconds=30)
         )
-
-        notification_result = await workflow.execute_activity(
-            send_notification_activity,
-            f"Order {order_id} has been processed",
+        
+        payment_capture = await workflow.execute_activity(
+            capture_payment_activity,
+            order_id,
+            payment_auth["transaction_id"],
+            amount,
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=RetryPolicy(
+                initial_interval=timedelta(seconds=1),
+                maximum_interval=timedelta(seconds=10),
+                maximum_attempts=5,
+            ),
+        )
+        
+        shipment = await workflow.execute_activity(
+            prepare_shipment_activity,
+            order_id,
+            items,
+            start_to_close_timeout=timedelta(seconds=60)
+        )
+        
+        await workflow.execute_activity(
+            update_customer_activity,
+            order_id,
+            "order_confirmed",
+            {
+                "tracking_number": shipment["tracking_number"],
+                "estimated_ship_date": shipment["estimated_ship_date"]
+            },
             start_to_close_timeout=timedelta(seconds=30)
         )
-
-        final_result = f"Workflow completed: {order_result}, {notification_result}"
-        workflow.logger.info(final_result)
+        
+        final_result = {
+            "order_id": order_id,
+            "status": "completed",
+            "payment": payment_capture,
+            "shipment": shipment,
+            "reservation": reservation
+        }
+        
+        workflow.logger.info(f"Order processing completed: {final_result}")
         return final_result
 
 
@@ -576,115 +300,26 @@ async def create_worker():
         task_queue=ORDER_PROCESSING_TASK_QUEUE,
         workflows=[OrderProcessingWorkflow],
         activities=[
-            process_order_activity, 
-            send_notification_activity
-        ],
-        activity_executor=ThreadPoolExecutor(max_workers=activity_threads),
-    )
-    
-    scraper_worker = Worker(
-        client,
-        task_queue=WEB_SCRAPER_TASK_QUEUE,
-        workflows=[WebScraperWorkflow],
-        activities=[
-            init_scraper_db,
-            enqueue_urls,
-            fetch_url_batch,
-            scrape_url,
-            save_scrape_results,
-            get_scraper_stats
+            process_order_activity,
+            send_notification_activity,
+            validate_inventory_activity,
+            authorize_payment_activity,
+            reserve_inventory_activity,
+            capture_payment_activity,
+            prepare_shipment_activity,
+            update_customer_activity
         ],
         activity_executor=ThreadPoolExecutor(max_workers=activity_threads),
     )
 
     logger.info(f"Order processing worker created on task queue: {ORDER_PROCESSING_TASK_QUEUE}")
-    logger.info(f"Web scraper worker created on task queue: {WEB_SCRAPER_TASK_QUEUE}")
-    return [order_worker, scraper_worker]
-
-
-def initialize_scraper_db():
-    """Initialize scraper database tables on worker startup."""
-    import psycopg2
-    
-    db_host = os.getenv("DB_HOST")
-    db_port = os.getenv("DB_PORT", "5432")
-    db_name = os.getenv("DB_NAME")
-    db_user = os.getenv("DB_USER")
-    db_pass = os.getenv("DB_PASS")
-    
-    if not all([db_host, db_name, db_user, db_pass]):
-        logger.warning("Scraper DB env vars not set, skipping DB initialization")
-        return
-    
-    try:
-        conn = psycopg2.connect(
-            host=db_host,
-            port=db_port,
-            dbname=db_name,
-            user=db_user,
-            password=db_pass
-        )
-        
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS scraped_pages (
-                    id SERIAL PRIMARY KEY,
-                    url TEXT NOT NULL,
-                    url_hash VARCHAR(64) NOT NULL,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    status_code INTEGER,
-                    title TEXT,
-                    content_length INTEGER,
-                    links_found INTEGER,
-                    depth INTEGER,
-                    response_time_ms INTEGER,
-                    error TEXT,
-                    domain VARCHAR(255),
-                    UNIQUE(url_hash)
-                )
-            """)
-            
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_url_hash ON scraped_pages(url_hash)
-            """)
-            
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_timestamp ON scraped_pages(timestamp)
-            """)
-            
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS scrape_queue (
-                    id SERIAL PRIMARY KEY,
-                    url TEXT NOT NULL,
-                    url_hash VARCHAR(64) NOT NULL,
-                    depth INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    claimed_at TIMESTAMP,
-                    UNIQUE(url_hash)
-                )
-            """)
-            
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_queue_claimed ON scrape_queue(claimed_at)
-            """)
-            
-            conn.commit()
-        
-        conn.close()
-        logger.info("Scraper database initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize scraper database: {e}")
+    return [order_worker]
 
 
 async def main():
-    """
-    Main function to start the Temporal worker.
-    """
     logger.info("Starting Temporal worker...")
     
     try:
-        initialize_scraper_db()
-        
         workers = await create_worker()
         logger.info("Workers started and listening...")
         
