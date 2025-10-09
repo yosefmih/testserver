@@ -164,6 +164,33 @@ async def update_customer_activity(order_id: str, status: str, details: dict) ->
     return result
 
 
+@activity.defn
+def generate_invoice_activity(order_id: str, items: list, amount: float) -> dict:
+    import hashlib
+    import time
+    
+    logger.info(f"Generating invoice for order {order_id}")
+    
+    start_time = time.time()
+    invoice_data = f"{order_id}-{amount}-{len(items)}"
+    
+    result_hash = invoice_data
+    for _ in range(100000):
+        result_hash = hashlib.sha256(result_hash.encode()).hexdigest()
+    
+    computation_time = time.time() - start_time
+    
+    result = {
+        "order_id": order_id,
+        "invoice_number": f"INV-{result_hash[:12].upper()}",
+        "amount": amount,
+        "items_count": len(items),
+        "computation_time_ms": int(computation_time * 1000)
+    }
+    logger.info(f"Invoice generated: {result['invoice_number']} (took {result['computation_time_ms']}ms)")
+    return result
+
+
 @workflow.defn
 class OrderProcessingWorkflow:
 
@@ -254,13 +281,22 @@ class OrderProcessingWorkflow:
             start_to_close_timeout=timedelta(seconds=60)
         )
         
+        invoice = await workflow.execute_activity(
+            generate_invoice_activity,
+            order_id,
+            items,
+            amount,
+            start_to_close_timeout=timedelta(seconds=30)
+        )
+        
         await workflow.execute_activity(
             update_customer_activity,
             order_id,
             "order_confirmed",
             {
                 "tracking_number": shipment["tracking_number"],
-                "estimated_ship_date": shipment["estimated_ship_date"]
+                "estimated_ship_date": shipment["estimated_ship_date"],
+                "invoice_number": invoice["invoice_number"]
             },
             start_to_close_timeout=timedelta(seconds=30)
         )
@@ -270,7 +306,8 @@ class OrderProcessingWorkflow:
             "status": "completed",
             "payment": payment_capture,
             "shipment": shipment,
-            "reservation": reservation
+            "reservation": reservation,
+            "invoice": invoice
         }
         
         workflow.logger.info(f"Order processing completed: {final_result}")
@@ -293,7 +330,7 @@ async def create_worker():
         tls=True
     )
 
-    activity_threads = int(os.getenv("ACTIVITY_THREADS", "8"))
+    activity_threads = int(os.getenv("ACTIVITY_THREADS", "2"))
     
     order_worker = Worker(
         client,
@@ -307,8 +344,10 @@ async def create_worker():
             reserve_inventory_activity,
             capture_payment_activity,
             prepare_shipment_activity,
-            update_customer_activity
+            update_customer_activity,
+            generate_invoice_activity
         ],
+        max_concurrent_activites=10,
         activity_executor=ThreadPoolExecutor(max_workers=activity_threads),
     )
 
