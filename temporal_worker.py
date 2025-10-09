@@ -347,7 +347,7 @@ async def create_worker():
             update_customer_activity,
             generate_invoice_activity
         ],
-        max_concurrent_activites=10,
+        max_concurrent_activities=10,
         activity_executor=ThreadPoolExecutor(max_workers=activity_threads),
     )
 
