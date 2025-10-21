@@ -1146,7 +1146,7 @@ def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup
     # Get startup_delay from environment if available
     startup_delay = int(os.environ.get('STARTUP_DELAY_SECONDS', startup_delay))
     # Optional: pre-bind init block to simulate full unavailability before ports are listening
-    init_block_seconds = int(os.environ.get('INIT_BLOCK_SECONDS', '15'))
+    init_block_seconds = int(os.environ.get('INIT_BLOCK_SECONDS', '20'))
     
     # Read configuration from environment variables
     handler_class.error_rate_percent = float(os.environ.get('ERROR_RATE_PERCENT', '0'))
