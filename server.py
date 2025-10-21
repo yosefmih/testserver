@@ -1145,12 +1145,19 @@ def _peer_check_loop(peer_url, expected_tag, batch_size=10, period_seconds=30, t
 def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup_delay=10):
     # Get startup_delay from environment if available
     startup_delay = int(os.environ.get('STARTUP_DELAY_SECONDS', startup_delay))
+    # Optional: pre-bind init block to simulate full unavailability before ports are listening
+    init_block_seconds = int(os.environ.get('INIT_BLOCK_SECONDS', '15'))
     
     # Read configuration from environment variables
     handler_class.error_rate_percent = float(os.environ.get('ERROR_RATE_PERCENT', '0'))
     handler_class.latency_injection_ms = float(os.environ.get('LATENCY_INJECTION_MS', '0'))
     handler_class.trace_propagation = os.environ.get('TRACE_PROPAGATION', 'true').lower() == 'true'
     
+    # If an init block is defined, perform it before starting any servers
+    if init_block_seconds > 0:
+        logger.info(f"Init block enabled: sleeping {init_block_seconds} seconds before starting servers")
+        time.sleep(init_block_seconds)
+
     # Start preparation in a separate thread
     prep_thread = threading.Thread(
         target=handler_class.prepare_server,
