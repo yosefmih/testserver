@@ -12,6 +12,7 @@ import os
 import traceback
 import subprocess
 import shutil
+import multiprocessing
 from urllib.parse import urlparse, parse_qs
 import decimal
 import math
@@ -113,6 +114,70 @@ if RUNNING_IN_MESH:
     logger.info("🔗 Server detected it's running in a Linkerd mesh")
 else:
     logger.info("🔗 Server is NOT running in a Linkerd mesh")
+
+def _burn_float(duration_seconds):
+    end_time = time.time() + duration_seconds
+    accumulator = 0.0001
+    # Tight floating-point loop to keep a CPU core busy
+    while time.time() < end_time:
+        accumulator = math.sqrt(accumulator * accumulator + 1.2345)
+
+def _is_prime(n):
+    if n <= 1:
+        return False
+    if n <= 3:
+        return True
+    if n % 2 == 0 or n % 3 == 0:
+        return False
+    i = 5
+    # Check divisibility by numbers of the form 6k ± 1
+    while i * i <= n:
+        if n % i == 0 or n % (i + 2) == 0:
+            return False
+        i += 6
+    return True
+
+def _burn_primes(duration_seconds):
+    end_time = time.time() + duration_seconds
+    candidate = 10_000_019
+    while time.time() < end_time:
+        _is_prime(candidate)
+        candidate += 1
+
+def _worker_burn(duration_seconds, algo):
+    if str(algo).lower() == 'primes':
+        _burn_primes(duration_seconds)
+    else:
+        _burn_float(duration_seconds)
+
+def run_cpu_burn(duration_seconds: int, cores: int, algo: str) -> None:
+    """Run a CPU burn for the given duration across the requested number of cores.
+
+    Blocking call: returns only after the burn completes.
+    """
+    duration_seconds = max(1, int(duration_seconds))
+    try:
+        max_cores = os.cpu_count() or 1
+    except Exception:
+        max_cores = 1
+    cores = max(1, int(cores))
+    if cores > max_cores:
+        cores = max_cores
+
+    # If a single core is requested, do the burn in-process to maximize blocking
+    if cores == 1:
+        _worker_burn(duration_seconds, algo)
+        return
+
+    # Otherwise, spawn multiple processes to utilize more CPU cores
+    processes = []
+    for _ in range(cores):
+        proc = multiprocessing.Process(target=_worker_burn, args=(duration_seconds, algo))
+        proc.start()
+        processes.append(proc)
+
+    for proc in processes:
+        proc.join()
 
 class MetricsCollector:
     def __init__(self):
@@ -595,6 +660,40 @@ class SimpleHandler(BaseHTTPRequestHandler):
             })
             self.log_request_info(status_code, time.time() - start_time)
             # Explicitly return after handling /pi to prevent falling through
+            return
+
+        elif self.path.startswith('/cpu-burn'):
+            parsed = urlparse(self.path)
+            query_params = parse_qs(parsed.query)
+            duration_param = query_params.get('duration', ["30"])[0]
+            cores_param = query_params.get('cores', [str(os.cpu_count() or 1)])[0]
+            algo_param = query_params.get('algo', ["float"])[0]
+
+            try:
+                duration = int(duration_param)
+                cores = int(cores_param)
+                if duration <= 0 or cores <= 0:
+                    raise ValueError()
+            except Exception:
+                status_code = self.send_json_response(400, {
+                    'status': 'error',
+                    'message': 'Invalid parameters: duration and cores must be positive integers'
+                })
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+
+            logger.info(f"[CPU-BURN] starting duration={duration}s cores={cores} algo={algo_param}")
+            run_cpu_burn(duration, cores, algo_param)
+            logger.info(f"[CPU-BURN] finished duration={duration}s cores={cores} algo={algo_param}")
+
+            status_code = self.send_json_response(200, {
+                'status': 'completed',
+                'duration_seconds': duration,
+                'cores': min(cores, os.cpu_count() or 1),
+                'algo': algo_param,
+                'hostname': HOSTNAME
+            })
+            self.log_request_info(status_code, time.time() - start_time)
             return
 
         elif self.path.startswith('/run/'):
