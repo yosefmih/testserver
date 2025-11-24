@@ -24,6 +24,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD python -c "import requests; requests.get('http://localhost:8080/health', timeout=2)" || exit 1
 
-# Run server
-CMD ["python", "server.py"]
+# Run server with uvicorn
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
 

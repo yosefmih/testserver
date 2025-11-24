@@ -17,11 +17,12 @@ echo "Checking dependencies..."
 pip install -q -r requirements.txt
 
 # Start server
-echo "Starting Amharic Scraper Service..."
+echo "Starting Amharic Scraper Service with uvicorn..."
 echo "Server will be available at http://${SERVER_HOST:-0.0.0.0}:${SERVER_PORT:-8080}"
+echo "API docs will be available at http://${SERVER_HOST:-0.0.0.0}:${SERVER_PORT:-8080}/docs"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
-python3 server.py
+uvicorn server:app --host ${SERVER_HOST:-0.0.0.0} --port ${SERVER_PORT:-8080} --reload
 

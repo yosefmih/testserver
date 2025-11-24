@@ -4,7 +4,7 @@
 
 A complete **production-ready web scraping service** that:
 
-✅ **RESTful API Server** - Flask-based HTTP server for job management  
+✅ **RESTful API Server** - FastAPI-based async HTTP server with automatic docs  
 ✅ **Job Queue System** - Background workers process multiple scraping jobs concurrently  
 ✅ **Amharic Text Detection** - Automatic filtering using Unicode Ethiopic script detection  
 ✅ **S3 Storage** - Saves scraped text to AWS S3 with metadata  
@@ -22,7 +22,7 @@ A complete **production-ready web scraping service** that:
        │ HTTP POST /api/scrape
        ↓
 ┌─────────────────────────┐
-│   Flask Server          │
+│   FastAPI + Uvicorn     │
 │   (server.py)           │
 └──────┬──────────────────┘
        │
@@ -63,7 +63,7 @@ A complete **production-ready web scraping service** that:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `server.py` | 195 | Flask HTTP server with REST API endpoints |
+| `server.py` | ~210 | FastAPI HTTP server with REST API endpoints |
 | `scraper_engine.py` | 308 | Main scraping logic with BFS traversal |
 | `job_manager.py` | 123 | Job lifecycle management |
 | `worker.py` | 134 | Background worker pool for async processing |
@@ -193,8 +193,13 @@ DEFAULT_AMHARIC_THRESHOLD=0.3
 ### 1. Start Server
 ```bash
 cd testserver/scraper
-python3 server.py
+uvicorn server:app --host 0.0.0.0 --port 8080
+
+# Or use the run script
+./run.sh
 ```
+
+Access interactive API docs at http://localhost:8080/docs
 
 ### 2. Create Job
 ```bash
@@ -240,7 +245,8 @@ Response:
 ## Dependencies
 
 ```
-Flask==3.0.2          # Web framework
+fastapi==0.104.1       # Modern async web framework
+uvicorn[standard]==0.24.0  # ASGI server
 boto3==1.35.1         # AWS SDK
 requests==2.31.0      # HTTP client
 beautifulsoup4==4.12.2 # HTML parsing
@@ -250,12 +256,14 @@ python-dotenv==1.0.1  # Environment variables
 
 ## What Makes This Special
 
-1. **Server-Based Design** - Not a CLI tool, fully API-driven
-2. **Job Management** - Track multiple scraping sessions with unique IDs
-3. **S3 Metadata** - Serverless state storage using single JSON file
-4. **Amharic Focus** - Purpose-built for Ethiopic script detection
-5. **Production Ready** - Error handling, logging, concurrent processing
-6. **Scalable** - Can run multiple instances with shared S3 state
+1. **FastAPI/Uvicorn** - Modern async framework with automatic OpenAPI docs
+2. **Server-Based Design** - Not a CLI tool, fully API-driven
+3. **Job Management** - Track multiple scraping sessions with unique IDs
+4. **S3 Metadata** - Serverless state storage using single JSON file
+5. **Amharic Focus** - Purpose-built for Ethiopic script detection
+6. **EKS Pod Identity** - Secure S3 access without access keys
+7. **Production Ready** - Error handling, logging, concurrent processing
+8. **Scalable** - Can run multiple instances with shared S3 state
 
 ## Testing
 

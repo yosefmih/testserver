@@ -4,7 +4,7 @@ A RESTful web scraping service that crawls websites and extracts Amharic text co
 
 ## Features
 
-- 🌐 **HTTP API** - Submit scraping jobs via REST API
+- 🌐 **FastAPI Server** - Modern async REST API with automatic OpenAPI docs
 - 📊 **Job Tracking** - Monitor job progress and status
 - 🔤 **Amharic Detection** - Automatically detects and filters Amharic text using Unicode Ethiopic script
 - ☁️ **S3 Storage** - Saves scraped text to AWS S3
@@ -15,7 +15,7 @@ A RESTful web scraping service that crawls websites and extracts Amharic text co
 ## Architecture
 
 ```
-Client → Flask Server → Job Manager → Worker Pool → Scraper Engine
+Client → FastAPI/Uvicorn → Job Manager → Worker Pool → Scraper Engine
                           ↓                            ↓
                     S3 Metadata Store            S3 Text Storage
 ```
@@ -86,10 +86,18 @@ Optional configuration:
 ### Starting the Server
 
 ```bash
-python server.py
+# Using uvicorn directly
+uvicorn server:app --host 0.0.0.0 --port 8080
+
+# Or use the convenience script
+./run.sh
 ```
 
 The server will start on `http://localhost:8080` by default.
+
+**Bonus:** FastAPI provides automatic interactive API documentation:
+- **Swagger UI**: http://localhost:8080/docs
+- **ReDoc**: http://localhost:8080/redoc
 
 ### API Endpoints
 
@@ -248,7 +256,7 @@ Text is saved only if the percentage of Amharic characters exceeds the threshold
 
 ```
 scraper/
-├── server.py              # Flask HTTP server
+├── server.py              # FastAPI HTTP server
 ├── job_manager.py         # Job lifecycle management
 ├── worker.py              # Background worker pool
 ├── scraper_engine.py      # Core scraping logic

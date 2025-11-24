@@ -70,17 +70,26 @@ Make sure your S3 bucket exists and your AWS credentials have the following perm
 
 ### 4. Start the Server
 
-**Option A: Using the run script**
+**Option A: Using the run script (with hot reload)**
 ```bash
 ./run.sh
 ```
 
-**Option B: Direct Python**
+**Option B: Using uvicorn directly**
 ```bash
-python3 server.py
+uvicorn server:app --host 0.0.0.0 --port 8080
+```
+
+**Option C: For production**
+```bash
+uvicorn server:app --host 0.0.0.0 --port 8080 --workers 4
 ```
 
 The server will start on `http://localhost:8080`
+
+**Interactive API Docs:**
+- Swagger UI: http://localhost:8080/docs
+- ReDoc: http://localhost:8080/redoc
 
 ### 5. Test the API
 
