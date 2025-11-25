@@ -5,6 +5,7 @@
 A complete **production-ready web scraping service** that:
 
 ✅ **RESTful API Server** - FastAPI-based async HTTP server with automatic docs  
+✅ **Web Frontend** - Modern single-page UI for job submission and progress tracking  
 ✅ **Job Queue System** - Background workers process multiple scraping jobs concurrently  
 ✅ **Amharic Text Detection** - Automatic filtering using Unicode Ethiopic script detection  
 ✅ **S3 Storage** - Saves scraped text to AWS S3 with metadata  

@@ -95,9 +95,10 @@ uvicorn server:app --host 0.0.0.0 --port 8080
 
 The server will start on `http://localhost:8080` by default.
 
-**Bonus:** FastAPI provides automatic interactive API documentation:
-- **Swagger UI**: http://localhost:8080/docs
-- **ReDoc**: http://localhost:8080/redoc
+**Access Points:**
+- **Web UI**: http://localhost:8080/ (interactive frontend)
+- **Swagger UI**: http://localhost:8080/docs (API documentation)
+- **ReDoc**: http://localhost:8080/redoc (alternative API docs)
 
 ### API Endpoints
 

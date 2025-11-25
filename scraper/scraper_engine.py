@@ -84,9 +84,17 @@ class ScraperEngine:
             Final statistics dictionary
         """
         self.start_time = time.time()
+        logger.info("=" * 60)
         logger.info(f"Starting scraper for job {self.job_id}")
         logger.info(f"Seed URLs: {self.seed_urls}")
-        logger.info(f"Max depth: {self.max_depth}, Max pages: {self.max_pages}")
+        logger.info(f"Configuration:")
+        logger.info(f"  Max depth: {self.max_depth}")
+        logger.info(f"  Max pages: {self.max_pages}")
+        logger.info(f"  Rate limit: {self.rate_limit}s")
+        logger.info(f"  Timeout: {self.timeout}s")
+        logger.info(f"  Same domain only: {self.same_domain_only}")
+        logger.info(f"  Amharic threshold: {self.amharic_threshold * 100}%")
+        logger.info("=" * 60)
         
         try:
             while self.url_queue and self.pages_scraped < self.max_pages:
@@ -108,10 +116,17 @@ class ScraperEngine:
                 if self.progress_callback:
                     self.progress_callback(self._get_progress())
                 
+                # Log progress every 10 pages
+                if self.pages_scraped % 10 == 0:
+                    logger.info(f"Job {self.job_id} progress: {self.pages_scraped} pages scraped, {self.pages_amharic} Amharic, {len(self.url_queue)} in queue")
+                
                 # Rate limiting
                 self._rate_limit_delay(url)
             
+            logger.info("=" * 60)
             logger.info(f"Scraping completed for job {self.job_id}")
+            logger.info(f"Final stats: {self.pages_scraped} pages scraped, {self.pages_amharic} Amharic pages saved")
+            logger.info("=" * 60)
             
         except Exception as e:
             logger.error(f"Error during scraping: {e}")

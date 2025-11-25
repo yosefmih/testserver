@@ -7,9 +7,11 @@ A FastAPI-based HTTP server for managing web scraping jobs that extract Amharic 
 
 import logging
 from fastapi import FastAPI, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, validator
 from typing import Dict, List, Optional
+import os
 
 from config import Config
 from job_manager import JobManager
@@ -29,14 +31,27 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Mount static files directory for frontend
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    logger.info(f"Mounted static files from {static_dir}")
+
 # Initialize components
 try:
+    logger.info("=" * 60)
+    logger.info("Initializing Amharic Web Scraper Server")
+    logger.info("=" * 60)
     Config.validate()
     job_manager = JobManager()
     worker_pool = WorkerPool()
+    logger.info("=" * 60)
     logger.info("Server initialized successfully")
+    logger.info("=" * 60)
 except Exception as e:
+    logger.error("=" * 60)
     logger.error(f"Failed to initialize server: {e}")
+    logger.error("=" * 60)
     raise
 
 
@@ -72,12 +87,24 @@ class HealthResponse(BaseModel):
     active_jobs: int
 
 
+@app.get('/', include_in_schema=False)
+async def root():
+    """Serve the frontend UI."""
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    index_file = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    return {"message": "Amharic Web Scraper API", "docs": "/docs"}
+
+
 @app.get('/health', response_model=HealthResponse, tags=["Health"])
 async def health():
     """Health check endpoint."""
+    active_jobs = worker_pool.get_active_job_count()
+    logger.debug(f"Health check: {active_jobs} active jobs")
     return {
         'status': 'healthy',
-        'active_jobs': worker_pool.get_active_job_count()
+        'active_jobs': active_jobs
     }
 
 
@@ -90,21 +117,29 @@ async def create_scrape_job(request: ScrapeRequest):
     - **config**: Optional configuration parameters
     """
     try:
+        logger.info(f"Received scrape request with {len(request.seed_urls)} seed URL(s)")
+        logger.debug(f"Seed URLs: {request.seed_urls}")
+        
         # Convert Pydantic model to dict
         config = request.config.dict() if request.config else {}
+        logger.debug(f"Job config: {config}")
         
         # Create job
         job_id = job_manager.create_job(request.seed_urls, config)
+        logger.info(f"Created job {job_id}")
         
         # Submit to worker pool
         success = worker_pool.submit_job(job_id, request.seed_urls, config)
         
         if not success:
+            logger.warning(f"Failed to submit job {job_id} to worker pool - pool is full")
             job_manager.update_job_status(job_id, 'failed', 'Failed to submit to worker pool')
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail='Worker pool is full'
             )
+        
+        logger.info(f"Job {job_id} submitted to worker pool successfully")
         
         # Get job info
         job = job_manager.get_job(job_id)
@@ -133,14 +168,17 @@ async def get_job_status(job_id: str):
     Returns job metadata including status, progress, and statistics.
     """
     try:
+        logger.debug(f"Retrieving status for job {job_id}")
         job = job_manager.get_job(job_id)
         
         if not job:
+            logger.warning(f"Job {job_id} not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail='Job not found'
             )
         
+        logger.debug(f"Job {job_id} status: {job.get('status', 'unknown')}")
         return job
         
     except HTTPException:
@@ -186,9 +224,11 @@ async def cancel_job(job_id: str):
     Note: Currently running jobs will complete their current page before stopping.
     """
     try:
+        logger.info(f"Cancellation requested for job {job_id}")
         job = job_manager.get_job(job_id)
         
         if not job:
+            logger.warning(f"Cannot cancel job {job_id} - not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail='Job not found'
@@ -198,11 +238,13 @@ async def cancel_job(job_id: str):
         success = job_manager.delete_job(job_id)
         
         if not success:
+            logger.error(f"Failed to cancel job {job_id}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail='Failed to cancel job'
             )
         
+        logger.info(f"Job {job_id} cancelled successfully")
         return {
             'job_id': job_id,
             'status': 'cancelled'
@@ -218,10 +260,22 @@ async def cancel_job(job_id: str):
         )
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Log startup information."""
+    logger.info("=" * 60)
+    logger.info("Amharic Web Scraper API Started")
+    logger.info(f"API Documentation: http://{Config.SERVER_HOST}:{Config.SERVER_PORT}/docs")
+    logger.info(f"ReDoc: http://{Config.SERVER_HOST}:{Config.SERVER_PORT}/redoc")
+    logger.info("=" * 60)
+
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown."""
+    logger.info("=" * 60)
     logger.info("Shutting down server")
+    logger.info("=" * 60)
     worker_pool.shutdown(wait=False)
 
 

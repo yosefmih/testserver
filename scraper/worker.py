@@ -73,11 +73,15 @@ class WorkerPool:
             seed_urls: List of starting URLs
             config: Job configuration
         """
-        logger.info(f"Starting processing of job {job_id}")
+        logger.info("=" * 60)
+        logger.info(f"Worker starting processing of job {job_id}")
+        logger.info(f"Seed URLs: {len(seed_urls)}")
+        logger.info("=" * 60)
         
         try:
             # Update status to running
             self.job_manager.update_job_status(job_id, 'running')
+            logger.info(f"Job {job_id} status updated to 'running'")
             
             # Create progress callback
             def progress_callback(progress: Dict):
@@ -103,10 +107,15 @@ class WorkerPool:
             self.job_manager.update_job_progress(job_id, scraper._get_progress(), final_stats)
             self.job_manager.update_job_status(job_id, 'completed')
             
-            logger.info(f"Completed job {job_id}: {final_stats}")
+            logger.info("=" * 60)
+            logger.info(f"Job {job_id} completed successfully")
+            logger.info(f"Final statistics: {final_stats}")
+            logger.info("=" * 60)
             
         except Exception as e:
-            logger.error(f"Error processing job {job_id}: {e}")
+            logger.error("=" * 60)
+            logger.error(f"Error processing job {job_id}: {e}", exc_info=True)
+            logger.error("=" * 60)
             self.job_manager.update_job_status(job_id, 'failed', error=str(e))
     
     def _cleanup_job(self, job_id: str):
