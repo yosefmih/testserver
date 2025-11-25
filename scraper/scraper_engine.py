@@ -142,8 +142,13 @@ class ScraperEngine:
             logger.info(f"Final stats: {self.pages_scraped} pages scraped, {self.pages_amharic} Amharic pages saved")
             logger.info("=" * 60)
             
+            # Delete checkpoint on successful completion
+            self._delete_checkpoint()
+            
         except Exception as e:
             logger.error(f"Error during scraping: {e}")
+            # Save checkpoint before failing so we can resume
+            self._save_checkpoint()
             raise
         
         return self._get_final_stats()
@@ -379,4 +384,96 @@ class ScraperEngine:
             'elapsed_seconds': round(elapsed, 2),
             'urls_visited': len(self.visited_urls)
         }
+    
+    def _save_checkpoint(self):
+        """Save current scraping state to S3 for recovery."""
+        try:
+            import json
+            from config import Config
+            
+            checkpoint_data = {
+                'job_id': self.job_id,
+                'timestamp': datetime.utcnow().isoformat(),
+                'pages_scraped': self.pages_scraped,
+                'pages_amharic': self.pages_amharic,
+                'total_bytes': self.total_bytes,
+                'visited_urls': list(self.visited_urls),  # Convert set to list
+                'url_queue': list(self.url_queue),  # Convert deque to list
+            }
+            
+            checkpoint_key = f"{Config.S3_DATA_PREFIX}/{self.job_id}/checkpoint.json"
+            
+            logger.info(f"💾 Saving checkpoint:")
+            logger.info(f"   - Pages scraped: {self.pages_scraped}")
+            logger.info(f"   - Visited URLs: {len(self.visited_urls)}")
+            logger.info(f"   - Queue size: {len(self.url_queue)}")
+            
+            self.s3_storage.s3_client.put_object(
+                Bucket=self.s3_storage.bucket,
+                Key=checkpoint_key,
+                Body=json.dumps(checkpoint_data, indent=2).encode('utf-8'),
+                ContentType='application/json'
+            )
+            
+            logger.info(f"✅ Checkpoint saved to s3://{self.s3_storage.bucket}/{checkpoint_key}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to save checkpoint: {e}", exc_info=True)
+    
+    def _load_checkpoint(self) -> bool:
+        """Load checkpoint from S3 if it exists."""
+        try:
+            import json
+            from config import Config
+            
+            checkpoint_key = f"{Config.S3_DATA_PREFIX}/{self.job_id}/checkpoint.json"
+            
+            logger.info(f"🔍 Looking for checkpoint: s3://{self.s3_storage.bucket}/{checkpoint_key}")
+            
+            response = self.s3_storage.s3_client.get_object(
+                Bucket=self.s3_storage.bucket,
+                Key=checkpoint_key
+            )
+            
+            checkpoint_data = json.loads(response['Body'].read().decode('utf-8'))
+            
+            logger.info(f"✅ Found checkpoint from {checkpoint_data.get('timestamp')}")
+            logger.info(f"   - Pages scraped: {checkpoint_data.get('pages_scraped', 0)}")
+            logger.info(f"   - Visited URLs: {len(checkpoint_data.get('visited_urls', []))}")
+            logger.info(f"   - Queue size: {len(checkpoint_data.get('url_queue', []))}")
+            
+            # Restore state
+            self.pages_scraped = checkpoint_data.get('pages_scraped', 0)
+            self.pages_amharic = checkpoint_data.get('pages_amharic', 0)
+            self.total_bytes = checkpoint_data.get('total_bytes', 0)
+            self.visited_urls = set(checkpoint_data.get('visited_urls', []))
+            self.url_queue = deque(checkpoint_data.get('url_queue', []))
+            self.last_checkpoint = self.pages_scraped
+            
+            logger.info(f"🔄 Resuming from checkpoint - {len(self.url_queue)} URLs in queue")
+            
+            return True
+            
+        except self.s3_storage.s3_client.exceptions.NoSuchKey:
+            logger.info(f"No checkpoint found (first run or completed job)")
+            return False
+        except Exception as e:
+            logger.warning(f"Could not load checkpoint: {e}")
+            return False
+    
+    def _delete_checkpoint(self):
+        """Delete checkpoint after successful completion."""
+        try:
+            from config import Config
+            checkpoint_key = f"{Config.S3_DATA_PREFIX}/{self.job_id}/checkpoint.json"
+            
+            self.s3_storage.s3_client.delete_object(
+                Bucket=self.s3_storage.bucket,
+                Key=checkpoint_key
+            )
+            
+            logger.info(f"🗑️  Deleted checkpoint (job complete)")
+            
+        except Exception as e:
+            logger.debug(f"Could not delete checkpoint: {e}")
 
