@@ -246,12 +246,77 @@ async def cancel_job(job_id: str):
 
 @app.on_event("startup")
 async def startup_event():
-    """Log startup information."""
+    """Log startup information and resume abandoned jobs."""
     logger.info("=" * 60)
     logger.info("Amharic Web Scraper API Started")
     logger.info(f"API Documentation: http://{Config.SERVER_HOST}:{Config.SERVER_PORT}/docs")
     logger.info(f"ReDoc: http://{Config.SERVER_HOST}:{Config.SERVER_PORT}/redoc")
     logger.info("=" * 60)
+    
+    # Resume any jobs that were running when pod was evicted
+    logger.info("🔍 Checking for abandoned jobs to resume...")
+    resume_abandoned_jobs()
+
+
+def resume_abandoned_jobs():
+    """Resume jobs that were running when pod was evicted."""
+    try:
+        # Get all jobs
+        jobs = job_manager.list_jobs(limit=1000)
+        
+        # Find jobs that are stuck in "running" state
+        running_jobs = [j for j in jobs if j.get('status') == 'running']
+        
+        if not running_jobs:
+            logger.info("✅ No abandoned jobs found")
+            return
+        
+        logger.info(f"🔄 Found {len(running_jobs)} jobs in 'running' state - attempting to resume")
+        
+        for job in running_jobs:
+            job_id = job['id']
+            
+            # Check if job is already active in worker pool
+            if worker_pool.is_job_active(job_id):
+                logger.debug(f"Job {job_id} already active, skipping")
+                continue
+            
+            # Check if checkpoint exists
+            from config import Config
+            checkpoint_key = f"{Config.S3_DATA_PREFIX}/{job_id}/checkpoint.json"
+            
+            try:
+                # Quick check if checkpoint exists
+                job_manager.metadata_store.s3_client.head_object(
+                    Bucket=Config.S3_BUCKET,
+                    Key=checkpoint_key
+                )
+                
+                logger.info(f"🔄 Resuming job {job_id[:8]}... from checkpoint")
+                
+                # Re-submit to worker pool
+                success = worker_pool.submit_job(
+                    job_id,
+                    job.get('seed_urls', []),
+                    job.get('config', {})
+                )
+                
+                if success:
+                    logger.info(f"✅ Job {job_id[:8]}... resumed successfully")
+                else:
+                    logger.warning(f"⚠️  Could not resume job {job_id[:8]}... - worker pool full")
+                    
+            except job_manager.metadata_store.s3_client.exceptions.NoSuchKey:
+                # No checkpoint - job might be complete, mark as failed
+                logger.warning(f"⚠️  Job {job_id[:8]}... has no checkpoint, marking as failed")
+                job_manager.update_job_status(job_id, 'failed', 'No checkpoint found after restart')
+            except Exception as e:
+                logger.error(f"❌ Error resuming job {job_id[:8]}...: {e}")
+        
+        logger.info(f"✅ Job resume process complete")
+        
+    except Exception as e:
+        logger.error(f"❌ Error in resume_abandoned_jobs: {e}", exc_info=True)
 
 
 @app.on_event("shutdown")
