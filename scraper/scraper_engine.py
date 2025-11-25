@@ -71,10 +71,19 @@ class ScraperEngine:
         self.amharic_detector = AmharicDetector(threshold=amharic_threshold)
         self.s3_storage = S3Storage()
         
-        # Initialize queue
-        for url in seed_urls:
-            if URLUtils.is_valid_http_url(url):
-                self.url_queue.append((url, 0))
+        # Checkpointing
+        self.checkpoint_interval = 10  # Save checkpoint every N pages
+        self.last_checkpoint = 0
+        
+        # Try to load checkpoint first
+        loaded = self._load_checkpoint()
+        
+        if not loaded:
+            # Initialize queue with seed URLs only if no checkpoint
+            logger.info("No checkpoint found, starting fresh")
+            for url in seed_urls:
+                if URLUtils.is_valid_http_url(url):
+                    self.url_queue.append((url, 0))
     
     def run(self) -> Dict:
         """
@@ -116,6 +125,11 @@ class ScraperEngine:
                 if self.progress_callback:
                     self.progress_callback(self._get_progress())
                 
+                # Save checkpoint periodically
+                if self.pages_scraped - self.last_checkpoint >= self.checkpoint_interval:
+                    self._save_checkpoint()
+                    self.last_checkpoint = self.pages_scraped
+                
                 # Log progress every 10 pages
                 if self.pages_scraped % 10 == 0:
                     logger.info(f"Job {self.job_id} progress: {self.pages_scraped} pages scraped, {self.pages_amharic} Amharic, {len(self.url_queue)} in queue")
@@ -136,17 +150,23 @@ class ScraperEngine:
     
     def _scrape_url(self, url: str, depth: int):
         """Scrape a single URL."""
+        logger.info(f"=" * 80)
+        logger.info(f"🔍 Processing URL [Depth: {depth}]: {url}")
+        
         try:
             # Check robots.txt
+            logger.debug(f"Checking robots.txt for: {url}")
             if not self._can_fetch(url):
-                logger.info(f"Robots.txt disallows: {url}")
+                logger.warning(f"❌ SKIPPED - Robots.txt disallows: {url}")
                 return
+            logger.debug(f"✓ Robots.txt allows fetching")
             
             # Make HTTP request
             headers = {
                 'User-Agent': 'Mozilla/5.0 (compatible; AmharicScraperBot/1.0)'
             }
             
+            logger.debug(f"Making HTTP request to: {url}")
             response = requests.get(
                 url,
                 headers=headers,
@@ -154,61 +174,94 @@ class ScraperEngine:
                 allow_redirects=True
             )
             
+            logger.info(f"HTTP {response.status_code} - Size: {len(response.content)} bytes")
+            
             if response.status_code != 200:
-                logger.warning(f"Non-200 status for {url}: {response.status_code}")
+                logger.warning(f"❌ SKIPPED - Non-200 status for {url}: {response.status_code}")
                 return
             
             # Only process HTML content
             content_type = response.headers.get('Content-Type', '')
+            logger.debug(f"Content-Type: {content_type}")
             if 'text/html' not in content_type.lower():
-                logger.debug(f"Skipping non-HTML content: {url}")
+                logger.warning(f"❌ SKIPPED - Non-HTML content: {url} (type: {content_type})")
                 return
+            
+            logger.info(f"✓ Valid HTML page, extracting text...")
             
             # Extract text
             text = self.text_processor.extract_text(response.text)
             title = self.text_processor.extract_title(response.text)
             
+            logger.info(f"📄 Title: {title[:100] if title else '(no title)'}")
+            logger.info(f"📝 Extracted text length: {len(text)} characters")
+            logger.debug(f"First 200 chars of text: {text[:200]}")
+            
             if not text or len(text) < 100:
-                logger.debug(f"Text too short, skipping: {url}")
+                logger.warning(f"❌ SKIPPED - Text too short ({len(text)} chars): {url}")
                 return
             
             # Check if Amharic
+            logger.info(f"🔍 Detecting Amharic in text...")
             is_amharic, amharic_pct, amharic_stats = self.amharic_detector.detect(text)
+            
+            logger.info(f"📊 Amharic Detection Results:")
+            logger.info(f"   - Total characters: {amharic_stats.get('total_chars', 0)}")
+            logger.info(f"   - Non-whitespace: {amharic_stats.get('non_whitespace', 0)}")
+            logger.info(f"   - Amharic characters: {amharic_stats.get('amharic_chars', 0)}")
+            logger.info(f"   - Amharic percentage: {amharic_pct:.2%}")
+            logger.info(f"   - Threshold: {self.amharic_threshold:.2%}")
+            logger.info(f"   - Is Amharic: {is_amharic}")
             
             self.pages_scraped += 1
             self.total_bytes += len(response.content)
             
-            logger.info(f"Scraped [{self.pages_scraped}]: {url} (Amharic: {amharic_pct:.2%})")
-            
             # Save if Amharic
             if is_amharic:
+                logger.info(f"✅ SAVING - Page meets Amharic threshold!")
                 self._save_text(url, text, title, depth, amharic_pct, amharic_stats)
                 self.pages_amharic += 1
+            else:
+                logger.warning(f"❌ NOT SAVING - Below Amharic threshold ({amharic_pct:.2%} < {self.amharic_threshold:.2%})")
             
             # Extract links for further crawling
             if depth < self.max_depth:
+                logger.info(f"🔗 Extracting links (current depth: {depth}, max: {self.max_depth})...")
                 self._extract_and_queue_links(url, response.text, depth)
+            else:
+                logger.info(f"⚠️  Max depth reached ({depth}), not extracting links")
         
         except requests.RequestException as e:
-            logger.error(f"Request error for {url}: {e}")
+            logger.error(f"❌ REQUEST ERROR for {url}: {type(e).__name__}: {e}")
         except Exception as e:
-            logger.error(f"Error scraping {url}: {e}")
+            logger.error(f"❌ UNEXPECTED ERROR scraping {url}: {type(e).__name__}: {e}", exc_info=True)
     
     def _save_text(self, url: str, text: str, title: str, depth: int, amharic_pct: float, amharic_stats: Dict):
         """Save scraped text to S3."""
         url_hash = URLUtils.get_hash(url)
+        word_count = len(text.split())
+        
+        logger.info(f"💾 Preparing to save to S3:")
+        logger.info(f"   - Job ID: {self.job_id}")
+        logger.info(f"   - URL Hash: {url_hash}")
+        logger.info(f"   - Word count: {word_count}")
+        logger.info(f"   - Text size: {len(text)} bytes")
         
         metadata = {
             'url': url,
             'title': title,
             'timestamp': datetime.utcnow().isoformat(),
             'depth': depth,
-            'word_count': len(text.split()),
+            'word_count': word_count,
             'amharic_percentage': amharic_pct,
             'amharic_chars': amharic_stats.get('amharic_chars', 0)
         }
         
-        self.s3_storage.save_text(self.job_id, url_hash, text, metadata)
+        success = self.s3_storage.save_text(self.job_id, url_hash, text, metadata)
+        if success:
+            logger.info(f"✅ Successfully saved to S3")
+        else:
+            logger.error(f"❌ Failed to save to S3")
     
     def _extract_and_queue_links(self, base_url: str, html: str, current_depth: int):
         """Extract links from HTML and add to queue."""
@@ -216,9 +269,17 @@ class ScraperEngine:
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(html, 'lxml')
             
+            all_links = soup.find_all('a', href=True)
+            logger.info(f"📎 Found {len(all_links)} total <a> tags")
+            
             links_added = 0
-            for tag in soup.find_all('a', href=True):
+            links_skipped_invalid = 0
+            links_skipped_domain = 0
+            links_skipped_visited = 0
+            
+            for tag in all_links:
                 if links_added >= 50:  # Limit links per page
+                    logger.info(f"⚠️  Reached link limit (50), stopping extraction")
                     break
                 
                 href = tag['href']
@@ -226,27 +287,40 @@ class ScraperEngine:
                 
                 # Validate URL
                 if not URLUtils.is_valid_http_url(absolute_url):
+                    links_skipped_invalid += 1
+                    logger.debug(f"Skipped invalid URL: {href}")
                     continue
                 
                 # Check same domain constraint
                 if self.same_domain_only:
                     # Check against all seed URLs
                     if not any(URLUtils.same_domain(absolute_url, seed) for seed in self.seed_urls):
+                        links_skipped_domain += 1
+                        logger.debug(f"Skipped different domain: {absolute_url}")
                         continue
                 
                 # Skip if already visited
                 url_hash = URLUtils.get_hash(absolute_url)
                 if url_hash in self.visited_urls:
+                    links_skipped_visited += 1
+                    logger.debug(f"Skipped already visited: {absolute_url}")
                     continue
                 
                 # Add to queue
                 self.url_queue.append((absolute_url, current_depth + 1))
                 links_added += 1
+                logger.debug(f"✓ Queued: {absolute_url}")
             
-            logger.debug(f"Added {links_added} links from {base_url}")
+            logger.info(f"🔗 Link extraction summary:")
+            logger.info(f"   - Total found: {len(all_links)}")
+            logger.info(f"   - Added to queue: {links_added}")
+            logger.info(f"   - Skipped (invalid): {links_skipped_invalid}")
+            logger.info(f"   - Skipped (different domain): {links_skipped_domain}")
+            logger.info(f"   - Skipped (already visited): {links_skipped_visited}")
+            logger.info(f"   - Current queue size: {len(self.url_queue)}")
             
         except Exception as e:
-            logger.error(f"Error extracting links from {base_url}: {e}")
+            logger.error(f"❌ Error extracting links from {base_url}: {type(e).__name__}: {e}", exc_info=True)
     
     def _can_fetch(self, url: str) -> bool:
         """Check robots.txt for URL."""

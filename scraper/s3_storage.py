@@ -51,6 +51,12 @@ class S3Storage:
             # Generate S3 key
             key = self._generate_key(job_id, url_hash)
             
+            logger.info(f"💾 S3 Upload Details:")
+            logger.info(f"   - Bucket: {self.bucket}")
+            logger.info(f"   - Key: {key}")
+            logger.info(f"   - Size: {len(text.encode('utf-8'))} bytes")
+            logger.info(f"   - URL: {metadata.get('url', 'unknown')[:100]}")
+            
             # Prepare metadata for S3
             s3_metadata = {
                 'url': metadata.get('url', '')[:1024],  # S3 metadata has size limits
@@ -60,8 +66,11 @@ class S3Storage:
                 'depth': str(metadata.get('depth', 0))
             }
             
+            logger.debug(f"S3 metadata: {s3_metadata}")
+            
             # Upload to S3
-            self.s3_client.put_object(
+            logger.info(f"Uploading to S3...")
+            response = self.s3_client.put_object(
                 Bucket=self.bucket,
                 Key=key,
                 Body=text.encode('utf-8'),
@@ -69,11 +78,14 @@ class S3Storage:
                 Metadata=s3_metadata
             )
             
-            logger.info(f"Saved text to S3: {key}")
+            logger.info(f"✅ Successfully saved to S3: {key}")
+            logger.debug(f"S3 Response: ETag={response.get('ETag', 'unknown')}")
             return True
             
         except Exception as e:
-            logger.error(f"Error saving to S3: {e}")
+            logger.error(f"❌ S3 Upload Failed: {type(e).__name__}: {e}", exc_info=True)
+            logger.error(f"   - Bucket: {self.bucket}")
+            logger.error(f"   - Key: {key if 'key' in locals() else 'unknown'}")
             return False
     
     def _generate_key(self, job_id: str, url_hash: str) -> str:

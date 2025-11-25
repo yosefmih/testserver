@@ -20,24 +20,39 @@ class TextProcessor:
         Returns:
             Cleaned text content
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         try:
+            logger.debug(f"Parsing HTML ({len(html_content)} bytes)")
+            
             # Parse HTML
             soup = BeautifulSoup(html_content, 'lxml')
             
             # Remove unwanted tags
+            tags_removed = 0
             for tag in self.REMOVE_TAGS:
-                for element in soup.find_all(tag):
-                    element.decompose()
+                elements = soup.find_all(tag)
+                if elements:
+                    logger.debug(f"Removing {len(elements)} <{tag}> elements")
+                    for element in elements:
+                        element.decompose()
+                    tags_removed += len(elements)
+            
+            logger.debug(f"Removed {tags_removed} unwanted elements")
             
             # Get text
             text = soup.get_text(separator='\n', strip=True)
+            logger.debug(f"Extracted text: {len(text)} characters (before cleaning)")
             
             # Clean up whitespace
             text = self._clean_whitespace(text)
+            logger.debug(f"After whitespace cleanup: {len(text)} characters")
             
             return text
             
         except Exception as e:
+            logger.warning(f"BeautifulSoup parsing failed ({type(e).__name__}), using fallback")
             # Fallback to simple text extraction
             return self._simple_text_extract(html_content)
     
