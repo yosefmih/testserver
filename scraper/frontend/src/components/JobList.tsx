@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { scraperApi } from '../services/api';
 import { JobCard } from './JobCard';
 import { JobModal } from './JobModal';
 import type { Job } from '../types';
 
-export const JobList: React.FC = () => {
+export const JobList = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

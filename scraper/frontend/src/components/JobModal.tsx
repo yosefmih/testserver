@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { scraperApi } from '../services/api';
 import type { Job } from '../types';
 
@@ -7,7 +7,7 @@ interface JobModalProps {
   onClose: () => void;
 }
 
-export const JobModal: React.FC<JobModalProps> = ({ jobId, onClose }) => {
+export const JobModal = ({ jobId, onClose }: JobModalProps) => {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

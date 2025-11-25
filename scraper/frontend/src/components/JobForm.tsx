@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { scraperApi } from '../services/api';
 import type { ScrapeConfig } from '../types';
 
@@ -6,7 +6,7 @@ interface JobFormProps {
   onJobCreated: () => void;
 }
 
-export const JobForm: React.FC<JobFormProps> = ({ onJobCreated }) => {
+export const JobForm = ({ onJobCreated }: JobFormProps) => {
   const [seedUrls, setSeedUrls] = useState('');
   const [config, setConfig] = useState<ScrapeConfig>({
     max_depth: 3,

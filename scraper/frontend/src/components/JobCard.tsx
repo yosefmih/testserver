@@ -1,4 +1,3 @@
-import React from 'react';
 import type { Job } from '../types';
 
 interface JobCardProps {
@@ -6,7 +5,7 @@ interface JobCardProps {
   onClick: () => void;
 }
 
-export const JobCard: React.FC<JobCardProps> = ({ job, onClick }) => {
+export const JobCard = ({ job, onClick }: JobCardProps) => {
   const getStatusClass = (status: string) => {
     switch (status) {
       case 'running': return 'status-running';

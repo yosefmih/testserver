@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { JobForm } from './components/JobForm';
 import { JobList } from './components/JobList';
 import './App.css';
