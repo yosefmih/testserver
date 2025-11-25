@@ -200,10 +200,30 @@ class ScraperEngine:
             
             logger.info(f"📄 Title: {title[:100] if title else '(no title)'}")
             logger.info(f"📝 Extracted text length: {len(text)} characters")
-            logger.debug(f"First 200 chars of text: {text[:200]}")
+            
+            # Show sample of extracted text
+            if text:
+                preview = text[:300].replace('\n', ' ')
+                logger.info(f"📄 Text preview: {preview}...")
+            
+            # Check content quality BEFORE checking text length
+            logger.info(f"🎯 Analyzing page content quality...")
+            is_content_page = self._is_content_page(response.text, text, url)
+            
+            if not is_content_page:
+                logger.warning(f"❌ SKIPPED - Navigation/low-quality page (not article content): {url}")
+                logger.warning(f"   This is normal - we extract links from navigation to find real content")
+                # Still extract links from this page to find content
+                if depth < self.max_depth:
+                    logger.info(f"🔗 Still extracting links from navigation page to discover content...")
+                    self._extract_and_queue_links(url, response.text, depth)
+                return
+            
+            logger.info(f"✅ Page identified as CONTENT - proceeding with quality checks")
             
             if not text or len(text) < 100:
                 logger.warning(f"❌ SKIPPED - Text too short ({len(text)} chars): {url}")
+                logger.debug(f"Full extracted text: {text}")
                 return
             
             # Check if Amharic
@@ -281,10 +301,11 @@ class ScraperEngine:
             links_skipped_invalid = 0
             links_skipped_domain = 0
             links_skipped_visited = 0
+            links_skipped_non_content = 0
             
             for tag in all_links:
-                if links_added >= 50:  # Limit links per page
-                    logger.info(f"⚠️  Reached link limit (50), stopping extraction")
+                if links_added >= 100:  # Increased from 50 for better coverage
+                    logger.info(f"⚠️  Reached link limit (100), stopping extraction")
                     break
                 
                 href = tag['href']
@@ -294,6 +315,12 @@ class ScraperEngine:
                 if not URLUtils.is_valid_http_url(absolute_url):
                     links_skipped_invalid += 1
                     logger.debug(f"Skipped invalid URL: {href}")
+                    continue
+                
+                # Skip obvious non-HTML URLs (images, PDFs, etc.)
+                if self._is_non_html_url(absolute_url):
+                    links_skipped_non_content += 1
+                    logger.debug(f"Skipped non-HTML URL: {absolute_url}")
                     continue
                 
                 # Check same domain constraint
@@ -320,12 +347,119 @@ class ScraperEngine:
             logger.info(f"   - Total found: {len(all_links)}")
             logger.info(f"   - Added to queue: {links_added}")
             logger.info(f"   - Skipped (invalid): {links_skipped_invalid}")
+            logger.info(f"   - Skipped (non-HTML): {links_skipped_non_content}")
             logger.info(f"   - Skipped (different domain): {links_skipped_domain}")
             logger.info(f"   - Skipped (already visited): {links_skipped_visited}")
             logger.info(f"   - Current queue size: {len(self.url_queue)}")
             
         except Exception as e:
             logger.error(f"❌ Error extracting links from {base_url}: {type(e).__name__}: {e}", exc_info=True)
+    
+    def _is_non_html_url(self, url: str) -> bool:
+        """Check if URL points to non-HTML content."""
+        url_lower = url.lower()
+        
+        # File extensions to skip
+        skip_extensions = [
+            '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+            '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico',
+            '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv',
+            '.zip', '.rar', '.tar', '.gz', '.7z',
+            '.exe', '.dmg', '.pkg', '.deb', '.rpm',
+            '.css', '.js', '.json', '.xml',
+        ]
+        
+        # Also skip common utility paths
+        skip_patterns = [
+            'javascript:', 'mailto:', 'tel:', 'data:',
+            '/feed', '/rss', '/atom',
+            '/wp-json/', '/api/', '/rest/',
+        ]
+        
+        for ext in skip_extensions:
+            if url_lower.endswith(ext):
+                return True
+        
+        for pattern in skip_patterns:
+            if pattern in url_lower:
+                return True
+        
+        return False
+    
+    def _is_content_page(self, html: str, text: str, url: str) -> bool:
+        """
+        Determine if this page is likely actual content (article/blog post)
+        vs navigation (category page, home page, etc.)
+        """
+        from bs4 import BeautifulSoup
+        
+        # Content quality heuristics
+        content_score = 0
+        
+        # 1. Text length - content pages have more text
+        if len(text) > 500:
+            content_score += 2
+            logger.debug(f"  + Text length good ({len(text)} chars)")
+        if len(text) > 1000:
+            content_score += 2
+            logger.debug(f"  + Text length excellent (>{1000} chars)")
+        
+        # 2. Has article tag
+        soup = BeautifulSoup(html, 'lxml')
+        if soup.find('article'):
+            content_score += 3
+            logger.debug(f"  + Has <article> tag")
+        
+        # 3. URL patterns suggest content
+        url_lower = url.lower()
+        content_indicators = [
+            '/post/', '/article/', '/story/', '/news/',
+            '/blog/', '/detail/', '/read/',
+            r'/\d{4}/\d{2}/',  # Date-based URLs like /2024/11/
+        ]
+        for indicator in content_indicators:
+            if indicator in url_lower or re.search(indicator, url_lower):
+                content_score += 2
+                logger.debug(f"  + URL suggests content: {indicator}")
+                break
+        
+        # 4. Has date/timestamp metadata
+        if soup.find('time') or soup.find(class_=re.compile(r'date|published|timestamp', re.I)):
+            content_score += 2
+            logger.debug(f"  + Has date/time metadata")
+        
+        # 5. Paragraph density - content pages have more paragraphs
+        paragraphs = soup.find_all('p')
+        if len(paragraphs) > 5:
+            content_score += 2
+            logger.debug(f"  + Good paragraph count ({len(paragraphs)})")
+        
+        # 6. Link density - navigation pages have higher link-to-text ratio
+        links = soup.find_all('a')
+        if len(text) > 0:
+            link_density = len(links) / (len(text) / 100)  # links per 100 chars
+            if link_density < 0.5:  # Low link density suggests content
+                content_score += 2
+                logger.debug(f"  + Low link density ({link_density:.2f})")
+            elif link_density > 2:  # High link density suggests navigation
+                content_score -= 2
+                logger.debug(f"  - High link density ({link_density:.2f})")
+        
+        # Negative indicators
+        navigation_patterns = [
+            '/category/', '/tag/', '/archive/', '/page/',
+            '/index', '/sitemap', '/feed'
+        ]
+        for pattern in navigation_patterns:
+            if pattern in url_lower:
+                content_score -= 1
+                logger.debug(f"  - URL suggests navigation: {pattern}")
+        
+        is_content = content_score >= 4
+        
+        logger.info(f"📊 Content Quality Score: {content_score} → {'CONTENT PAGE' if is_content else 'NAVIGATION PAGE'}")
+        
+        return is_content
     
     def _can_fetch(self, url: str) -> bool:
         """Check robots.txt for URL."""
