@@ -1,6 +1,7 @@
 import requests
 import time
 import logging
+import re
 from collections import deque
 from urllib.parse import urljoin
 from urllib.robotparser import RobotFileParser
