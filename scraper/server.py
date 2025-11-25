@@ -31,12 +31,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Mount static files directory for frontend
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-    logger.info(f"Mounted static files from {static_dir}")
-
 # Initialize components
 try:
     logger.info("=" * 60)
@@ -85,16 +79,6 @@ class JobResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     active_jobs: int
-
-
-@app.get('/', include_in_schema=False)
-async def root():
-    """Serve the frontend UI."""
-    static_dir = os.path.join(os.path.dirname(__file__), "static")
-    index_file = os.path.join(static_dir, "index.html")
-    if os.path.exists(index_file):
-        return FileResponse(index_file)
-    return {"message": "Amharic Web Scraper API", "docs": "/docs"}
 
 
 @app.get('/health', response_model=HealthResponse, tags=["Health"])
@@ -277,6 +261,13 @@ async def shutdown_event():
     logger.info("Shutting down server")
     logger.info("=" * 60)
     worker_pool.shutdown(wait=False)
+
+
+# Mount static files LAST so API routes take precedence
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+    logger.info(f"Mounted static files from {static_dir}")
 
 
 if __name__ == '__main__':
