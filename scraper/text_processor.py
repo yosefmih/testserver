@@ -4,15 +4,8 @@ import re
 class TextProcessor:
     """Extract clean text from HTML content."""
     
-    # Tags to remove completely
-    REMOVE_TAGS = ['script', 'style', 'nav', 'header', 'footer', 'aside', 'noscript', 'form', 'button']
-    
-    # Additional classes/IDs to remove (common navigation/ad elements)
-    REMOVE_CLASSES = [
-        'nav', 'navigation', 'navbar', 'menu', 'sidebar', 'footer', 'header',
-        'advertisement', 'ad', 'social', 'share', 'comments', 'related',
-        'breadcrumb', 'tags', 'categories', 'meta', 'author-bio'
-    ]
+    # Tags to remove completely (keep it minimal to avoid removing content)
+    REMOVE_TAGS = ['script', 'style', 'noscript']
     
     def __init__(self):
         self.soup = None
@@ -36,6 +29,10 @@ class TextProcessor:
             # Parse HTML
             soup = BeautifulSoup(html_content, 'lxml')
             
+            # Get initial text count before any removal
+            initial_text = soup.get_text(strip=True)
+            logger.debug(f"Initial text (before cleanup): {len(initial_text)} chars")
+            
             # Remove unwanted tags
             tags_removed = 0
             for tag in self.REMOVE_TAGS:
@@ -46,16 +43,11 @@ class TextProcessor:
                         element.decompose()
                     tags_removed += len(elements)
             
-            # Remove elements with navigation/ad classes
-            for class_name in self.REMOVE_CLASSES:
-                for element in soup.find_all(class_=lambda x: x and class_name in str(x).lower()):
-                    element.decompose()
-                    tags_removed += 1
-                for element in soup.find_all(id=lambda x: x and class_name in str(x).lower()):
-                    element.decompose()
-                    tags_removed += 1
+            logger.debug(f"Removed {tags_removed} unwanted tag elements")
             
-            logger.debug(f"Removed {tags_removed} unwanted elements")
+            # DON'T remove elements by class - too aggressive!
+            # Many sites use these class names legitimately for content
+            # Only remove unwanted TAGS, not classes
             
             # Try to find main content area first (prioritize semantic HTML)
             main_content = None
@@ -80,22 +72,24 @@ class TextProcessor:
             extract_from = main_content if main_content else soup
             
             if main_content:
-                logger.debug(f"✅ Extracting from main content area")
+                logger.info(f"✅ Extracting from main content area")
             else:
-                logger.debug(f"⚠️  No main content area found, using full page")
+                logger.info(f"⚠️  No main content area found, using full page")
             
             # Get text
             text = extract_from.get_text(separator='\n', strip=True)
-            logger.debug(f"Extracted text: {len(text)} characters (before cleaning)")
+            logger.info(f"Extracted text: {len(text)} characters (before whitespace cleanup)")
             
             # Clean up whitespace
             text = self._clean_whitespace(text)
-            logger.debug(f"After whitespace cleanup: {len(text)} characters")
+            logger.info(f"After whitespace cleanup: {len(text)} characters")
             
             # Log sample of extracted text
             if text:
                 preview = text[:300].replace('\n', ' ')
-                logger.debug(f"Text preview: {preview}...")
+                logger.info(f"Text preview: {preview}...")
+            else:
+                logger.warning(f"⚠️  No text extracted! This might be a JavaScript-rendered page")
             
             return text
             
