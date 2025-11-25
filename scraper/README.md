@@ -5,6 +5,7 @@ A RESTful web scraping service that crawls websites and extracts Amharic text co
 ## Features
 
 - 🌐 **FastAPI Server** - Modern async REST API with automatic OpenAPI docs
+- ⚛️ **React Frontend** - Modern React + TypeScript UI with Vite
 - 📊 **Job Tracking** - Monitor job progress and status
 - 🔤 **Amharic Detection** - Automatically detects and filters Amharic text using Unicode Ethiopic script
 - ☁️ **S3 Storage** - Saves scraped text to AWS S3
@@ -85,6 +86,8 @@ Optional configuration:
 
 ### Starting the Server
 
+#### Backend (API Server)
+
 ```bash
 # Using uvicorn directly
 uvicorn server:app --host 0.0.0.0 --port 8080
@@ -95,10 +98,37 @@ uvicorn server:app --host 0.0.0.0 --port 8080
 
 The server will start on `http://localhost:8080` by default.
 
+#### Frontend (React UI)
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Start development server
+npm run dev
+```
+
+The frontend will start on `http://localhost:3000` with API proxy to port 8080.
+
+**For production:**
+
+```bash
+# Build frontend to static files
+cd frontend
+npm run build
+
+# The built files will be in ../static/
+# The backend will automatically serve them at http://localhost:8080/
+```
+
 **Access Points:**
-- **Web UI**: http://localhost:8080/ (interactive frontend)
-- **Swagger UI**: http://localhost:8080/docs (API documentation)
-- **ReDoc**: http://localhost:8080/redoc (alternative API docs)
+- **Development**: http://localhost:3000/ (React dev server)
+- **Production**: http://localhost:8080/ (served by FastAPI)
+- **API Docs**: http://localhost:8080/docs
+- **ReDoc**: http://localhost:8080/redoc
 
 ### API Endpoints
 

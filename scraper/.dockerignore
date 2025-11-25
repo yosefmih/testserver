@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+
+# Frontend build artifacts (will be built in Docker)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Static files (built during Docker build)
+static/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation (optional, include README if needed)
+*.md
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Test files
+*_test.py
+test_*.py
+__tests__/
+
+# Kubernetes manifests (if any)
+k8s/
+*.yaml
+*.yml
+!porter.yaml
+
+# Other
+.gitattributes
+LICENSE
+
