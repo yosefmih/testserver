@@ -1,373 +1,490 @@
 #!/usr/bin/env python3
 """
-Simple Temporal worker for testing KEDA autoscaling.
-Demonstrates basic workflow and activity patterns.
+Temporal worker for testing KEDA autoscaling.
+Provides CPU and memory intensive workloads to stress test autoscaling.
 """
 
 import asyncio
 import logging
 import os
-from datetime import timedelta, datetime
-from temporalio import workflow
+import random
+import hashlib
+import time
+import math
+from datetime import timedelta
+from concurrent.futures import ThreadPoolExecutor
+from typing import List
+
+from temporalio import workflow, activity
 from temporalio.client import Client
 from temporalio.worker import Worker
-from temporalio import activity
 from temporalio.common import RetryPolicy
 from dotenv import load_dotenv
-from concurrent.futures import ThreadPoolExecutor
-import random
 
-# Load environment variables from .env file (development only)
 if os.path.exists('.env'):
     load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Temporal configuration - will be validated when worker starts
-ORDER_PROCESSING_TASK_QUEUE = "order-processing-queue-v2"
+TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "stress-test-queue")
 
 
 def get_temporal_config():
-    """Get and validate Temporal configuration from environment."""
     host = os.getenv("TEMPORAL_HOST")
     namespace = os.getenv("TEMPORAL_NAMESPACE")
     api_key = os.getenv("TEMPORAL_API_KEY")
-    
+
     missing = []
     if not host:
         missing.append("TEMPORAL_HOST")
     if not namespace:
-        missing.append("TEMPORAL_NAMESPACE") 
+        missing.append("TEMPORAL_NAMESPACE")
     if not api_key:
         missing.append("TEMPORAL_API_KEY")
-    
+
     if missing:
         raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
-    
+
     return host, namespace, api_key
 
 
 @activity.defn
-async def process_order_activity(order_id: str) -> str:
+def cpu_intensive_activity(task_id: str, iterations: int) -> dict:
     """
-    Simple activity that simulates order processing.
+    CPU-bound activity that performs hash computations.
+    iterations: controls intensity (1M iterations ≈ 1-2 seconds on typical CPU)
     """
-    logger.info(f"Processing order: {order_id}")
-    
-    # Simulate some work
-    await asyncio.sleep(2)
-    
-    result = f"Order {order_id} processed successfully"
-    logger.info(result)
-    return result
+    start = time.time()
+    logger.info(f"[{task_id}] Starting CPU work: {iterations:,} iterations")
 
+    data = f"{task_id}-{time.time()}"
+    for i in range(iterations):
+        data = hashlib.sha256(data.encode()).hexdigest()
+        if i % 100000 == 0:
+            activity.heartbeat(f"iteration {i}")
 
-@activity.defn
-async def send_notification_activity(message: str) -> str:
-    logger.info(f"Sending notification: {message}")
-    await asyncio.sleep(1)
-    result = f"Notification sent: {message}"
-    logger.info(result)
-    return result
-
-
-@activity.defn
-async def validate_inventory_activity(order_id: str, items: list) -> dict:
-    logger.info(f"Validating inventory for order {order_id}: {items}")
-    await asyncio.sleep(random.uniform(2, 5))
-    
-    all_available = random.random() > 0.1
+    elapsed = time.time() - start
     result = {
-        "order_id": order_id,
-        "all_items_available": all_available,
-        "items_checked": len(items)
+        "task_id": task_id,
+        "iterations": iterations,
+        "duration_ms": int(elapsed * 1000),
+        "hash_sample": data[:16]
     }
-    logger.info(f"Inventory validation result: {result}")
+    logger.info(f"[{task_id}] CPU work completed in {elapsed:.2f}s")
     return result
 
 
 @activity.defn
-async def authorize_payment_activity(order_id: str, amount: float) -> dict:
-    logger.info(f"Authorizing payment for order {order_id}: ${amount}")
-    await asyncio.sleep(random.uniform(3, 8))
-    
-    success = random.random() > 0.05
+def memory_intensive_activity(task_id: str, size_mb: int) -> dict:
+    """
+    Memory-bound activity that allocates and processes large arrays.
+    size_mb: amount of memory to allocate and process
+    """
+    start = time.time()
+    logger.info(f"[{task_id}] Starting memory work: {size_mb}MB allocation")
+
+    chunk_size = 1024 * 1024  # 1MB chunks
+    chunks = []
+
+    for i in range(size_mb):
+        chunk = bytearray(random.getrandbits(8) for _ in range(chunk_size))
+        checksum = sum(chunk) % 256
+        chunks.append((len(chunk), checksum))
+        activity.heartbeat(f"allocated {i+1}MB")
+
+    total_checksum = sum(c[1] for c in chunks)
+
+    elapsed = time.time() - start
     result = {
-        "order_id": order_id,
-        "amount": amount,
-        "authorized": success,
-        "transaction_id": f"txn-{random.randint(100000, 999999)}"
+        "task_id": task_id,
+        "size_mb": size_mb,
+        "duration_ms": int(elapsed * 1000),
+        "checksum": total_checksum
     }
-    logger.info(f"Payment authorization result: {result}")
+    logger.info(f"[{task_id}] Memory work completed in {elapsed:.2f}s")
     return result
 
 
 @activity.defn
-async def reserve_inventory_activity(order_id: str, items: list) -> dict:
-    logger.info(f"Reserving inventory for order {order_id}")
-    await asyncio.sleep(random.uniform(2, 4))
-    
+def prime_calculation_activity(task_id: str, limit: int) -> dict:
+    """
+    CPU-bound activity using prime number sieve.
+    limit: find all primes up to this number (1M ≈ 1-2 seconds)
+    """
+    start = time.time()
+    logger.info(f"[{task_id}] Finding primes up to {limit:,}")
+
+    sieve = [True] * (limit + 1)
+    sieve[0] = sieve[1] = False
+
+    for i in range(2, int(math.sqrt(limit)) + 1):
+        if sieve[i]:
+            for j in range(i*i, limit + 1, i):
+                sieve[j] = False
+        if i % 10000 == 0:
+            activity.heartbeat(f"sieve at {i}")
+
+    prime_count = sum(sieve)
+    largest_prime = max(i for i, is_prime in enumerate(sieve) if is_prime)
+
+    elapsed = time.time() - start
     result = {
-        "order_id": order_id,
-        "items_reserved": len(items),
-        "reservation_id": f"res-{random.randint(100000, 999999)}"
+        "task_id": task_id,
+        "limit": limit,
+        "prime_count": prime_count,
+        "largest_prime": largest_prime,
+        "duration_ms": int(elapsed * 1000)
     }
-    logger.info(f"Inventory reservation result: {result}")
+    logger.info(f"[{task_id}] Found {prime_count:,} primes in {elapsed:.2f}s")
     return result
 
 
 @activity.defn
-async def capture_payment_activity(order_id: str, transaction_id: str, amount: float) -> dict:
-    logger.info(f"Capturing payment for order {order_id}, txn: {transaction_id}")
-    await asyncio.sleep(random.uniform(2, 6))
-    
+def matrix_multiplication_activity(task_id: str, size: int) -> dict:
+    """
+    CPU-bound activity with matrix operations.
+    size: matrix dimension (500 ≈ 2-3 seconds)
+    """
+    start = time.time()
+    logger.info(f"[{task_id}] Matrix multiplication: {size}x{size}")
+
+    A = [[random.random() for _ in range(size)] for _ in range(size)]
+    B = [[random.random() for _ in range(size)] for _ in range(size)]
+    C = [[0.0] * size for _ in range(size)]
+
+    for i in range(size):
+        for j in range(size):
+            for k in range(size):
+                C[i][j] += A[i][k] * B[k][j]
+        if i % 50 == 0:
+            activity.heartbeat(f"row {i}")
+
+    trace = sum(C[i][i] for i in range(size))
+
+    elapsed = time.time() - start
     result = {
-        "order_id": order_id,
-        "transaction_id": transaction_id,
-        "amount": amount,
-        "captured": True,
-        "receipt_id": f"rec-{random.randint(100000, 999999)}"
+        "task_id": task_id,
+        "matrix_size": size,
+        "trace": trace,
+        "duration_ms": int(elapsed * 1000)
     }
-    logger.info(f"Payment capture result: {result}")
+    logger.info(f"[{task_id}] Matrix multiplication completed in {elapsed:.2f}s")
     return result
 
 
 @activity.defn
-async def prepare_shipment_activity(order_id: str, items: list) -> dict:
-    logger.info(f"Preparing shipment for order {order_id}")
-    await asyncio.sleep(random.uniform(5, 10))
-    
+def fibonacci_activity(task_id: str, n: int) -> dict:
+    """
+    CPU-bound recursive fibonacci (intentionally inefficient for load testing).
+    n: fibonacci number to calculate (35-40 range is good for testing)
+    """
+    start = time.time()
+    logger.info(f"[{task_id}] Calculating fibonacci({n})")
+
+    def fib(x):
+        if x <= 1:
+            return x
+        return fib(x-1) + fib(x-2)
+
+    result_value = fib(n)
+
+    elapsed = time.time() - start
     result = {
-        "order_id": order_id,
-        "items_packed": len(items),
-        "tracking_number": f"TRK{random.randint(1000000000, 9999999999)}",
-        "estimated_ship_date": "2024-01-15"
+        "task_id": task_id,
+        "n": n,
+        "result": result_value,
+        "duration_ms": int(elapsed * 1000)
     }
-    logger.info(f"Shipment preparation result: {result}")
+    logger.info(f"[{task_id}] fibonacci({n}) = {result_value} in {elapsed:.2f}s")
     return result
 
 
 @activity.defn
-async def update_customer_activity(order_id: str, status: str, details: dict) -> dict:
-    logger.info(f"Updating customer for order {order_id}, status: {status}")
-    await asyncio.sleep(random.uniform(1, 3))
-    
-    result = {
-        "order_id": order_id,
-        "status": status,
-        "customer_notified": True,
-        "notification_channels": ["email", "sms"]
-    }
-    logger.info(f"Customer update result: {result}")
-    return result
+async def io_simulation_activity(task_id: str, duration_seconds: float) -> dict:
+    """
+    I/O-bound activity simulating external API calls or database operations.
+    """
+    start = time.time()
+    logger.info(f"[{task_id}] Simulating I/O for {duration_seconds}s")
 
+    await asyncio.sleep(duration_seconds)
 
-@activity.defn
-def generate_invoice_activity(order_id: str, items: list, amount: float) -> dict:
-    import hashlib
-    import time
-    
-    logger.info(f"Generating invoice for order {order_id}")
-    
-    start_time = time.time()
-    invoice_data = f"{order_id}-{amount}-{len(items)}"
-    
-    result_hash = invoice_data
-    for _ in range(100000):
-        result_hash = hashlib.sha256(result_hash.encode()).hexdigest()
-    
-    computation_time = time.time() - start_time
-    
-    result = {
-        "order_id": order_id,
-        "invoice_number": f"INV-{result_hash[:12].upper()}",
-        "amount": amount,
-        "items_count": len(items),
-        "computation_time_ms": int(computation_time * 1000)
+    elapsed = time.time() - start
+    return {
+        "task_id": task_id,
+        "simulated_duration": duration_seconds,
+        "actual_duration_ms": int(elapsed * 1000)
     }
-    logger.info(f"Invoice generated: {result['invoice_number']} (took {result['computation_time_ms']}ms)")
-    return result
 
 
 @workflow.defn
-class OrderProcessingWorkflow:
+class StressTestWorkflow:
+    """
+    Configurable stress test workflow that chains multiple intensive activities.
+    """
 
     @workflow.run
-    async def run(self, order_data: dict) -> dict:
-        order_id = order_data.get("order_id")
-        items = order_data.get("items", [])
-        amount = order_data.get("amount", 0.0)
-        
-        workflow.logger.info(f"Starting order processing workflow for order: {order_id}")
-        
-        inventory_result = await workflow.execute_activity(
-            validate_inventory_activity,
-            order_id,
-            items,
-            start_to_close_timeout=timedelta(seconds=30),
-            retry_policy=RetryPolicy(
-                initial_interval=timedelta(seconds=1),
-                maximum_interval=timedelta(seconds=10),
-                maximum_attempts=3,
-            ),
-        )
-        
-        if not inventory_result["all_items_available"]:
-            await workflow.execute_activity(
-                update_customer_activity,
-                order_id,
-                "inventory_unavailable",
-                {"reason": "Some items are out of stock"},
-                start_to_close_timeout=timedelta(seconds=30)
-            )
-            return {
-                "order_id": order_id,
-                "status": "failed",
-                "reason": "inventory_unavailable"
-            }
-        
-        payment_auth = await workflow.execute_activity(
-            authorize_payment_activity,
-            order_id,
-            amount,
-            start_to_close_timeout=timedelta(seconds=30),
-            retry_policy=RetryPolicy(
-                initial_interval=timedelta(seconds=1),
-                maximum_interval=timedelta(seconds=10),
-                maximum_attempts=3,
-            ),
-        )
-        
-        if not payment_auth["authorized"]:
-            await workflow.execute_activity(
-                update_customer_activity,
-                order_id,
-                "payment_failed",
-                {"reason": "Payment authorization failed"},
-                start_to_close_timeout=timedelta(seconds=30)
-            )
-            return {
-                "order_id": order_id,
-                "status": "failed",
-                "reason": "payment_authorization_failed"
-            }
-        
-        reservation = await workflow.execute_activity(
-            reserve_inventory_activity,
-            order_id,
-            items,
-            start_to_close_timeout=timedelta(seconds=30)
-        )
-        
-        payment_capture = await workflow.execute_activity(
-            capture_payment_activity,
-            order_id,
-            payment_auth["transaction_id"],
-            amount,
-            start_to_close_timeout=timedelta(seconds=30),
-            retry_policy=RetryPolicy(
-                initial_interval=timedelta(seconds=1),
-                maximum_interval=timedelta(seconds=10),
-                maximum_attempts=5,
-            ),
-        )
-        
-        shipment = await workflow.execute_activity(
-            prepare_shipment_activity,
-            order_id,
-            items,
-            start_to_close_timeout=timedelta(seconds=60)
-        )
-        
-        invoice = await workflow.execute_activity(
-            generate_invoice_activity,
-            order_id,
-            items,
-            amount,
-            start_to_close_timeout=timedelta(seconds=30)
-        )
-        
-        await workflow.execute_activity(
-            update_customer_activity,
-            order_id,
-            "order_confirmed",
-            {
-                "tracking_number": shipment["tracking_number"],
-                "estimated_ship_date": shipment["estimated_ship_date"],
-                "invoice_number": invoice["invoice_number"]
-            },
-            start_to_close_timeout=timedelta(seconds=30)
-        )
-        
-        final_result = {
-            "order_id": order_id,
-            "status": "completed",
-            "payment": payment_capture,
-            "shipment": shipment,
-            "reservation": reservation,
-            "invoice": invoice
+    async def run(self, params: dict) -> dict:
+        task_id = params.get("task_id", "unknown")
+        intensity = params.get("intensity", "medium")
+        workflow_type = params.get("type", "mixed")
+
+        workflow.logger.info(f"Starting stress test: {task_id}, intensity={intensity}, type={workflow_type}")
+
+        config = self._get_intensity_config(intensity)
+        results = []
+
+        if workflow_type == "cpu":
+            results = await self._run_cpu_intensive(task_id, config)
+        elif workflow_type == "memory":
+            results = await self._run_memory_intensive(task_id, config)
+        elif workflow_type == "mixed":
+            results = await self._run_mixed(task_id, config)
+        elif workflow_type == "sequential":
+            results = await self._run_sequential(task_id, config)
+        else:
+            results = await self._run_mixed(task_id, config)
+
+        return {
+            "task_id": task_id,
+            "intensity": intensity,
+            "type": workflow_type,
+            "activity_results": results
         }
-        
-        workflow.logger.info(f"Order processing completed: {final_result}")
-        return final_result
+
+    def _get_intensity_config(self, intensity: str) -> dict:
+        configs = {
+            "light": {
+                "hash_iterations": 100_000,
+                "memory_mb": 10,
+                "prime_limit": 100_000,
+                "matrix_size": 100,
+                "fib_n": 30,
+                "io_duration": 1.0
+            },
+            "medium": {
+                "hash_iterations": 500_000,
+                "memory_mb": 50,
+                "prime_limit": 500_000,
+                "matrix_size": 300,
+                "fib_n": 35,
+                "io_duration": 3.0
+            },
+            "heavy": {
+                "hash_iterations": 2_000_000,
+                "memory_mb": 100,
+                "prime_limit": 2_000_000,
+                "matrix_size": 500,
+                "fib_n": 38,
+                "io_duration": 5.0
+            },
+            "extreme": {
+                "hash_iterations": 5_000_000,
+                "memory_mb": 200,
+                "prime_limit": 5_000_000,
+                "matrix_size": 700,
+                "fib_n": 40,
+                "io_duration": 10.0
+            }
+        }
+        return configs.get(intensity, configs["medium"])
+
+    async def _run_cpu_intensive(self, task_id: str, config: dict) -> list:
+        results = []
+
+        hash_result = await workflow.execute_activity(
+            cpu_intensive_activity,
+            args=[f"{task_id}-hash", config["hash_iterations"]],
+            start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=timedelta(seconds=60),
+        )
+        results.append({"activity": "cpu_hash", "result": hash_result})
+
+        prime_result = await workflow.execute_activity(
+            prime_calculation_activity,
+            args=[f"{task_id}-prime", config["prime_limit"]],
+            start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=timedelta(seconds=60),
+        )
+        results.append({"activity": "prime", "result": prime_result})
+
+        fib_result = await workflow.execute_activity(
+            fibonacci_activity,
+            args=[f"{task_id}-fib", config["fib_n"]],
+            start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=timedelta(seconds=60),
+        )
+        results.append({"activity": "fibonacci", "result": fib_result})
+
+        return results
+
+    async def _run_memory_intensive(self, task_id: str, config: dict) -> list:
+        mem_result = await workflow.execute_activity(
+            memory_intensive_activity,
+            args=[f"{task_id}-mem", config["memory_mb"]],
+            start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=timedelta(seconds=60),
+        )
+        return [{"activity": "memory", "result": mem_result}]
+
+    async def _run_mixed(self, task_id: str, config: dict) -> list:
+        results = []
+
+        hash_result = await workflow.execute_activity(
+            cpu_intensive_activity,
+            args=[f"{task_id}-hash", config["hash_iterations"]],
+            start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=timedelta(seconds=60),
+        )
+        results.append({"activity": "cpu_hash", "result": hash_result})
+
+        matrix_result = await workflow.execute_activity(
+            matrix_multiplication_activity,
+            args=[f"{task_id}-matrix", config["matrix_size"]],
+            start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=timedelta(seconds=60),
+        )
+        results.append({"activity": "matrix", "result": matrix_result})
+
+        io_result = await workflow.execute_activity(
+            io_simulation_activity,
+            args=[f"{task_id}-io", config["io_duration"]],
+            start_to_close_timeout=timedelta(minutes=10),
+        )
+        results.append({"activity": "io", "result": io_result})
+
+        return results
+
+    async def _run_sequential(self, task_id: str, config: dict) -> list:
+        """Run all activity types sequentially for maximum single-workflow duration."""
+        results = []
+
+        activities = [
+            (cpu_intensive_activity, [f"{task_id}-hash", config["hash_iterations"]]),
+            (prime_calculation_activity, [f"{task_id}-prime", config["prime_limit"]]),
+            (matrix_multiplication_activity, [f"{task_id}-matrix", config["matrix_size"]]),
+            (memory_intensive_activity, [f"{task_id}-mem", config["memory_mb"]]),
+            (fibonacci_activity, [f"{task_id}-fib", config["fib_n"]]),
+            (io_simulation_activity, [f"{task_id}-io", config["io_duration"]]),
+        ]
+
+        for activity_fn, args in activities:
+            result = await workflow.execute_activity(
+                activity_fn,
+                args=args,
+                start_to_close_timeout=timedelta(minutes=10),
+                heartbeat_timeout=timedelta(seconds=60),
+            )
+            results.append({"activity": activity_fn.__name__, "result": result})
+
+        return results
+
+
+@workflow.defn
+class BurstWorkflow:
+    """
+    Simple workflow that runs a single configurable activity.
+    Use this for high-volume burst testing.
+    """
+
+    @workflow.run
+    async def run(self, params: dict) -> dict:
+        task_id = params.get("task_id", "burst")
+        activity_type = params.get("activity", "cpu")
+        intensity = params.get("intensity", "medium")
+
+        config = {
+            "light": {"iterations": 100_000, "size": 100, "duration": 1.0},
+            "medium": {"iterations": 500_000, "size": 300, "duration": 3.0},
+            "heavy": {"iterations": 2_000_000, "size": 500, "duration": 5.0},
+        }.get(intensity, {"iterations": 500_000, "size": 300, "duration": 3.0})
+
+        if activity_type == "cpu":
+            result = await workflow.execute_activity(
+                cpu_intensive_activity,
+                args=[task_id, config["iterations"]],
+                start_to_close_timeout=timedelta(minutes=5),
+                heartbeat_timeout=timedelta(seconds=30),
+            )
+        elif activity_type == "matrix":
+            result = await workflow.execute_activity(
+                matrix_multiplication_activity,
+                args=[task_id, config["size"]],
+                start_to_close_timeout=timedelta(minutes=5),
+                heartbeat_timeout=timedelta(seconds=30),
+            )
+        elif activity_type == "io":
+            result = await workflow.execute_activity(
+                io_simulation_activity,
+                args=[task_id, config["duration"]],
+                start_to_close_timeout=timedelta(minutes=5),
+            )
+        else:
+            result = await workflow.execute_activity(
+                cpu_intensive_activity,
+                args=[task_id, config["iterations"]],
+                start_to_close_timeout=timedelta(minutes=5),
+                heartbeat_timeout=timedelta(seconds=30),
+            )
+
+        return {"task_id": task_id, "activity": activity_type, "result": result}
 
 
 async def create_worker():
-    """
-    Create and configure the Temporal worker.
-    """
     host, namespace, api_key = get_temporal_config()
-    
+
     logger.info(f"Connecting to Temporal at {host}")
-    logger.info(f"Using namespace: {namespace}")
+    logger.info(f"Namespace: {namespace}")
+    logger.info(f"Task queue: {TASK_QUEUE}")
 
     client = await Client.connect(
-        host, 
+        host,
         namespace=namespace,
         api_key=api_key,
         tls=True
     )
 
-    activity_threads = int(os.getenv("ACTIVITY_THREADS", "2"))
-    
-    order_worker = Worker(
+    max_concurrent = int(os.getenv("MAX_CONCURRENT_ACTIVITIES", "10"))
+    thread_pool_size = int(os.getenv("THREAD_POOL_SIZE", "4"))
+
+    logger.info(f"Max concurrent activities: {max_concurrent}")
+    logger.info(f"Thread pool size: {thread_pool_size}")
+
+    worker = Worker(
         client,
-        task_queue=ORDER_PROCESSING_TASK_QUEUE,
-        workflows=[OrderProcessingWorkflow],
+        task_queue=TASK_QUEUE,
+        workflows=[StressTestWorkflow, BurstWorkflow],
         activities=[
-            process_order_activity,
-            send_notification_activity,
-            validate_inventory_activity,
-            authorize_payment_activity,
-            reserve_inventory_activity,
-            capture_payment_activity,
-            prepare_shipment_activity,
-            update_customer_activity,
-            generate_invoice_activity
+            cpu_intensive_activity,
+            memory_intensive_activity,
+            prime_calculation_activity,
+            matrix_multiplication_activity,
+            fibonacci_activity,
+            io_simulation_activity,
         ],
-        max_concurrent_activities=10,
-        activity_executor=ThreadPoolExecutor(max_workers=activity_threads),
+        max_concurrent_activities=max_concurrent,
+        activity_executor=ThreadPoolExecutor(max_workers=thread_pool_size),
     )
 
-    logger.info(f"Order processing worker created on task queue: {ORDER_PROCESSING_TASK_QUEUE}")
-    return [order_worker]
+    logger.info(f"Worker created for task queue: {TASK_QUEUE}")
+    return worker
 
 
 async def main():
-    logger.info("Starting Temporal worker...")
-    
+    logger.info("Starting Temporal stress test worker...")
+
     try:
-        workers = await create_worker()
-        logger.info("Workers started and listening...")
-        
-        await asyncio.gather(*[worker.run() for worker in workers])
-        
+        worker = await create_worker()
+        logger.info("Worker running. Press Ctrl+C to stop.")
+        await worker.run()
     except KeyboardInterrupt:
         logger.info("Worker stopped by user")
     except Exception as e:
-        logger.error(f"Worker failed: {e}")
+        logger.error(f"Worker failed: {e}", exc_info=True)
         raise
 
 
