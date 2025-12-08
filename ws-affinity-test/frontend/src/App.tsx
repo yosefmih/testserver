@@ -16,6 +16,7 @@ interface HttpResponse {
 export default function App() {
   const [connected, setConnected] = useState(false)
   const [wsHostname, setWsHostname] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
   const [httpResponse, setHttpResponse] = useState<HttpResponse | null>(null)
@@ -47,6 +48,9 @@ export default function App() {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data)
       setWsHostname(data.hostname)
+      if (data.session_id) {
+        setSessionId(data.session_id)
+      }
       addMessage(data.type, data.message, data.hostname)
     }
 
@@ -126,17 +130,32 @@ export default function App() {
           <span>{connected ? 'Connected' : 'Disconnected'}</span>
         </div>
 
-        <div>
-          <span>Pod: </span>
-          <span style={{
-            background: '#0f3460',
-            padding: '5px 12px',
-            borderRadius: 4,
-            fontFamily: 'monospace',
-            color: '#00d9ff'
-          }}>
-            {wsHostname || '-'}
-          </span>
+        <div style={{ display: 'flex', gap: 15, flexWrap: 'wrap' }}>
+          <div>
+            <span>Pod: </span>
+            <span style={{
+              background: '#0f3460',
+              padding: '5px 12px',
+              borderRadius: 4,
+              fontFamily: 'monospace',
+              color: '#00d9ff'
+            }}>
+              {wsHostname || '-'}
+            </span>
+          </div>
+          <div>
+            <span>Session: </span>
+            <span style={{
+              background: '#0f3460',
+              padding: '5px 12px',
+              borderRadius: 4,
+              fontFamily: 'monospace',
+              color: '#ffa502',
+              fontSize: 11
+            }}>
+              {sessionId ? sessionId.slice(0, 8) + '...' : '-'}
+            </span>
+          </div>
         </div>
 
         <button

@@ -1,0 +1,46 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    meta.helm.sh/release-name: ws
+    meta.helm.sh/release-namespace: default
+    nginx.ingress.kubernetes.io/proxy-body-size: 50m
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Consistent hash routing - app controls the SESSION_ID cookie
+    # All requests with same SESSION_ID cookie value route to same pod
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$cookie_SESSION_ID"
+  creationTimestamp: "2025-12-08T21:43:05Z"
+  generation: 1
+  labels:
+    app.kubernetes.io/instance: ws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: ws-web
+    app.kubernetes.io/version: 1.25.0
+    helm.sh/chart: ws-web-0.234.0
+  name: ws-web
+  namespace: default
+  resourceVersion: "39874"
+  uid: f5b5a2d8-ec8f-4690-bd98-788bae185f7d
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: web-2-3439a89a-unm0fax7.withporter.run
+    http:
+      paths:
+      - backend:
+          service:
+            name: ws-web
+            port:
+              number: 8080
+        pathType: ImplementationSpecific
+  tls:
+  - hosts:
+    - web-2-3439a89a-unm0fax7.withporter.run
+    secretName: ws-web-web-2-3439a89a-unm0fax7-withporter-run
+status:
+  loadBalancer:
+    ingress:
+    - hostname: k8s-ingressn-ingressn-ff013d50ce-5d2ac55c5a216374.elb.us-east-2.amazonaws.com
