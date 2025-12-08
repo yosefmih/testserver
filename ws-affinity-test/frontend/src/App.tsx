@@ -35,10 +35,20 @@ export default function App() {
   }, [])
 
   const connect = useCallback(() => {
+    // Generate SESSION_ID client-side BEFORE connecting
+    // This ensures consistent hash routing for both WebSocket and HTTP
+    let clientSessionId = document.cookie.split('; ').find(c => c.startsWith('SESSION_ID='))?.split('=')[1]
+    if (!clientSessionId) {
+      clientSessionId = crypto.randomUUID()
+      document.cookie = `SESSION_ID=${clientSessionId}; path=/; max-age=172800`
+    }
+    setSessionId(clientSessionId)
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/ws`
 
-    addMessage('system', `Connecting to ${wsUrl}...`, '-')
+    addMessage('system', `Connecting with SESSION_ID=${clientSessionId.slice(0, 8)}...`, '-')
+    // Browser automatically sends cookies on WebSocket upgrade
     const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
