@@ -1,32 +1,4 @@
 "on":
-<<<<<<< HEAD
-    push:
-        branches:
-            - dev
-name: Deploy to ws
-jobs:
-    porter-deploy:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
-            - name: Set Github tag
-              id: vars
-              run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-            - name: Setup porter
-              uses: porter-dev/setup-porter@v0.1.0
-            - name: Deploy stack
-              timeout-minutes: 30
-              run: porter apply
-              env:
-                PORTER_APP_NAME: ws
-                PORTER_CLUSTER: "1"
-                PORTER_DEPLOYMENT_TARGET_ID: 3439a89a-fda9-43c5-89f6-9bed7efd6ae8
-                PORTER_HOST: https://yosefdev2.withporter.run
-                PORTER_PROJECT: "1"
-                PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
-                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_869731671 }}
-=======
   push:
     branches:
       - dev
@@ -56,4 +28,3 @@ jobs:
           PORTER_PROJECT: "1"
           PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
           PORTER_TOKEN: ${{ secrets.PORTER_APP_1_869731671 }}
->>>>>>> 0236e6d (self computed hash)
