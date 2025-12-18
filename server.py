@@ -1189,7 +1189,7 @@ def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
     logger.info(f"Main server running on port {port}")
-    logger.info(f"Server config: error_rate={handler_class.error_rate_percent}%, latency={handler_class.latency_injection_ms}ms, tracing={handler_class.trace_propagation}")
+    logger.info(f"Server configuration: error_rate={handler_class.error_rate_percent}%, latency={handler_class.latency_injection_ms}ms, tracing={handler_class.trace_propagation}")
 
     # Set up SIGTERM handler
     signal.signal(signal.SIGTERM, lambda signum, frame: handle_sigterm(signum, frame, httpd))
