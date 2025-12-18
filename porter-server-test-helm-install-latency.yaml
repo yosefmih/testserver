@@ -1,0 +1,1140 @@
+version: v2
+name: server
+services:
+- name: web-1
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  domains:
+  - name: web-1-a683bd05-d5k5mat9.withporter.run
+  sleep: false
+- name: web-2
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-3
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-4
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-5
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-6
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-7
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-8
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-9
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-10
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-11
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-12
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-13
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-14
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-15
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-16
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-17
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-18
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-19
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-20
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-21
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-22
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-23
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-24
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-25
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-26
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-27
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-28
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-29
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-30
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-31
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-32
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-33
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-34
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-35
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-36
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-37
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-38
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-39
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-40
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-41
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-42
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-43
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-44
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-45
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-46
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-47
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-48
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-49
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-50
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-51
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: web-52
+  run: python server.py
+  type: web
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  sleep: false
+- name: worker-1
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-2
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-3
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-4
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-5
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-6
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-7
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-8
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-9
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-10
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-11
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-12
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-13
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-14
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-15
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-16
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-17
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-18
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-19
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-20
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-21
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-22
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-23
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-24
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-25
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-26
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-27
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-28
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-29
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-30
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-31
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-32
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-33
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-34
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-35
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-36
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-37
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-38
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-39
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-40
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-41
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-42
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-43
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-44
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-45
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-46
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-47
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-48
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-49
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-50
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: worker-51
+  run: "python server.py"
+  type: worker
+  instances: 1
+  cpuCores: 0.01
+  ramMegabytes: 100
+- name: job-1
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-2
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-3
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-4
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-5
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-6
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-7
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-8
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-9
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-10
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-11
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-12
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-13
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-14
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-15
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-16
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-17
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-18
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-19
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-20
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-21
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-22
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-23
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-24
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-25
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-26
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-27
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-28
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-29
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-30
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-31
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-32
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-33
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-34
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-35
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-36
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-37
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-38
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-39
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-40
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-41
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-42
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-43
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-44
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-45
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-46
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-47
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-48
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-49
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-50
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+- name: job-51
+  run: "python compute_pi.py --digits 20"
+  type: job
+  cpuCores: 0.01
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+build:
+  context: ./
+  method: docker
+  dockerfile: Dockerfile
