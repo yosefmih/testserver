@@ -474,306 +474,357 @@ services:
 - name: worker-1
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-2
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-3
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-4
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-5
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-6
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-7
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-8
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-9
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-10
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-11
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-12
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-13
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-14
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-15
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-16
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-17
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-18
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-19
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-20
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-21
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-22
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-23
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-24
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-25
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-26
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-27
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-28
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-29
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-30
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-31
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-32
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-33
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-34
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-35
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-36
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-37
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-38
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-39
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-40
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-41
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-42
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-43
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-44
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-45
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-46
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-47
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-48
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-49
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-50
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
 - name: worker-51
   run: "python server.py"
   type: worker
+  sleep: true
   instances: 1
   cpuCores: 0.01
   ramMegabytes: 100
