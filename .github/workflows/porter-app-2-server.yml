@@ -16,7 +16,7 @@ jobs:
               uses: porter-dev/setup-porter@v0.1.0
             - name: Deploy stack
               timeout-minutes: 30
-              run: porter apply
+              run: porter apply -f porter-server-test-helm-install-latency.yaml
               env:
                 PORTER_APP_NAME: server
                 PORTER_CLUSTER: "2"
