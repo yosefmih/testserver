@@ -944,7 +944,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 if not redis_client:
                     status_code = self.send_json_response(503, {
                         'status': 'error',
-                        'message': 'Redis not available - audio processing is currently unavailable'
+                        'message': 'Redis not available - audio processing is disabled'
                     })
                 else:
                     try:
