@@ -20,7 +20,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-3
   run: python server.py
   type: web
@@ -29,7 +29,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-4
   run: python server.py
   type: web
@@ -38,7 +38,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-5
   run: python server.py
   type: web
@@ -47,7 +47,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-6
   run: python server.py
   type: web
@@ -56,7 +56,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-7
   run: python server.py
   type: web
@@ -65,7 +65,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-8
   run: python server.py
   type: web
@@ -74,7 +74,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-9
   run: python server.py
   type: web
@@ -83,7 +83,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-10
   run: python server.py
   type: web
@@ -92,7 +92,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-11
   run: python server.py
   type: web
@@ -101,7 +101,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-12
   run: python server.py
   type: web
@@ -110,7 +110,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-13
   run: python server.py
   type: web
@@ -119,7 +119,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-14
   run: python server.py
   type: web
@@ -128,7 +128,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-15
   run: python server.py
   type: web
@@ -137,7 +137,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-16
   run: python server.py
   type: web
@@ -146,7 +146,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-17
   run: python server.py
   type: web
@@ -155,7 +155,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-18
   run: python server.py
   type: web
@@ -164,7 +164,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-19
   run: python server.py
   type: web
@@ -173,7 +173,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-20
   run: python server.py
   type: web
@@ -182,7 +182,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-21
   run: python server.py
   type: web
@@ -191,7 +191,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-22
   run: python server.py
   type: web
@@ -200,7 +200,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-23
   run: python server.py
   type: web
@@ -209,7 +209,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-24
   run: python server.py
   type: web
@@ -218,7 +218,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-25
   run: python server.py
   type: web
@@ -227,7 +227,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-26
   run: python server.py
   type: web
@@ -236,7 +236,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-27
   run: python server.py
   type: web
@@ -245,7 +245,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-28
   run: python server.py
   type: web
@@ -254,7 +254,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-29
   run: python server.py
   type: web
@@ -263,7 +263,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-30
   run: python server.py
   type: web
@@ -272,7 +272,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-31
   run: python server.py
   type: web
@@ -281,7 +281,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-32
   run: python server.py
   type: web
@@ -290,7 +290,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-33
   run: python server.py
   type: web
@@ -299,7 +299,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-34
   run: python server.py
   type: web
@@ -308,7 +308,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-35
   run: python server.py
   type: web
@@ -317,7 +317,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-36
   run: python server.py
   type: web
@@ -326,7 +326,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-37
   run: python server.py
   type: web
@@ -335,7 +335,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-38
   run: python server.py
   type: web
@@ -344,7 +344,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-39
   run: python server.py
   type: web
@@ -353,7 +353,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-40
   run: python server.py
   type: web
@@ -362,7 +362,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-41
   run: python server.py
   type: web
@@ -371,7 +371,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-42
   run: python server.py
   type: web
@@ -380,7 +380,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-43
   run: python server.py
   type: web
@@ -389,7 +389,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-44
   run: python server.py
   type: web
@@ -398,7 +398,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-45
   run: python server.py
   type: web
@@ -407,7 +407,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-46
   run: python server.py
   type: web
@@ -416,7 +416,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-47
   run: python server.py
   type: web
@@ -425,7 +425,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-48
   run: python server.py
   type: web
@@ -434,7 +434,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-49
   run: python server.py
   type: web
@@ -443,7 +443,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-50
   run: python server.py
   type: web
@@ -452,7 +452,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-51
   run: python server.py
   type: web
@@ -461,7 +461,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: web-52
   run: python server.py
   type: web
@@ -470,7 +470,7 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 3000
-  sleep: false
+  sleep: true
 - name: worker-1
   run: "python server.py"
   type: worker
