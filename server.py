@@ -403,15 +403,33 @@ class SimpleHandler(BaseHTTPRequestHandler):
         client_ip = self.client_address[0]
         method = self.command
         path = self.path
-        
+
         # Extract tracing headers for logging
         trace_id = self.headers.get('X-B3-TraceId', 'none')
         span_id = self.headers.get('X-B3-SpanId', 'none')
-        
+
         logger.info(f"Request: {client_ip} - {method} {path} - Status: {status_code} - Duration: {duration:.3f}s - TraceID: {trace_id} - SpanID: {span_id}")
-        
+
         # Record metrics
         self.metrics.record_request(path, status_code, duration, dict(self.headers))
+
+    def _log_detailed_request_info(self, endpoint_name):
+        """Log detailed information about the client and server for blue-green testing"""
+        my_image_tag = os.environ.get('PORTER_IMAGE_TAG', 'unknown')
+        client_ip = self.client_address[0]
+        client_port = self.client_address[1]
+
+        logger.info(f"[{endpoint_name.upper()}] === Detailed Request Info ===")
+        logger.info(f"[{endpoint_name.upper()}] Server hostname: {HOSTNAME}")
+        logger.info(f"[{endpoint_name.upper()}] Server image tag (PORTER_IMAGE_TAG): {my_image_tag}")
+        logger.info(f"[{endpoint_name.upper()}] Server in mesh: {self.in_mesh}")
+        logger.info(f"[{endpoint_name.upper()}] Client IP: {client_ip}")
+        logger.info(f"[{endpoint_name.upper()}] Client port: {client_port}")
+        logger.info(f"[{endpoint_name.upper()}] Request method: {self.command}")
+        logger.info(f"[{endpoint_name.upper()}] Request path: {self.path}")
+        logger.info(f"[{endpoint_name.upper()}] Request headers:")
+        for header, value in self.headers.items():
+            logger.info(f"[{endpoint_name.upper()}]   {header}: {value}")
 
     def handle_request(self, handler_func):
         """Wrapper to measure request duration and handle logging"""
@@ -692,6 +710,106 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 'cores': min(cores, os.cpu_count() or 1),
                 'algo': algo_param,
                 'hostname': HOSTNAME
+            })
+            self.log_request_info(status_code, time.time() - start_time)
+            return
+
+        elif self.path == '/test_bg':
+            self._log_detailed_request_info("test_bg")
+            partner_service = os.environ.get('PORTER_PARTNER_SERVICE', '')
+
+            if not partner_service:
+                status_code = self.send_json_response(500, {
+                    'status': 'error',
+                    'message': 'PORTER_PARTNER_SERVICE environment variable not set',
+                    'hostname': HOSTNAME,
+                    'porter_image_tag': os.environ.get('PORTER_IMAGE_TAG', 'unknown')
+                })
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+
+            partner_url = f"{partner_service.rstrip('/')}/from_partner"
+            logger.info(f"[TEST_BG] Forwarding request to partner at: {partner_url}")
+
+            try:
+                req = urllib.request.Request(partner_url)
+                req.add_header('User-Agent', 'porter-test-bg')
+                req.add_header('X-Forwarded-From', HOSTNAME)
+                req.add_header('X-Original-Client', self.client_address[0])
+                req.add_header('X-Porter-Image-Tag', os.environ.get('PORTER_IMAGE_TAG', 'unknown'))
+
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    partner_status = getattr(resp, 'status', None) or resp.getcode()
+                    partner_body = resp.read().decode('utf-8', errors='replace')
+                    partner_headers = dict(resp.headers)
+
+                try:
+                    partner_data = json.loads(partner_body)
+                except Exception:
+                    partner_data = {'raw_response': partner_body}
+
+                logger.info(f"[TEST_BG] Partner response: status={partner_status} data={partner_data}")
+
+                status_code = self.send_json_response(200, {
+                    'status': 'success',
+                    'hostname': HOSTNAME,
+                    'porter_image_tag': os.environ.get('PORTER_IMAGE_TAG', 'unknown'),
+                    'partner_service': partner_service,
+                    'partner_response': {
+                        'status': partner_status,
+                        'data': partner_data,
+                        'headers': partner_headers
+                    }
+                })
+            except urllib.error.HTTPError as e:
+                logger.error(f"[TEST_BG] Partner HTTP error: {e.code} - {e.reason}")
+                status_code = self.send_json_response(502, {
+                    'status': 'error',
+                    'message': f'Partner returned HTTP {e.code}: {e.reason}',
+                    'hostname': HOSTNAME,
+                    'porter_image_tag': os.environ.get('PORTER_IMAGE_TAG', 'unknown'),
+                    'partner_service': partner_service
+                })
+            except urllib.error.URLError as e:
+                logger.error(f"[TEST_BG] Partner connection error: {e.reason}")
+                status_code = self.send_json_response(502, {
+                    'status': 'error',
+                    'message': f'Failed to connect to partner: {e.reason}',
+                    'hostname': HOSTNAME,
+                    'porter_image_tag': os.environ.get('PORTER_IMAGE_TAG', 'unknown'),
+                    'partner_service': partner_service
+                })
+            except Exception as e:
+                logger.error(f"[TEST_BG] Unexpected error contacting partner: {e}")
+                status_code = self.send_json_response(500, {
+                    'status': 'error',
+                    'message': f'Unexpected error: {str(e)}',
+                    'hostname': HOSTNAME,
+                    'porter_image_tag': os.environ.get('PORTER_IMAGE_TAG', 'unknown')
+                })
+
+            self.log_request_info(status_code, time.time() - start_time)
+            return
+
+        elif self.path == '/from_partner':
+            self._log_detailed_request_info("from_partner")
+
+            forwarded_from = self.headers.get('X-Forwarded-From', 'unknown')
+            original_client = self.headers.get('X-Original-Client', 'unknown')
+            partner_image_tag = self.headers.get('X-Porter-Image-Tag', 'unknown')
+
+            logger.info(f"[FROM_PARTNER] Request received from partner: {forwarded_from}")
+            logger.info(f"[FROM_PARTNER] Original client: {original_client}")
+            logger.info(f"[FROM_PARTNER] Partner image tag: {partner_image_tag}")
+            logger.info(f"[FROM_PARTNER] My image tag: {os.environ.get('PORTER_IMAGE_TAG', 'unknown')}")
+
+            status_code = self.send_json_response(200, {
+                'status': 'success',
+                'hostname': HOSTNAME,
+                'porter_image_tag': os.environ.get('PORTER_IMAGE_TAG', 'unknown'),
+                'received_from_partner': forwarded_from,
+                'original_client': original_client,
+                'partner_image_tag': partner_image_tag
             })
             self.log_request_info(status_code, time.time() - start_time)
             return
