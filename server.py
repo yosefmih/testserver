@@ -542,7 +542,6 @@ class SimpleHandler(BaseHTTPRequestHandler):
             
             # Check if we can access the Linkerd proxy API (only available if in mesh)
             try:
-                import urllib.request
                 req = urllib.request.Request('http://localhost:4191/ready')
                 req.add_header('User-Agent', 'python-mesh-test')
                 with urllib.request.urlopen(req, timeout=0.5) as response:
