@@ -2,6 +2,18 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 
+// Import comprehensive stock analysis modules
+const { 
+  STOCK_UNIVERSE, 
+  generateHistoricalPrices, 
+  calculateTechnicalIndicators, 
+  generateNewsSentiment 
+} = require('./stock-data');
+const { 
+  generatePricePrediction, 
+  calculateRiskMetrics 
+} = require('./stock-analysis');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -114,15 +126,25 @@ app.get('/analyze/:symbol', async function stockAnalysisHandler(req, res) {
   try {
     const { symbol } = req.params;
     
-    // Simulate stock analysis logic
+    // Perform comprehensive stock analysis
     const analysis = await performStockAnalysis(symbol);
-    const prediction = generateStockPrediction();
     
+    // Comprehensive response with all analysis components
     res.json({
       symbol: symbol.toUpperCase(),
-      analysis,
-      prediction,
-      timestamp: new Date().toISOString()
+      currentPrice: (STOCK_UNIVERSE[symbol.toUpperCase()] || STOCK_UNIVERSE['AAPL']).basePrice,
+      analysis: {
+        technical: analysis.technical,
+        sentiment: analysis.sentiment,
+        prediction: analysis.prediction,
+        risk: analysis.risk,
+        recommendation: analysis.recommendation
+      },
+      metadata: {
+        ...analysis.metadata,
+        timestamp: new Date().toISOString(),
+        version: '2.0-comprehensive'
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -132,7 +154,8 @@ app.get('/analyze/:symbol', async function stockAnalysisHandler(req, res) {
   }
 });
 
-// Named prediction function
+// This function is now replaced by the comprehensive analysis above
+// Keeping for backward compatibility but not used
 function generateStockPrediction() {
   return {
     timeframe: '2 months',
@@ -143,44 +166,338 @@ function generateStockPrediction() {
 }
 
 async function performStockAnalysis(symbol) {
-  // Simulate analysis of news and trends
-  const newsAnalysis = generateNewsAnalysis();
-  const technicalAnalysis = generateTechnicalAnalysis();
+  console.log(`Starting comprehensive analysis for ${symbol}...`);
+  const startTime = Date.now();
   
-  // Simulate API delay
-  await simulateApiDelay();
+  // Step 1: Generate realistic historical price data (CPU intensive)
+  const historicalPrices = generateRealisticPriceData(symbol);
+  
+  // Step 2: Calculate technical indicators (computationally expensive)
+  const technicalIndicators = calculateComprehensiveTechnicalAnalysis(historicalPrices);
+  
+  // Step 3: Perform news sentiment analysis (CPU intensive text processing)
+  const sentimentAnalysis = performAdvancedSentimentAnalysis(symbol);
+  
+  // Step 4: Generate price predictions using multiple models (very CPU intensive)
+  const pricePrediction = generateAdvancedPricePrediction(symbol, technicalIndicators, sentimentAnalysis);
+  
+  // Step 5: Calculate comprehensive risk metrics (Monte Carlo heavy)
+  const riskAssessment = calculateAdvancedRiskMetrics(symbol, technicalIndicators, historicalPrices);
+  
+  // Step 6: Generate investment recommendation
+  const recommendation = generateInvestmentRecommendation(technicalIndicators, sentimentAnalysis, pricePrediction, riskAssessment);
+  
+  const analysisTime = Date.now() - startTime;
+  console.log(`Analysis completed in ${analysisTime}ms for ${symbol}`);
   
   return {
-    news: newsAnalysis,
-    technical: technicalAnalysis,
-    recommendation: Math.random() > 0.5 ? 'BUY' : 'SELL'
+    technical: technicalIndicators,
+    sentiment: sentimentAnalysis,
+    prediction: pricePrediction,
+    risk: riskAssessment,
+    recommendation: recommendation,
+    metadata: {
+      analysisTime: `${analysisTime}ms`,
+      dataPoints: historicalPrices.length,
+      complexity: 'comprehensive'
+    }
   };
 }
 
-// Named news analysis function
-function generateNewsAnalysis() {
+// Generate realistic historical price data (CPU intensive)
+function generateRealisticPriceData(symbol) {
+  const daysOfData = 252; // 1 year of trading data
+  console.log(`Generating ${daysOfData} days of price data for ${symbol}...`);
+  
+  return generateHistoricalPrices(symbol, daysOfData);
+}
+
+// Calculate comprehensive technical analysis (CPU intensive)
+function calculateComprehensiveTechnicalAnalysis(historicalPrices) {
+  console.log('Calculating technical indicators...');
+  
+  // This is computationally expensive - calculates multiple indicators
+  const indicators = calculateTechnicalIndicators(historicalPrices);
+  
+  // Add additional CPU-intensive calculations
+  const supportResistanceLevels = calculateSupportResistanceLevels(historicalPrices);
+  const trendAnalysis = performTrendAnalysis(historicalPrices);
+  
   return {
-    sentiment: Math.random() > 0.5 ? 'positive' : 'negative',
-    newsCount: Math.floor(Math.random() * 50) + 10,
-    keyTopics: ['earnings', 'market trends', 'industry outlook']
+    ...indicators,
+    supportResistance: supportResistanceLevels,
+    trend: trendAnalysis,
+    strength: calculateTechnicalStrength(indicators)
   };
 }
 
-// Named technical analysis function
-function generateTechnicalAnalysis() {
+// Advanced sentiment analysis with CPU-intensive text processing
+function performAdvancedSentimentAnalysis(symbol) {
+  console.log(`Performing sentiment analysis for ${symbol}...`);
+  
+  // Generate comprehensive sentiment data (CPU intensive)
+  const sentimentData = generateNewsSentiment(symbol);
+  
+  // Additional CPU-intensive sentiment processing
+  const sectorSentiment = calculateSectorSentiment(symbol);
+  const marketSentiment = calculateMarketSentiment();
+  
   return {
-    trend: Math.random() > 0.5 ? 'upward' : 'downward',
-    volatility: (Math.random() * 0.5 + 0.1).toFixed(3),
-    support: (Math.random() * 100 + 50).toFixed(2),
-    resistance: (Math.random() * 100 + 150).toFixed(2)
+    ...sentimentData,
+    sector: sectorSentiment,
+    market: marketSentiment,
+    composite: calculateCompositeSentiment(sentimentData, sectorSentiment, marketSentiment)
   };
 }
 
-// Named delay simulation function
-function simulateApiDelay() {
-  return new Promise(function delayResolver(resolve) {
-    setTimeout(resolve, 1000);
-  });
+// Generate advanced price prediction (very CPU intensive)
+function generateAdvancedPricePrediction(symbol, technicalData, sentimentData) {
+  console.log('Running price prediction models...');
+  
+  // This runs Monte Carlo simulations and is very CPU intensive
+  return generatePricePrediction(symbol, technicalData, sentimentData, 60);
+}
+
+// Calculate advanced risk metrics (Monte Carlo heavy)
+function calculateAdvancedRiskMetrics(symbol, technicalData, historicalPrices) {
+  console.log('Calculating risk metrics...');
+  
+  // CPU-intensive risk calculations
+  return calculateRiskMetrics(symbol, technicalData, historicalPrices);
+}
+
+// Helper functions for additional CPU-intensive calculations
+
+function calculateSupportResistanceLevels(prices) {
+  // CPU-intensive support/resistance calculation
+  const recentPrices = prices.slice(-50).map(p => p.close);
+  const pivotPoints = [];
+  
+  // Find local maxima and minima (computationally expensive)
+  for (let i = 2; i < recentPrices.length - 2; i++) {
+    const isLocalMax = recentPrices[i] > recentPrices[i-1] && recentPrices[i] > recentPrices[i+1] &&
+                      recentPrices[i] > recentPrices[i-2] && recentPrices[i] > recentPrices[i+2];
+    const isLocalMin = recentPrices[i] < recentPrices[i-1] && recentPrices[i] < recentPrices[i+1] &&
+                      recentPrices[i] < recentPrices[i-2] && recentPrices[i] < recentPrices[i+2];
+    
+    if (isLocalMax || isLocalMin) {
+      pivotPoints.push({ price: recentPrices[i], type: isLocalMax ? 'resistance' : 'support' });
+    }
+  }
+  
+  // Cluster similar levels (more CPU work)
+  const clusteredLevels = clusterPivotPoints(pivotPoints);
+  
+  return {
+    support: clusteredLevels.filter(l => l.type === 'support').slice(0, 3),
+    resistance: clusteredLevels.filter(l => l.type === 'resistance').slice(0, 3),
+    pivotCount: pivotPoints.length
+  };
+}
+
+function clusterPivotPoints(pivots) {
+  // CPU-intensive clustering algorithm
+  const clusters = [];
+  const threshold = 0.02; // 2% clustering threshold
+  
+  for (const pivot of pivots) {
+    let addedToCluster = false;
+    
+    for (const cluster of clusters) {
+      if (Math.abs(pivot.price - cluster.price) / cluster.price < threshold) {
+        cluster.count++;
+        cluster.price = (cluster.price * (cluster.count - 1) + pivot.price) / cluster.count;
+        addedToCluster = true;
+        break;
+      }
+    }
+    
+    if (!addedToCluster) {
+      clusters.push({ price: pivot.price, type: pivot.type, count: 1 });
+    }
+  }
+  
+  return clusters.sort((a, b) => b.count - a.count);
+}
+
+function performTrendAnalysis(prices) {
+  // CPU-intensive trend analysis
+  const shortTerm = prices.slice(-20).map(p => p.close);
+  const mediumTerm = prices.slice(-50).map(p => p.close);
+  const longTerm = prices.slice(-200).map(p => p.close);
+  
+  // Calculate trend strength using linear regression (CPU intensive)
+  const shortTrend = calculateLinearRegression(shortTerm);
+  const mediumTrend = calculateLinearRegression(mediumTerm);
+  const longTrend = calculateLinearRegression(longTerm);
+  
+  return {
+    short: { slope: shortTrend.slope, strength: Math.abs(shortTrend.correlation) },
+    medium: { slope: mediumTrend.slope, strength: Math.abs(mediumTrend.correlation) },
+    long: { slope: longTrend.slope, strength: Math.abs(longTrend.correlation) },
+    overall: shortTrend.slope > 0 && mediumTrend.slope > 0 ? 'upward' : 
+             shortTrend.slope < 0 && mediumTrend.slope < 0 ? 'downward' : 'sideways'
+  };
+}
+
+function calculateLinearRegression(values) {
+  // CPU-intensive linear regression calculation
+  const n = values.length;
+  const x = Array.from({ length: n }, (_, i) => i);
+  const y = values;
+  
+  const sumX = x.reduce((a, b) => a + b, 0);
+  const sumY = y.reduce((a, b) => a + b, 0);
+  const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+  const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0);
+  const sumYY = y.reduce((sum, yi) => sum + yi * yi, 0);
+  
+  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+  
+  // Calculate correlation coefficient
+  const correlation = (n * sumXY - sumX * sumY) / 
+    Math.sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY));
+  
+  return { slope, intercept, correlation };
+}
+
+function calculateTechnicalStrength(indicators) {
+  // Aggregate technical strength score
+  let strength = 0;
+  let signals = 0;
+  
+  if (indicators.rsi) {
+    if (indicators.rsi < 30) strength += 1; // Oversold - bullish
+    else if (indicators.rsi > 70) strength -= 1; // Overbought - bearish
+    signals++;
+  }
+  
+  if (indicators.macd && indicators.macd.histogram > 0) {
+    strength += 1;
+    signals++;
+  } else if (indicators.macd && indicators.macd.histogram < 0) {
+    strength -= 1;
+    signals++;
+  }
+  
+  return signals > 0 ? strength / signals : 0;
+}
+
+function calculateSectorSentiment(symbol) {
+  // CPU-intensive sector analysis
+  const stock = STOCK_UNIVERSE[symbol] || STOCK_UNIVERSE['AAPL'];
+  const sector = stock.sector;
+  
+  // Simulate sector sentiment calculation (CPU intensive)
+  let sectorScore = 0;
+  for (let i = 0; i < 1000; i++) {
+    sectorScore += Math.sin(i) * Math.cos(i * stock.volatility);
+  }
+  
+  const normalizedScore = (Math.sin(sectorScore) + 1) / 2;
+  
+  return {
+    sector: sector,
+    score: parseFloat(normalizedScore.toFixed(3)),
+    trend: normalizedScore > 0.6 ? 'positive' : normalizedScore < 0.4 ? 'negative' : 'neutral'
+  };
+}
+
+function calculateMarketSentiment() {
+  // CPU-intensive market sentiment calculation
+  let marketScore = 0;
+  const iterations = 5000;
+  
+  for (let i = 0; i < iterations; i++) {
+    marketScore += Math.sqrt(i) * Math.sin(i / 100) * Math.cos(i / 200);
+  }
+  
+  const normalizedScore = (Math.sin(marketScore / iterations) + 1) / 2;
+  
+  return {
+    score: parseFloat(normalizedScore.toFixed(3)),
+    interpretation: normalizedScore > 0.65 ? 'bullish' : normalizedScore < 0.35 ? 'bearish' : 'neutral',
+    vix: parseFloat((normalizedScore * 40 + 10).toFixed(2)) // Simulated VIX
+  };
+}
+
+function calculateCompositeSentiment(stock, sector, market) {
+  // Weighted composite sentiment
+  const weights = { stock: 0.5, sector: 0.3, market: 0.2 };
+  const composite = stock.score * weights.stock + sector.score * weights.sector + market.score * weights.market;
+  
+  return {
+    score: parseFloat(composite.toFixed(3)),
+    interpretation: composite > 0.6 ? 'bullish' : composite < 0.4 ? 'bearish' : 'neutral',
+    confidence: Math.abs(composite - 0.5) * 2 // Distance from neutral
+  };
+}
+
+function generateInvestmentRecommendation(technical, sentiment, prediction, risk) {
+  // CPU-intensive recommendation algorithm
+  let score = 0;
+  const factors = [];
+  
+  // Technical factors
+  if (technical.strength > 0.5) {
+    score += 0.3;
+    factors.push('Strong technical signals');
+  } else if (technical.strength < -0.5) {
+    score -= 0.3;
+    factors.push('Weak technical signals');
+  }
+  
+  // Sentiment factors
+  if (sentiment.composite.score > 0.6) {
+    score += 0.2;
+    factors.push('Positive sentiment');
+  } else if (sentiment.composite.score < 0.4) {
+    score -= 0.2;
+    factors.push('Negative sentiment');
+  }
+  
+  // Prediction factors
+  if (prediction.direction === 'bullish' && prediction.confidence > 70) {
+    score += 0.3;
+    factors.push('Strong upside prediction');
+  } else if (prediction.direction === 'bearish' && prediction.confidence > 70) {
+    score -= 0.3;
+    factors.push('Strong downside prediction');
+  }
+  
+  // Risk factors
+  if (risk.volatility.rating === 'very_high') {
+    score -= 0.2;
+    factors.push('High volatility risk');
+  }
+  
+  // Generate recommendation
+  let recommendation, action;
+  if (score > 0.3) {
+    recommendation = 'BUY';
+    action = 'Strong buy recommendation based on positive technical and fundamental factors';
+  } else if (score > 0.1) {
+    recommendation = 'WEAK_BUY';
+    action = 'Cautious buy with close monitoring recommended';
+  } else if (score < -0.3) {
+    recommendation = 'SELL';
+    action = 'Sell recommendation due to negative outlook';
+  } else if (score < -0.1) {
+    recommendation = 'WEAK_SELL';
+    action = 'Consider reducing position';
+  } else {
+    recommendation = 'HOLD';
+    action = 'Hold current position, mixed signals';
+  }
+  
+  return {
+    recommendation,
+    action,
+    confidence: Math.abs(score) * 100,
+    score: parseFloat(score.toFixed(3)),
+    factors
+  };
 }
 
 // Basic info endpoint
