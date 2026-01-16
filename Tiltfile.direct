@@ -1,0 +1,34 @@
+# Porter Hot Reload - Direct Integration with Existing Deployment
+# This version hot reloads directly into your existing Porter-managed deployment
+
+allow_k8s_contexts(['dev-cluster-2e6or1-user@dev-cluster-2e6or1'])
+default_registry('992382605253.dkr.ecr.us-east-1.amazonaws.com')
+
+print("🚀 Porter Hot Reload - Direct Integration Mode")
+
+# Hot reload the existing Porter deployment
+docker_build(
+    '992382605253.dkr.ecr.us-east-1.amazonaws.com/txx',
+    context='.',
+    dockerfile='./Dockerfile',
+    live_update=[
+        sync('./server.py', '/app/server.py'),
+        sync('./client.py', '/app/client.py'),
+        sync('./compute_pi.py', '/app/compute_pi.py'),
+        sync('./audio_worker.py', '/app/audio_worker.py'),
+        restart_container(),
+    ]
+)
+
+# Use your existing Porter-managed deployment (no custom K8s YAML)
+k8s_resource(
+    'txx-web',  # Your existing deployment name
+    port_forwards=['3000:3000'],
+    labels=['porter-app'],
+    # Don't create new resources, just manage existing ones
+    new_name='txx-web-hot-reload'
+)
+
+print("🎯 Hot reloading into existing Porter deployment!")
+print("⚠️  Changes will affect the live running app")
+print("🌐 App available at: http://localhost:3000")
