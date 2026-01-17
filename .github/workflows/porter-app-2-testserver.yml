@@ -7,6 +7,15 @@ jobs:
     porter-deploy:
         runs-on: ubuntu-latest
         steps:
+            - name: Check Docker version
+              run: |
+                echo "=== Docker Version ==="
+                docker version
+                echo "=== Docker Info ==="
+                docker info | grep -E "Server Version|API version"
+                echo "=== Runner Info ==="
+                uname -a
+                cat /etc/os-release
             - name: Checkout code
               uses: actions/checkout@v4
             - name: Set Github tag
