@@ -2,7 +2,7 @@ version: v2
 name: testserver
 services:
 - name: web
-  run: ""
+  run: "python server.py"
   type: web
   instances: 1
   cpuCores: 0.1
