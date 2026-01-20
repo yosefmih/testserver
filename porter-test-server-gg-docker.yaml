@@ -1,0 +1,20 @@
+version: v2
+name: testserver
+services:
+- name: web
+  run: "python server.py"
+  type: web
+  instances: 1
+  cpuCores: 0.1 
+  ramMegabytes: 100
+  terminationGracePeriodSeconds: 30
+  port: 8088
+  domains:
+  - name: web-13442-e44c21be-rgg0zsf5.onporter.run
+  sleep: false
+  serviceMeshEnabled: false
+build:
+  context: ./
+  method: docker
+  dockerfile: Dockerfile
+deploymentStrategy: {}
