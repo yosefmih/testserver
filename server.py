@@ -323,18 +323,27 @@ class MetricsCollector:
         
         return "\n".join(metrics)
 
+POEM = """
+Mon enfant, ma sœur,
+Songe à la douceur
+D'aller là-bas vivre ensemble!
+Aimer à loisir,
+Aimer et mourir
+Au pays qui te ressemble!
+""".strip()
+
 class SimpleHandler(BaseHTTPRequestHandler):
     # Class variables
     is_ready = False
     is_shutting_down = False
     metrics = MetricsCollector()
     greeting_word = "MAN"  # Default greeting word
-    
+
     # Service mesh testing properties
     error_rate_percent = 0   # % of requests that return 500 errors
     latency_injection_ms = 0  # Additional latency to inject
     trace_propagation = True  # Whether to propagate tracing headers
-    
+
     # Mesh status - this is determined at startup
     in_mesh = RUNNING_IN_MESH
 
@@ -962,7 +971,45 @@ class SimpleHandler(BaseHTTPRequestHandler):
                             self.send_header(f'Echo-{header}', self.headers[header])
                 
                 self.end_headers()
-                self.wfile.write(f"<html><body><h1>mon chocolat, {self.greeting_word}!</h1><p>From: {HOSTNAME}</p><p>In Mesh: {self.in_mesh}</p></body></html>".encode('utf-8'))
+                poem_html = POEM.replace('\n', '<br>')
+                html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{
+            font-family: Georgia, serif;
+            margin: 0;
+            padding: 40px;
+            min-height: calc(100vh - 80px);
+            position: relative;
+        }}
+        .poem {{
+            font-size: 1.4em;
+            line-height: 1.8;
+            font-style: italic;
+            max-width: 600px;
+        }}
+        .server-info {{
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-family: monospace;
+            font-size: 0.75em;
+            color: #666;
+            text-align: right;
+        }}
+    </style>
+</head>
+<body>
+    <div class="poem">{poem_html}</div>
+    <div class="server-info">
+        {HOSTNAME}<br>
+        mesh: {self.in_mesh}
+    </div>
+</body>
+</html>"""
+                self.wfile.write(html.encode('utf-8'))
                 status_code = 200
             else:
                 status_code = self.send_json_response(503, {'status': 'server is initializing'})
