@@ -688,6 +688,44 @@ class SimpleHandler(BaseHTTPRequestHandler):
             # Explicitly return after handling /pi to prevent falling through
             return
 
+        elif self.path.startswith('/large-headers'):
+            # Test endpoint for buffer size testing
+            # Returns headers that exceed the configured proxy-buffer-size
+            parsed = urlparse(self.path)
+            query_params = parse_qs(parsed.query)
+            size_kb = int(query_params.get('size_kb', ['100'])[0])  # Default 100KB
+
+            # Each header value will be padded to create large total header size
+            # nginx proxy-buffer-size must accommodate all response headers
+            header_size = size_kb * 1024
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('X-Server-Host', HOSTNAME)
+
+            # Add large custom headers to test buffer limits
+            # Split into multiple headers to avoid single-header limits
+            chunk_size = 8000  # ~8KB per header value (safe under typical limits)
+            num_headers = (header_size + chunk_size - 1) // chunk_size
+
+            for i in range(num_headers):
+                remaining = header_size - (i * chunk_size)
+                this_size = min(chunk_size, remaining)
+                if this_size > 0:
+                    self.send_header(f'X-Large-Header-{i}', 'X' * this_size)
+
+            self.end_headers()
+            response_data = {
+                'status': 'success',
+                'header_size_kb': size_kb,
+                'num_headers': num_headers,
+                'hostname': HOSTNAME
+            }
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
+            status_code = 200
+            self.log_request_info(status_code, time.time() - start_time)
+            return
+
         elif self.path.startswith('/delay'):
             parsed = urlparse(self.path)
             query_params = parse_qs(parsed.query)

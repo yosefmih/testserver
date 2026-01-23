@@ -4,7 +4,7 @@ services:
 - name: web
   run: "python server.py"
   type: web
-  instances: 1
+  instances: 2
   cpuCores: 0.1
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
@@ -23,6 +23,20 @@ services:
     rateLimit:
       requestsPerMinute: 10
       burstSize: 2
+    buffering:
+      inbound:
+        enabled: true
+        sizeBytes: 65536
+      outbound:
+        enabled: true
+        sizeBytes: 65536
+    sessionAffinity:
+      enabled: true
+      mode: COOKIE
+      ttlSeconds: 600
+    firewall:
+      allowedCidrs:
+        - "216.158.129.250/32"
 build:
   context: ./
   method: docker

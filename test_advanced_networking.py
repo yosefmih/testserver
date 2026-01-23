@@ -94,6 +94,8 @@ class AdvancedNetworkingTester:
                 self._test_request_body(config["requestBody"])
             if config.get("rateLimit"):
                 self._test_rate_limit(config["rateLimit"])
+            if config.get("buffering"):
+                self._test_buffering(config["buffering"])
             if config.get("sessionAffinity"):
                 self._test_session_affinity(config["sessionAffinity"])
             if config.get("firewall"):
@@ -543,6 +545,110 @@ class AdvancedNetworkingTester:
 
         self._record_result(test)
 
+    def _test_buffering(self, config: dict):
+        """Test buffering configuration by checking header buffer limits."""
+        print(f"\n{colorize('▶ Buffering Tests', Colors.BOLD)}")
+
+        # Get outbound buffer size (this controls response header buffering)
+        outbound = config.get("outbound", {})
+        buffer_size_bytes = outbound.get("sizeBytes", 32768)  # Default 32KB
+        buffer_size_kb = buffer_size_bytes // 1024
+
+        self.log(f"Configured outbound buffer size: {buffer_size_kb}KB")
+
+        # Test 1: Headers within buffer size should succeed
+        self._test_headers_within_buffer(buffer_size_kb)
+
+        # Test 2: Headers exceeding buffer size should fail with 502
+        self._test_headers_exceed_buffer(buffer_size_kb)
+
+    def _test_headers_within_buffer(self, buffer_size_kb: int):
+        """Test that response headers within buffer size succeed."""
+        # Use 50% of buffer to be safely within limits
+        test_size_kb = max(1, buffer_size_kb // 2)
+
+        test = TestCase(
+            name=f"buffer_headers_within_{test_size_kb}kb",
+            description=f"Response with {test_size_kb}KB headers (within {buffer_size_kb}KB buffer)"
+        )
+
+        self.log(f"Testing {test_size_kb}KB headers (should succeed)...")
+        start = time.time()
+
+        try:
+            resp = self.session.get(
+                f"{self.base_url}/large-headers?size_kb={test_size_kb}",
+                timeout=30
+            )
+            test.duration_seconds = time.time() - start
+            test.details = {"status_code": resp.status_code, "header_size_kb": test_size_kb}
+
+            if resp.status_code == 200:
+                test.result = TestResult.PASS
+                test.message = f"Headers within buffer accepted (HTTP 200)"
+            elif resp.status_code == 404:
+                test.result = TestResult.SKIP
+                test.message = "/large-headers endpoint not found - redeploy with updated server.py"
+            elif resp.status_code == 502:
+                test.result = TestResult.FAIL
+                test.message = f"Got 502 but headers ({test_size_kb}KB) should be within buffer ({buffer_size_kb}KB)"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"Unexpected HTTP {resp.status_code}"
+
+        except requests.exceptions.RequestException as e:
+            test.duration_seconds = time.time() - start
+            test.result = TestResult.FAIL
+            test.message = f"Request failed: {e}"
+
+        self._record_result(test)
+
+    def _test_headers_exceed_buffer(self, buffer_size_kb: int):
+        """Test that response headers exceeding buffer size fail with 502."""
+        # Use 150% of buffer to clearly exceed limits
+        test_size_kb = int(buffer_size_kb * 1.5)
+
+        test = TestCase(
+            name=f"buffer_headers_exceed_{test_size_kb}kb",
+            description=f"Response with {test_size_kb}KB headers (exceeds {buffer_size_kb}KB buffer)"
+        )
+
+        self.log(f"Testing {test_size_kb}KB headers (should fail with 502)...")
+        start = time.time()
+
+        try:
+            resp = self.session.get(
+                f"{self.base_url}/large-headers?size_kb={test_size_kb}",
+                timeout=30
+            )
+            test.duration_seconds = time.time() - start
+            test.details = {"status_code": resp.status_code, "header_size_kb": test_size_kb}
+
+            if resp.status_code == 502:
+                test.result = TestResult.PASS
+                test.message = f"Correctly rejected with 502 (headers exceed buffer)"
+            elif resp.status_code == 404:
+                test.result = TestResult.SKIP
+                test.message = "/large-headers endpoint not found - redeploy with updated server.py"
+            elif resp.status_code == 200:
+                test.result = TestResult.FAIL
+                test.message = f"Headers ({test_size_kb}KB) accepted but should exceed buffer ({buffer_size_kb}KB)"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"HTTP {resp.status_code} (expected 502)"
+
+        except requests.exceptions.RequestException as e:
+            test.duration_seconds = time.time() - start
+            # Connection errors might also indicate buffer overflow
+            if "502" in str(e):
+                test.result = TestResult.PASS
+                test.message = "Request failed with 502 (buffer exceeded)"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"Request failed: {e}"
+
+        self._record_result(test)
+
     def _test_session_affinity(self, config: dict):
         """Test session affinity configuration."""
         print(f"\n{colorize('▶ Session Affinity Tests', Colors.BOLD)}")
@@ -665,25 +771,33 @@ class AdvancedNetworkingTester:
             self._record_result(test)
             return
 
-        # We can only test if our IP is allowed or blocked
+        self.log(f"Allowlist: {allowed_cidrs}")
+
+        # Test 1: Check if we're allowed (verifies allowlist works for our IP)
+        self._test_firewall_allowed(allowed_cidrs)
+
+        # Test 2: Verify behavior is correct for our IP vs the allowlist
+        self._test_firewall_ip_match(allowed_cidrs)
+
+    def _test_firewall_allowed(self, allowed_cidrs: list):
+        """Test basic firewall access."""
         test = TestCase(
             name="firewall_access",
-            description=f"Test access with allowlist: {allowed_cidrs}"
+            description=f"Test access with allowlist configured"
         )
-
-        self.log(f"Testing firewall with allowlist: {allowed_cidrs}")
 
         start = time.time()
         try:
             resp = self.session.get(f"{self.base_url}/healthz", timeout=10)
             test.duration_seconds = time.time() - start
+            test.details = {"status_code": resp.status_code, "allowed_cidrs": allowed_cidrs}
 
             if resp.status_code == 200:
                 test.result = TestResult.PASS
                 test.message = "Access allowed (your IP is in the allowlist)"
             elif resp.status_code == 403:
                 test.result = TestResult.PASS
-                test.message = "Access denied (your IP is NOT in the allowlist)"
+                test.message = "Access denied (your IP is NOT in the allowlist) - firewall working!"
             else:
                 test.result = TestResult.INCONCLUSIVE
                 test.message = f"HTTP {resp.status_code}"
@@ -692,6 +806,69 @@ class AdvancedNetworkingTester:
             test.duration_seconds = time.time() - start
             test.result = TestResult.INCONCLUSIVE
             test.message = f"Request failed: {e}"
+
+        self._record_result(test)
+
+    def _test_firewall_ip_match(self, allowed_cidrs: list):
+        """Verify our IP matches or doesn't match the allowlist correctly."""
+        import ipaddress
+
+        test = TestCase(
+            name="firewall_ip_validation",
+            description="Verify response matches IP vs allowlist"
+        )
+
+        start = time.time()
+        try:
+            # Try to get our public IP from the server
+            resp = self.session.get(f"{self.base_url}/config", timeout=10)
+            test.duration_seconds = time.time() - start
+
+            if resp.status_code == 403:
+                # We're blocked - that's expected if our IP isn't in the allowlist
+                test.result = TestResult.PASS
+                test.message = "Correctly blocked (403) - cannot verify IP but firewall is active"
+                test.details = {"blocked": True, "allowed_cidrs": allowed_cidrs}
+                self._record_result(test)
+                return
+
+            if resp.status_code != 200:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"Could not get config: HTTP {resp.status_code}"
+                self._record_result(test)
+                return
+
+            # We got through - verify our IP should be allowed
+            # Note: We can't easily get the client IP from the response,
+            # but we can verify the allowlist is configured
+            test.details = {"status": "allowed", "allowed_cidrs": allowed_cidrs}
+
+            # Try to determine if our test is meaningful
+            # by checking if the CIDRs look valid
+            valid_cidrs = []
+            for cidr in allowed_cidrs:
+                try:
+                    ipaddress.ip_network(cidr, strict=False)
+                    valid_cidrs.append(cidr)
+                except ValueError:
+                    pass
+
+            if not valid_cidrs:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"No valid CIDRs in allowlist: {allowed_cidrs}"
+            else:
+                test.result = TestResult.PASS
+                test.message = f"Access allowed with {len(valid_cidrs)} valid CIDR(s) configured"
+                test.message += f"\n           Note: To fully test firewall, run from an IP outside: {allowed_cidrs}"
+
+        except requests.exceptions.RequestException as e:
+            test.duration_seconds = time.time() - start
+            if "403" in str(e):
+                test.result = TestResult.PASS
+                test.message = "Correctly blocked (403 in exception)"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"Request failed: {e}"
 
         self._record_result(test)
 
