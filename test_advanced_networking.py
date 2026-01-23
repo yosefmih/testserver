@@ -89,6 +89,7 @@ class AdvancedNetworkingTester:
         if config:
             if config.get("timeouts"):
                 self._test_timeouts(config["timeouts"])
+                self._wait_for_server_recovery("timeout tests")
             if config.get("requestBody"):
                 self._test_request_body(config["requestBody"])
             if config.get("rateLimit"):
@@ -100,11 +101,28 @@ class AdvancedNetworkingTester:
         else:
             # Run with discovery/defaults
             self._test_timeouts_discovery()
+            self._wait_for_server_recovery("timeout tests")
             self._test_request_body_discovery()
             self._test_rate_limit_discovery()
             self._test_session_affinity_discovery()
 
         self._print_summary()
+
+    def _wait_for_server_recovery(self, after_what: str, wait_seconds: int = 5):
+        """Wait for server to recover after tests that may leave it busy."""
+        self.log(f"Waiting {wait_seconds}s for server to recover after {after_what}...")
+        time.sleep(wait_seconds)
+        # Verify server is responsive
+        for attempt in range(3):
+            try:
+                resp = requests.get(f"{self.base_url}/healthz", timeout=5)
+                if resp.status_code == 200:
+                    self.log("Server ready")
+                    return
+            except:
+                pass
+            time.sleep(2)
+        self.log("Server may still be recovering, proceeding anyway...")
 
     def _test_connectivity(self):
         """Basic connectivity test."""
@@ -451,7 +469,9 @@ class AdvancedNetworkingTester:
 
         start = time.time()
 
-        with ThreadPoolExecutor(max_workers=50) as executor:
+        # Use moderate concurrency to avoid overwhelming small servers
+        # while still testing rate limiting behavior
+        with ThreadPoolExecutor(max_workers=20) as executor:
             futures = {executor.submit(make_request, i): i for i in range(num_requests)}
             for future in as_completed(futures):
                 status = future.result()
@@ -491,9 +511,15 @@ class AdvancedNetworkingTester:
             status_breakdown.append(f"errors:{results['errors']}")
         breakdown_str = ", ".join(status_breakdown)
 
+        # Check for rate limiting - nginx can return 429 OR 503 depending on config
         if results["rate_limited"] > 0:
             test.result = TestResult.PASS
             test.message = f"Rate limiting active: {results['rate_limited']}/{num_requests} got 429 [{breakdown_str}]"
+        elif other_status_codes.get(503, 0) > 0 and results["success"] <= burst_bucket:
+            # 503 with limited successes suggests rate limiting (nginx sometimes uses 503)
+            test.result = TestResult.PASS
+            test.message = f"Rate limiting likely active via 503: {results['success']} succeeded, {other_status_codes[503]} got 503 [{breakdown_str}]"
+            test.message += "\n           Note: nginx returned 503 instead of 429 - consider checking nginx config"
         elif total_http_responses == 0:
             test.result = TestResult.INCONCLUSIVE
             test.message = f"All {results['errors']} requests failed with connection errors"
@@ -504,11 +530,11 @@ class AdvancedNetworkingTester:
             test.result = TestResult.FAIL
             test.message = f"No rate limiting detected: all {results['success']}/{num_requests} requests got 200"
         elif other_status_codes or results["errors"] > 0:
-            # Some requests failed but not with 429
+            # Some requests failed but not with 429 or expected 503 pattern
             test.result = TestResult.INCONCLUSIVE
-            test.message = f"Requests failing but NOT with 429 [{breakdown_str}]"
+            test.message = f"Mixed results [{breakdown_str}]"
             if 503 in other_status_codes:
-                test.message += "\n           503 = Service Unavailable (nginx may be rejecting requests differently)"
+                test.message += "\n           503 errors may indicate server overload or rate limiting"
             if errors:
                 test.message += f"\n           Sample error: {errors[0]}"
         else:

@@ -1,4 +1,4 @@
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 import json
 import time
 import threading
@@ -1335,7 +1335,7 @@ def _peer_check_loop(peer_url, expected_tag, batch_size=10, period_seconds=30, t
             time.sleep(0.2)
         time.sleep(period_seconds)
 
-def run(server_class=HTTPServer, handler_class=SimpleHandler, port=3000, startup_delay=10):
+def run(server_class=ThreadingHTTPServer, handler_class=SimpleHandler, port=3000, startup_delay=10):
     # Get startup_delay from environment if available
     startup_delay = int(os.environ.get('STARTUP_DELAY_SECONDS', startup_delay))
     # Optional: pre-bind init block to simulate full unavailability before ports are listening
