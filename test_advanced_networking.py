@@ -810,62 +810,72 @@ class AdvancedNetworkingTester:
         self._record_result(test)
 
     def _test_firewall_ip_match(self, allowed_cidrs: list):
-        """Verify our IP matches or doesn't match the allowlist correctly."""
-        import ipaddress
-
+        """Test that pod IP (not in allowlist) gets blocked when requesting through ingress."""
         test = TestCase(
-            name="firewall_ip_validation",
-            description="Verify response matches IP vs allowlist"
+            name="firewall_internal_blocked",
+            description="Verify pod IP is blocked by firewall (requests through ingress)"
         )
+
+        self.log("Asking pod to request itself through ingress (pod IP should be blocked)...")
 
         start = time.time()
         try:
-            # Try to get our public IP from the server
-            resp = self.session.get(f"{self.base_url}/config", timeout=10)
+            # Extract host from base_url for the self-test
+            from urllib.parse import urlparse as url_parse
+            parsed = url_parse(self.base_url)
+            host = parsed.netloc
+
+            resp = self.session.get(
+                f"{self.base_url}/firewall-self-test?host={host}",
+                timeout=15
+            )
             test.duration_seconds = time.time() - start
 
+            if resp.status_code == 404:
+                test.result = TestResult.SKIP
+                test.message = "/firewall-self-test endpoint not found - redeploy with updated server.py"
+                self._record_result(test)
+                return
+
             if resp.status_code == 403:
-                # We're blocked - that's expected if our IP isn't in the allowlist
-                test.result = TestResult.PASS
-                test.message = "Correctly blocked (403) - cannot verify IP but firewall is active"
-                test.details = {"blocked": True, "allowed_cidrs": allowed_cidrs}
+                # We ourselves are blocked - can't run this test
+                test.result = TestResult.SKIP
+                test.message = "Cannot run self-test: our IP is blocked by firewall"
                 self._record_result(test)
                 return
 
             if resp.status_code != 200:
                 test.result = TestResult.INCONCLUSIVE
-                test.message = f"Could not get config: HTTP {resp.status_code}"
+                test.message = f"Unexpected status: HTTP {resp.status_code}"
                 self._record_result(test)
                 return
 
-            # We got through - verify our IP should be allowed
-            # Note: We can't easily get the client IP from the response,
-            # but we can verify the allowlist is configured
-            test.details = {"status": "allowed", "allowed_cidrs": allowed_cidrs}
+            data = resp.json()
+            test.details = data
 
-            # Try to determine if our test is meaningful
-            # by checking if the CIDRs look valid
-            valid_cidrs = []
-            for cidr in allowed_cidrs:
-                try:
-                    ipaddress.ip_network(cidr, strict=False)
-                    valid_cidrs.append(cidr)
-                except ValueError:
-                    pass
+            internal_status = data.get("internal_request_status")
+            blocked = data.get("blocked", False)
 
-            if not valid_cidrs:
-                test.result = TestResult.INCONCLUSIVE
-                test.message = f"No valid CIDRs in allowlist: {allowed_cidrs}"
-            else:
+            if blocked and internal_status == 403:
                 test.result = TestResult.PASS
-                test.message = f"Access allowed with {len(valid_cidrs)} valid CIDR(s) configured"
-                test.message += f"\n           Note: To fully test firewall, run from an IP outside: {allowed_cidrs}"
+                test.message = f"Pod IP correctly blocked (403) when requesting through ingress"
+                test.message += f"\n           Pod: {data.get('pod_hostname', 'unknown')}"
+            elif internal_status == 200:
+                test.result = TestResult.FAIL
+                test.message = f"Pod request succeeded (200) - firewall not blocking internal IPs!"
+                test.message += f"\n           Pod IP may need to be excluded from allowlist"
+            elif "error" in data:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"Self-test error: {data.get('error', 'unknown')}"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"Internal request returned {internal_status}"
 
         except requests.exceptions.RequestException as e:
             test.duration_seconds = time.time() - start
             if "403" in str(e):
-                test.result = TestResult.PASS
-                test.message = "Correctly blocked (403 in exception)"
+                test.result = TestResult.SKIP
+                test.message = "Our IP is blocked - cannot run pod self-test"
             else:
                 test.result = TestResult.INCONCLUSIVE
                 test.message = f"Request failed: {e}"

@@ -688,6 +688,72 @@ class SimpleHandler(BaseHTTPRequestHandler):
             # Explicitly return after handling /pi to prevent falling through
             return
 
+        elif self.path.startswith('/firewall-self-test'):
+            # Test endpoint that makes a request to itself through the ingress
+            # The pod's IP won't be in the allowlist, so it should get 403
+            # This allows testing BOTH allowed (external) and blocked (internal) scenarios
+
+            # Get the ingress URL from query param or Host header
+            parsed = urlparse(self.path)
+            query_params = parse_qs(parsed.query)
+            host = query_params.get('host', [self.headers.get('Host', '')])[0]
+
+            if not host:
+                status_code = self.send_json_response(400, {
+                    'status': 'error',
+                    'message': 'No host specified. Pass ?host=your-domain.com or ensure Host header is set'
+                })
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+
+            # Make request back through the ingress (HTTPS)
+            ingress_url = f"https://{host}/healthz"
+
+            logger.info(f"[FIREWALL-SELF-TEST] Pod {HOSTNAME} making request to {ingress_url}")
+
+            try:
+                import ssl
+                context = ssl.create_default_context()
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+
+                req = urllib.request.Request(ingress_url)
+                req.add_header('User-Agent', 'firewall-self-test-from-pod')
+
+                with urllib.request.urlopen(req, timeout=10, context=context) as resp:
+                    internal_status = resp.getcode()
+
+                status_code = self.send_json_response(200, {
+                    'status': 'unexpected',
+                    'internal_request_status': internal_status,
+                    'ingress_url': ingress_url,
+                    'pod_hostname': HOSTNAME,
+                    'message': 'Internal request succeeded (200) - pod IP may be in allowlist or firewall not enforced'
+                })
+
+            except urllib.error.HTTPError as e:
+                blocked = e.code == 403
+                status_code = self.send_json_response(200, {
+                    'status': 'success' if blocked else 'unexpected',
+                    'internal_request_status': e.code,
+                    'ingress_url': ingress_url,
+                    'pod_hostname': HOSTNAME,
+                    'blocked': blocked,
+                    'message': 'Firewall correctly blocked pod IP!' if blocked else f'Got {e.code} (expected 403 for blocked)'
+                })
+
+            except Exception as e:
+                logger.error(f"[FIREWALL-SELF-TEST] Error: {e}")
+                status_code = self.send_json_response(200, {
+                    'status': 'error',
+                    'error': str(e),
+                    'ingress_url': ingress_url,
+                    'pod_hostname': HOSTNAME
+                })
+
+            self.log_request_info(status_code, time.time() - start_time)
+            return
+
         elif self.path.startswith('/large-headers'):
             # Test endpoint for buffer size testing
             # Returns headers that exceed the configured proxy-buffer-size
