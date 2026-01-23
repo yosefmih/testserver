@@ -1,5 +1,5 @@
 version: v2
-name: txx
+name: testserver
 services:
 - name: web
   run: python server.py

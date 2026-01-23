@@ -1,5 +1,5 @@
 version: v2
-name: testserver
+name: testserver2
 services:
 - name: web
   run: "python server.py"

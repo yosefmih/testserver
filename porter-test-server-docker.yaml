@@ -1,18 +1,28 @@
 version: v2
-name: testserver
+name: testserver2
 services:
 - name: web
   run: "python server.py"
   type: web
   instances: 1
-  cpuCores: 0.1 
+  cpuCores: 0.1
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 8088
   domains:
-  - name: web-4-6aeabb94-1ug4u8ke.withporter.run
+  - name: web-1-cdded00c-76e4daot.withporter.run
   sleep: false
   serviceMeshEnabled: false
+  advancedNetworking:
+    timeouts:
+      connectSeconds: 20
+      readSeconds: 20
+      writeSeconds: 20
+    requestBody:
+      maxSizeBytes: 1048576
+    rateLimit:
+      requestsPerMinute: 10
+      burstSize: 2
 build:
   context: ./
   method: docker

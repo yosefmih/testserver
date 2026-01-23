@@ -688,6 +688,35 @@ class SimpleHandler(BaseHTTPRequestHandler):
             # Explicitly return after handling /pi to prevent falling through
             return
 
+        elif self.path.startswith('/delay'):
+            parsed = urlparse(self.path)
+            query_params = parse_qs(parsed.query)
+            delay_param = query_params.get('seconds', ["10"])[0]
+
+            try:
+                delay_seconds = int(delay_param)
+                if delay_seconds < 0 or delay_seconds > 300:
+                    raise ValueError()
+            except ValueError:
+                status_code = self.send_json_response(400, {
+                    'status': 'error',
+                    'message': 'seconds must be an integer between 0 and 300'
+                })
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+
+            logger.info(f"[DELAY] sleeping for {delay_seconds}s")
+            time.sleep(delay_seconds)
+            logger.info(f"[DELAY] done sleeping")
+
+            status_code = self.send_json_response(200, {
+                'status': 'success',
+                'delayed_seconds': delay_seconds,
+                'hostname': HOSTNAME
+            })
+            self.log_request_info(status_code, time.time() - start_time)
+            return
+
         elif self.path.startswith('/cpu-burn'):
             parsed = urlparse(self.path)
             query_params = parse_qs(parsed.query)
