@@ -578,7 +578,6 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 'in_mesh': self.in_mesh
             }).encode('utf-8'))
             status_code = 200
-
         elif self.path == '/headers-echo':
             # Echo all request headers and client info - useful for testing header manipulation
             # and upstream context (real IP header) configurations
