@@ -37,6 +37,21 @@ services:
     firewall:
       allowedCidrs:
         - "216.158.129.250/32"
+      blockedPaths:
+        - "/admin"
+        - "/internal"
+    headers:
+      request:
+        add:
+          X-Porter-Test: "advanced-networking"
+        remove:
+          - "X-Unwanted-Header"
+      response:
+        add:
+          X-Frame-Options: "DENY"
+          X-Content-Type-Options: "nosniff"
+    upstreamContext:
+      realIpHeader: "CF-Connecting-IP"
 build:
   context: ./
   method: docker

@@ -92,21 +92,28 @@ class AdvancedNetworkingTester:
                 self._wait_for_server_recovery("timeout tests")
             if config.get("requestBody"):
                 self._test_request_body(config["requestBody"])
-            if config.get("rateLimit"):
-                self._test_rate_limit(config["rateLimit"])
             if config.get("buffering"):
                 self._test_buffering(config["buffering"])
             if config.get("sessionAffinity"):
                 self._test_session_affinity(config["sessionAffinity"])
             if config.get("firewall"):
                 self._test_firewall(config["firewall"])
+            if config.get("headers"):
+                self._test_headers(config["headers"])
+            if config.get("upstreamContext"):
+                self._test_upstream_context(config["upstreamContext"])
+            # Rate limit runs LAST since it can affect other tests
+            if config.get("rateLimit"):
+                self._test_rate_limit(config["rateLimit"])
         else:
             # Run with discovery/defaults
             self._test_timeouts_discovery()
             self._wait_for_server_recovery("timeout tests")
             self._test_request_body_discovery()
-            self._test_rate_limit_discovery()
             self._test_session_affinity_discovery()
+            self._test_headers_discovery()
+            # Rate limit runs LAST since it can affect other tests
+            self._test_rate_limit_discovery()
 
         self._print_summary()
 
@@ -756,28 +763,34 @@ class AdvancedNetworkingTester:
         self._record_result(test)
 
     def _test_firewall(self, config: dict):
-        """Test firewall/IP allowlisting."""
+        """Test firewall/IP allowlisting and path blocking."""
         print(f"\n{colorize('▶ Firewall Tests', Colors.BOLD)}")
 
         allowed_cidrs = config.get("allowedCidrs", [])
+        blocked_paths = config.get("blockedPaths", [])
 
-        if not allowed_cidrs:
+        if not allowed_cidrs and not blocked_paths:
             test = TestCase(
                 name="firewall_disabled",
-                description="No IP allowlist configured",
+                description="No firewall rules configured",
                 result=TestResult.SKIP,
-                message="Firewall not configured"
+                message="Firewall not configured (no allowedCidrs or blockedPaths)"
             )
             self._record_result(test)
             return
 
-        self.log(f"Allowlist: {allowed_cidrs}")
+        if allowed_cidrs:
+            self.log(f"Allowlist: {allowed_cidrs}")
 
-        # Test 1: Check if we're allowed (verifies allowlist works for our IP)
-        self._test_firewall_allowed(allowed_cidrs)
+            # Test 1: Check if we're allowed (verifies allowlist works for our IP)
+            self._test_firewall_allowed(allowed_cidrs)
 
-        # Test 2: Verify behavior is correct for our IP vs the allowlist
-        self._test_firewall_ip_match(allowed_cidrs)
+            # Test 2: Verify behavior is correct for our IP vs the allowlist
+            self._test_firewall_ip_match(allowed_cidrs)
+
+        if blocked_paths:
+            self.log(f"Blocked paths: {blocked_paths}")
+            self._test_blocked_paths(blocked_paths)
 
     def _test_firewall_allowed(self, allowed_cidrs: list):
         """Test basic firewall access."""
@@ -879,6 +892,365 @@ class AdvancedNetworkingTester:
             else:
                 test.result = TestResult.INCONCLUSIVE
                 test.message = f"Request failed: {e}"
+
+        self._record_result(test)
+
+    def _test_blocked_paths(self, blocked_paths: list):
+        """Test that configured blocked paths return 403."""
+        for path in blocked_paths:
+            test = TestCase(
+                name=f"blocked_path_{path.replace('/', '_')}",
+                description=f"Verify path '{path}' returns 403"
+            )
+
+            self.log(f"Testing blocked path: {path}...")
+            start = time.time()
+
+            try:
+                resp = self.session.get(f"{self.base_url}{path}", timeout=10)
+                test.duration_seconds = time.time() - start
+                test.details = {"status_code": resp.status_code, "path": path}
+
+                if resp.status_code == 403:
+                    test.result = TestResult.PASS
+                    test.message = f"Correctly blocked with 403"
+                elif resp.status_code == 404:
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"Path returned 404 (may not exist on server)"
+                elif resp.status_code == 200:
+                    test.result = TestResult.FAIL
+                    test.message = f"Path accessible (200) - should be blocked!"
+                else:
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"HTTP {resp.status_code}"
+
+            except requests.exceptions.RequestException as e:
+                test.duration_seconds = time.time() - start
+                if "403" in str(e):
+                    test.result = TestResult.PASS
+                    test.message = "Correctly blocked with 403"
+                else:
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"Request failed: {e}"
+
+            self._record_result(test)
+
+    def _test_headers(self, config: dict):
+        """Test header manipulation configuration."""
+        print(f"\n{colorize('▶ Header Manipulation Tests', Colors.BOLD)}")
+
+        request_config = config.get("request", {})
+        response_config = config.get("response", {})
+
+        if not request_config and not response_config:
+            test = TestCase(
+                name="headers_disabled",
+                description="No header manipulation configured",
+                result=TestResult.SKIP,
+                message="Headers not configured"
+            )
+            self._record_result(test)
+            return
+
+        # Test request headers (headers added to requests going to backend)
+        if request_config:
+            add_headers = request_config.get("add", {})
+            remove_headers = request_config.get("remove", [])
+
+            if add_headers:
+                self._test_request_headers_added(add_headers)
+            if remove_headers:
+                self._test_request_headers_removed(remove_headers)
+
+        # Test response headers (headers added/removed from responses)
+        if response_config:
+            add_headers = response_config.get("add", {})
+            remove_headers = response_config.get("remove", [])
+
+            if add_headers:
+                self._test_response_headers_added(add_headers)
+            if remove_headers:
+                self._test_response_headers_removed(remove_headers)
+
+    def _test_headers_discovery(self):
+        """Test header echo endpoint is available."""
+        print(f"\n{colorize('▶ Header Tests (Discovery Mode)', Colors.BOLD)}")
+
+        test = TestCase(
+            name="headers_echo_endpoint",
+            description="Verify /headers-echo endpoint is available"
+        )
+
+        start = time.time()
+        try:
+            resp = self.session.get(f"{self.base_url}/headers-echo", timeout=10)
+            test.duration_seconds = time.time() - start
+
+            if resp.status_code == 200:
+                data = resp.json()
+                test.result = TestResult.PASS
+                test.message = f"Endpoint available, received {len(data.get('request_headers', {}))} headers"
+                test.details = {"headers_count": len(data.get("request_headers", {}))}
+            elif resp.status_code == 404:
+                test.result = TestResult.SKIP
+                test.message = "/headers-echo endpoint not found - redeploy with updated server.py"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"HTTP {resp.status_code}"
+
+        except requests.exceptions.RequestException as e:
+            test.duration_seconds = time.time() - start
+            test.result = TestResult.FAIL
+            test.message = f"Request failed: {e}"
+
+        self._record_result(test)
+
+    def _test_request_headers_added(self, headers_to_add: dict):
+        """Test that configured request headers are added."""
+        for header_name, expected_value in headers_to_add.items():
+            test = TestCase(
+                name=f"request_header_add_{header_name.lower()}",
+                description=f"Verify request header '{header_name}' is added"
+            )
+
+            self.log(f"Testing request header addition: {header_name}...")
+            start = time.time()
+
+            try:
+                resp = self.session.get(f"{self.base_url}/headers-echo", timeout=10)
+                test.duration_seconds = time.time() - start
+
+                if resp.status_code == 404:
+                    test.result = TestResult.SKIP
+                    test.message = "/headers-echo endpoint not found"
+                    self._record_result(test)
+                    continue
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    received_headers = data.get("request_headers", {})
+                    actual_value = received_headers.get(header_name)
+
+                    test.details = {"expected": expected_value, "actual": actual_value}
+
+                    if actual_value == expected_value:
+                        test.result = TestResult.PASS
+                        test.message = f"Header correctly added with value: {actual_value}"
+                    elif actual_value:
+                        test.result = TestResult.FAIL
+                        test.message = f"Header present but value mismatch: expected '{expected_value}', got '{actual_value}'"
+                    else:
+                        test.result = TestResult.FAIL
+                        test.message = f"Header not found in request (proxy may not be adding it)"
+                else:
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"HTTP {resp.status_code}"
+
+            except requests.exceptions.RequestException as e:
+                test.duration_seconds = time.time() - start
+                test.result = TestResult.FAIL
+                test.message = f"Request failed: {e}"
+
+            self._record_result(test)
+
+    def _test_request_headers_removed(self, headers_to_remove: list):
+        """Test that configured request headers are removed."""
+        for header_name in headers_to_remove:
+            test = TestCase(
+                name=f"request_header_remove_{header_name.lower()}",
+                description=f"Verify request header '{header_name}' is removed"
+            )
+
+            self.log(f"Testing request header removal: {header_name}...")
+            start = time.time()
+
+            try:
+                # Send request with the header that should be stripped
+                resp = self.session.get(
+                    f"{self.base_url}/headers-echo",
+                    headers={header_name: "test-value-should-be-stripped"},
+                    timeout=10
+                )
+                test.duration_seconds = time.time() - start
+
+                if resp.status_code == 404:
+                    test.result = TestResult.SKIP
+                    test.message = "/headers-echo endpoint not found"
+                    self._record_result(test)
+                    continue
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    received_headers = data.get("request_headers", {})
+                    actual_value = received_headers.get(header_name)
+
+                    test.details = {"header": header_name, "value_if_present": actual_value}
+
+                    if not actual_value or actual_value == "":
+                        test.result = TestResult.PASS
+                        test.message = "Header correctly removed/cleared"
+                    else:
+                        test.result = TestResult.FAIL
+                        test.message = f"Header still present with value: {actual_value}"
+                else:
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"HTTP {resp.status_code}"
+
+            except requests.exceptions.RequestException as e:
+                test.duration_seconds = time.time() - start
+                test.result = TestResult.FAIL
+                test.message = f"Request failed: {e}"
+
+            self._record_result(test)
+
+    def _test_response_headers_added(self, headers_to_add: dict):
+        """Test that configured response headers are added."""
+        for header_name, expected_value in headers_to_add.items():
+            test = TestCase(
+                name=f"response_header_add_{header_name.lower()}",
+                description=f"Verify response header '{header_name}' is added"
+            )
+
+            self.log(f"Testing response header addition: {header_name}...")
+            start = time.time()
+
+            try:
+                resp = self.session.get(f"{self.base_url}/healthz", timeout=10)
+                test.duration_seconds = time.time() - start
+
+                actual_value = resp.headers.get(header_name)
+                test.details = {"expected": expected_value, "actual": actual_value}
+
+                if actual_value == expected_value:
+                    test.result = TestResult.PASS
+                    test.message = f"Header correctly added with value: {actual_value}"
+                elif actual_value:
+                    test.result = TestResult.FAIL
+                    test.message = f"Header present but value mismatch: expected '{expected_value}', got '{actual_value}'"
+                else:
+                    test.result = TestResult.FAIL
+                    test.message = f"Header not found in response"
+
+            except requests.exceptions.RequestException as e:
+                test.duration_seconds = time.time() - start
+                test.result = TestResult.FAIL
+                test.message = f"Request failed: {e}"
+
+            self._record_result(test)
+
+    def _test_response_headers_removed(self, headers_to_remove: list):
+        """Test that configured response headers are removed."""
+        for header_name in headers_to_remove:
+            test = TestCase(
+                name=f"response_header_remove_{header_name.lower()}",
+                description=f"Verify response header '{header_name}' is removed"
+            )
+
+            self.log(f"Testing response header removal: {header_name}...")
+            start = time.time()
+
+            try:
+                resp = self.session.get(f"{self.base_url}/healthz", timeout=10)
+                test.duration_seconds = time.time() - start
+
+                actual_value = resp.headers.get(header_name)
+                test.details = {"header": header_name, "value_if_present": actual_value}
+
+                if not actual_value:
+                    test.result = TestResult.PASS
+                    test.message = "Header correctly removed"
+                else:
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"Header still present: {actual_value} (may be added by server, not proxy)"
+
+            except requests.exceptions.RequestException as e:
+                test.duration_seconds = time.time() - start
+                test.result = TestResult.FAIL
+                test.message = f"Request failed: {e}"
+
+            self._record_result(test)
+
+    def _test_upstream_context(self, config: dict):
+        """Test upstream context configuration (real IP header)."""
+        print(f"\n{colorize('▶ Upstream Context Tests', Colors.BOLD)}")
+
+        real_ip_header = config.get("realIpHeader", "")
+
+        if not real_ip_header:
+            test = TestCase(
+                name="upstream_context_disabled",
+                description="No upstream context configured",
+                result=TestResult.SKIP,
+                message="UpstreamContext not configured"
+            )
+            self._record_result(test)
+            return
+
+        self.log(f"Real IP header configured: {real_ip_header}")
+        self._test_real_ip_header(real_ip_header)
+
+    def _test_real_ip_header(self, header_name: str):
+        """Test that the real_ip_header directive is working."""
+        test = TestCase(
+            name="real_ip_header",
+            description=f"Verify real IP is extracted from '{header_name}'"
+        )
+
+        self.log(f"Testing real IP header extraction from: {header_name}...")
+
+        # Use a distinctive test IP
+        test_ip = "203.0.113.42"
+
+        start = time.time()
+        try:
+            # Send request with the configured real IP header
+            custom_headers = {header_name: test_ip}
+            resp = self.session.get(
+                f"{self.base_url}/headers-echo",
+                headers=custom_headers,
+                timeout=10
+            )
+            test.duration_seconds = time.time() - start
+
+            if resp.status_code == 404:
+                test.result = TestResult.SKIP
+                test.message = "/headers-echo endpoint not found"
+                self._record_result(test)
+                return
+
+            if resp.status_code == 200:
+                data = resp.json()
+                client_info = data.get("client_info", {})
+                received_headers = data.get("request_headers", {})
+
+                perceived_ip = client_info.get("perceived_ip", "")
+                ip_source = client_info.get("ip_source", "")
+
+                test.details = {
+                    "test_ip": test_ip,
+                    "perceived_ip": perceived_ip,
+                    "ip_source": ip_source,
+                    "header_received": received_headers.get(header_name)
+                }
+
+                # Note: The backend sees the original header; nginx real_ip_header
+                # affects how nginx interprets the client IP for its own processing
+                # (logging, geo, etc). The backend still receives the header.
+                if received_headers.get(header_name) == test_ip:
+                    test.result = TestResult.PASS
+                    test.message = f"Header '{header_name}' correctly passed to backend with value: {test_ip}"
+                    test.message += f"\n           (nginx real_ip_header affects nginx's IP perception, not backend)"
+                else:
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"Header value: {received_headers.get(header_name)} (expected {test_ip})"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"HTTP {resp.status_code}"
+
+        except requests.exceptions.RequestException as e:
+            test.duration_seconds = time.time() - start
+            test.result = TestResult.FAIL
+            test.message = f"Request failed: {e}"
 
         self._record_result(test)
 

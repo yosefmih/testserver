@@ -578,7 +578,43 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 'in_mesh': self.in_mesh
             }).encode('utf-8'))
             status_code = 200
-            
+
+        elif self.path == '/headers-echo':
+            # Echo all request headers and client info - useful for testing header manipulation
+            # and upstream context (real IP header) configurations
+            request_headers = dict(self.headers)
+
+            # Determine perceived client IP based on various headers
+            # Priority: X-Real-IP > X-Forwarded-For > direct connection
+            perceived_ip = self.client_address[0]
+            ip_source = "direct"
+
+            if 'X-Real-IP' in request_headers:
+                perceived_ip = request_headers['X-Real-IP']
+                ip_source = "X-Real-IP"
+            elif 'X-Forwarded-For' in request_headers:
+                # Take first IP from X-Forwarded-For chain
+                perceived_ip = request_headers['X-Forwarded-For'].split(',')[0].strip()
+                ip_source = "X-Forwarded-For"
+            elif 'CF-Connecting-IP' in request_headers:
+                perceived_ip = request_headers['CF-Connecting-IP']
+                ip_source = "CF-Connecting-IP"
+            elif 'True-Client-IP' in request_headers:
+                perceived_ip = request_headers['True-Client-IP']
+                ip_source = "True-Client-IP"
+
+            status_code = self.send_json_response(200, {
+                'status': 'success',
+                'hostname': HOSTNAME,
+                'request_headers': request_headers,
+                'client_info': {
+                    'direct_ip': self.client_address[0],
+                    'direct_port': self.client_address[1],
+                    'perceived_ip': perceived_ip,
+                    'ip_source': ip_source
+                }
+            })
+
         elif self.path == '/download':
             file_path = 'large_file.dat'
             if os.path.exists(file_path):
