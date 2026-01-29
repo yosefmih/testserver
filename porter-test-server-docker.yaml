@@ -22,8 +22,8 @@ services:
     requestBody:
       maxSizeBytes: 1048576
     rateLimit:
-      requestsPerMinute: 10
-      burstSize: 2
+      requestsPerMinute: 20
+      burstSize: 4
     buffering:
       inbound:
         enabled: true
