@@ -614,6 +614,170 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 }
             })
 
+        # ============================================================
+        # Dedicated test endpoints for advanced networking testing
+        # Each endpoint is specific to a test type for easy log filtering
+        # Usage: grep "GET /test/timeout" in nginx logs
+        # ============================================================
+
+        elif self.path == '/test/connectivity':
+            # Dedicated endpoint for connectivity tests
+            logger.info("[TEST:CONNECTIVITY] Health check request")
+            status_code = self.send_json_response(200, {
+                'test': 'connectivity',
+                'status': 'healthy',
+                'hostname': HOSTNAME
+            })
+
+        elif self.path.startswith('/test/timeout'):
+            # Dedicated endpoint for timeout tests
+            parsed = urlparse(self.path)
+            query_params = parse_qs(parsed.query)
+            delay_param = query_params.get('seconds', ["0"])[0]
+
+            try:
+                delay_seconds = int(delay_param)
+                if delay_seconds < 0 or delay_seconds > 300:
+                    raise ValueError()
+            except ValueError:
+                status_code = self.send_json_response(400, {
+                    'test': 'timeout',
+                    'status': 'error',
+                    'message': 'seconds must be an integer between 0 and 300'
+                })
+                self.log_request_info(status_code, time.time() - start_time)
+                return
+
+            logger.info(f"[TEST:TIMEOUT] Delaying response for {delay_seconds}s")
+            time.sleep(delay_seconds)
+            logger.info(f"[TEST:TIMEOUT] Delay complete")
+
+            status_code = self.send_json_response(200, {
+                'test': 'timeout',
+                'status': 'success',
+                'delayed_seconds': delay_seconds,
+                'hostname': HOSTNAME
+            })
+
+        elif self.path == '/test/body-size':
+            # Dedicated endpoint for body size tests (POST only)
+            status_code = self.send_json_response(405, {
+                'test': 'body-size',
+                'status': 'error',
+                'message': 'Use POST method with request body to test body size limits'
+            })
+
+        elif self.path.startswith('/test/buffering'):
+            # Dedicated endpoint for buffer size tests
+            parsed = urlparse(self.path)
+            query_params = parse_qs(parsed.query)
+            size_kb = int(query_params.get('size_kb', ['32'])[0])
+
+            logger.info(f"[TEST:BUFFERING] Sending {size_kb}KB of headers")
+
+            header_size = size_kb * 1024
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('X-Server-Host', HOSTNAME)
+
+            chunk_size = 8000
+            num_headers = (header_size + chunk_size - 1) // chunk_size
+
+            for i in range(num_headers):
+                remaining = header_size - (i * chunk_size)
+                this_size = min(chunk_size, remaining)
+                if this_size > 0:
+                    self.send_header(f'X-Buffer-Test-{i}', 'X' * this_size)
+
+            self.end_headers()
+            response_data = {
+                'test': 'buffering',
+                'status': 'success',
+                'header_size_kb': size_kb,
+                'num_headers': num_headers,
+                'hostname': HOSTNAME
+            }
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
+            status_code = 200
+
+        elif self.path == '/test/session-affinity':
+            # Dedicated endpoint for session affinity tests
+            logger.info(f"[TEST:SESSION-AFFINITY] Request from client, serving from {HOSTNAME}")
+            status_code = self.send_json_response(200, {
+                'test': 'session-affinity',
+                'status': 'success',
+                'hostname': HOSTNAME,
+                'pod_id': HOSTNAME
+            })
+
+        elif self.path == '/test/rate-limit':
+            # Dedicated endpoint for rate limit tests
+            logger.info("[TEST:RATE-LIMIT] Rate limit test request")
+            status_code = self.send_json_response(200, {
+                'test': 'rate-limit',
+                'status': 'success',
+                'hostname': HOSTNAME
+            })
+
+        elif self.path == '/test/firewall':
+            # Dedicated endpoint for firewall tests
+            client_ip = self.client_address[0]
+            x_forwarded_for = self.headers.get('X-Forwarded-For', '')
+            x_real_ip = self.headers.get('X-Real-IP', '')
+
+            logger.info(f"[TEST:FIREWALL] Request from {client_ip}, XFF={x_forwarded_for}, XRI={x_real_ip}")
+            status_code = self.send_json_response(200, {
+                'test': 'firewall',
+                'status': 'allowed',
+                'client_ip': client_ip,
+                'x_forwarded_for': x_forwarded_for,
+                'x_real_ip': x_real_ip,
+                'hostname': HOSTNAME
+            })
+
+        elif self.path == '/test/headers':
+            # Dedicated endpoint for header manipulation tests
+            request_headers = dict(self.headers)
+            logger.info(f"[TEST:HEADERS] Received {len(request_headers)} headers")
+            status_code = self.send_json_response(200, {
+                'test': 'headers',
+                'status': 'success',
+                'request_headers': request_headers,
+                'hostname': HOSTNAME
+            })
+
+        elif self.path == '/test/compression':
+            # Dedicated endpoint for compression tests
+            # Returns a large JSON payload that should be compressed
+            logger.info("[TEST:COMPRESSION] Sending compressible response")
+
+            # Generate a large, compressible payload
+            large_data = {
+                'test': 'compression',
+                'status': 'success',
+                'hostname': HOSTNAME,
+                'padding': 'x' * 2000,  # Ensure response is large enough
+                'repeated': ['compression test data'] * 100
+            }
+            status_code = self.send_json_response(200, large_data)
+
+        elif self.path.startswith('/test/redirect'):
+            # Dedicated endpoint for redirect tests
+            # This endpoint just acknowledges it was reached (redirect didn't happen)
+            host_header = self.headers.get('Host', '')
+            logger.info(f"[TEST:REDIRECT] Request reached with Host={host_header}")
+            status_code = self.send_json_response(200, {
+                'test': 'redirect',
+                'status': 'no_redirect',
+                'host_header': host_header,
+                'message': 'Request reached server without redirect',
+                'hostname': HOSTNAME
+            })
+
+        # ============================================================
+        # End of dedicated test endpoints
+        # ============================================================
+
         elif self.path == '/download':
             file_path = 'large_file.dat'
             if os.path.exists(file_path):
@@ -1210,8 +1374,19 @@ class SimpleHandler(BaseHTTPRequestHandler):
         try:
             data = json.loads(post_data)
             
+            # Dedicated endpoint for body size tests
+            if self.path == '/test/body-size':
+                body_size = len(post_data.encode('utf-8'))
+                logger.info(f"[TEST:BODY-SIZE] Received {body_size} bytes")
+                status_code = self.send_json_response(200, {
+                    'test': 'body-size',
+                    'status': 'success',
+                    'received_bytes': body_size,
+                    'hostname': HOSTNAME
+                })
+
             # Process POST request to update greeting word
-            if self.path == '/update-greeting':
+            elif self.path == '/update-greeting':
                 if 'word' in data and isinstance(data['word'], str) and data['word'].strip():
                     # Update the class variable to change greeting for all instances
                     SimpleHandler.greeting_word = data['word'].strip()

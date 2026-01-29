@@ -3,11 +3,13 @@
 Advanced Networking Annotation Test Suite
 
 Tests all advanced networking configurations for Porter web services:
-- Timeouts (connect, read, write)
+- Timeouts (connect, read, write, client body timeout)
 - Request body size limits
 - Rate limiting
 - Session affinity (cookie and client IP modes)
 - Firewall/IP allowlisting
+- Compression (gzip)
+- Host-based redirects
 
 Usage:
     python test_advanced_networking.py <base_url> [--config config.yaml]
@@ -87,31 +89,39 @@ class AdvancedNetworkingTester:
         self._test_connectivity()
 
         if config:
-            if config.get("timeouts"):
-                self._test_timeouts(config["timeouts"])
-                self._wait_for_server_recovery("timeout tests")
+            # Run fast/stable tests first
             if config.get("requestBody"):
                 self._test_request_body(config["requestBody"])
             if config.get("buffering"):
                 self._test_buffering(config["buffering"])
             if config.get("sessionAffinity"):
                 self._test_session_affinity(config["sessionAffinity"])
+            # Test upstreamContext BEFORE firewall since realIpHeader affects firewall behavior
+            if config.get("upstreamContext"):
+                self._test_upstream_context(config["upstreamContext"], config.get("firewall"))
             if config.get("firewall"):
-                self._test_firewall(config["firewall"])
+                self._test_firewall(config["firewall"], config.get("upstreamContext"))
             if config.get("headers"):
                 self._test_headers(config["headers"])
-            if config.get("upstreamContext"):
-                self._test_upstream_context(config["upstreamContext"])
+            if config.get("compression"):
+                self._test_compression(config["compression"])
+            if config.get("redirects"):
+                self._test_redirects(config["redirects"])
+            # Timeout tests run near the end (they take time and can leave server busy)
+            if config.get("timeouts"):
+                self._test_timeouts(config["timeouts"])
+                self._wait_for_server_recovery("timeout tests")
             # Rate limit runs LAST since it can affect other tests
             if config.get("rateLimit"):
                 self._test_rate_limit(config["rateLimit"])
         else:
             # Run with discovery/defaults
-            self._test_timeouts_discovery()
-            self._wait_for_server_recovery("timeout tests")
             self._test_request_body_discovery()
             self._test_session_affinity_discovery()
             self._test_headers_discovery()
+            # Timeout tests run near the end
+            self._test_timeouts_discovery()
+            self._wait_for_server_recovery("timeout tests")
             # Rate limit runs LAST since it can affect other tests
             self._test_rate_limit_discovery()
 
@@ -144,12 +154,21 @@ class AdvancedNetworkingTester:
 
         start = time.time()
         try:
-            resp = self.session.get(f"{self.base_url}/healthz", timeout=10)
+            resp = self.session.get(f"{self.base_url}/test/connectivity", timeout=10)
             test.duration_seconds = time.time() - start
 
             if resp.status_code == 200:
                 test.result = TestResult.PASS
                 test.message = f"Endpoint reachable (HTTP {resp.status_code})"
+            elif resp.status_code == 404:
+                # Fall back to /healthz if /test/connectivity not available
+                resp = self.session.get(f"{self.base_url}/healthz", timeout=10)
+                if resp.status_code == 200:
+                    test.result = TestResult.PASS
+                    test.message = f"Endpoint reachable via /healthz (HTTP {resp.status_code})"
+                else:
+                    test.result = TestResult.FAIL
+                    test.message = f"Unexpected status code: {resp.status_code}"
             else:
                 test.result = TestResult.FAIL
                 test.message = f"Unexpected status code: {resp.status_code}"
@@ -166,12 +185,17 @@ class AdvancedNetworkingTester:
 
         read_seconds = config.get("readSeconds", 60)
         write_seconds = config.get("writeSeconds", 60)
+        client_body_timeout = config.get("clientBodyTimeoutSeconds", 0)
 
         # Test that requests within timeout succeed
         self._test_timeout_within_limit(read_seconds)
 
         # Test that requests exceeding timeout fail
         self._test_timeout_exceeds_limit(read_seconds)
+
+        # Test client body timeout if configured
+        if client_body_timeout > 0:
+            self._test_client_body_timeout(client_body_timeout)
 
     def _test_timeouts_discovery(self):
         """Discover timeout limits through testing."""
@@ -231,7 +255,7 @@ class AdvancedNetworkingTester:
 
         try:
             resp = self.session.get(
-                f"{self.base_url}/delay?seconds={delay}",
+                f"{self.base_url}/test/timeout?seconds={delay}",
                 timeout=delay + 60
             )
             test.duration_seconds = time.time() - start
@@ -243,10 +267,10 @@ class AdvancedNetworkingTester:
                     test.message = f"Completed in {test.duration_seconds:.1f}s (expected ~{delay}s)"
                 else:
                     test.result = TestResult.INCONCLUSIVE
-                    test.message = f"Completed too fast ({test.duration_seconds:.1f}s) - /delay endpoint may not be deployed"
+                    test.message = f"Completed too fast ({test.duration_seconds:.1f}s) - /test/timeout endpoint may not be deployed"
             elif resp.status_code == 404:
                 test.result = TestResult.SKIP
-                test.message = "/delay endpoint not found - redeploy with updated server.py"
+                test.message = "/test/timeout endpoint not found - redeploy with updated server.py"
             elif resp.status_code == 504:
                 test.result = TestResult.FAIL
                 test.message = f"Gateway timeout - proxy timeout may be < {delay}s"
@@ -278,7 +302,7 @@ class AdvancedNetworkingTester:
 
         try:
             resp = self.session.get(
-                f"{self.base_url}/delay?seconds={delay}",
+                f"{self.base_url}/test/timeout?seconds={delay}",
                 timeout=delay + 60
             )
             test.duration_seconds = time.time() - start
@@ -289,7 +313,7 @@ class AdvancedNetworkingTester:
                 test.message = f"Gateway timeout as expected after {test.duration_seconds:.1f}s"
             elif resp.status_code == 404:
                 test.result = TestResult.SKIP
-                test.message = "/delay endpoint not found - redeploy with updated server.py"
+                test.message = "/test/timeout endpoint not found - redeploy with updated server.py"
             elif resp.status_code == 200:
                 # Check if it actually delayed or returned immediately
                 if test.duration_seconds < delay * 0.5:
@@ -313,6 +337,87 @@ class AdvancedNetworkingTester:
             test.duration_seconds = time.time() - start
             test.result = TestResult.PASS
             test.message = f"Timed out as expected after {test.duration_seconds:.1f}s"
+        except requests.exceptions.RequestException as e:
+            test.duration_seconds = time.time() - start
+            test.result = TestResult.INCONCLUSIVE
+            test.message = f"Request failed after {test.duration_seconds:.1f}s: {e}"
+
+        self._record_result(test)
+
+    def _test_client_body_timeout(self, timeout_seconds: int):
+        """Test client body timeout by sending data slowly.
+
+        The client body timeout controls how long nginx waits between successive
+        read operations while receiving the request body. If we send data slower
+        than this timeout, the connection should be dropped.
+        """
+        test = TestCase(
+            name=f"client_body_timeout_{timeout_seconds}s",
+            description=f"Test slow request body upload (timeout: {timeout_seconds}s)"
+        )
+
+        self.log(f"Testing client body timeout ({timeout_seconds}s)...")
+        self.log("Note: This test sends data with pauses to trigger the timeout")
+
+        # We'll try to send data with a pause longer than the timeout
+        pause_between_chunks = timeout_seconds + 5  # 5 seconds past timeout
+
+        start = time.time()
+
+        try:
+            # Create a generator that yields data slowly
+            def slow_body_generator():
+                """Yield data with pauses to test client body timeout."""
+                yield b"chunk1="
+                time.sleep(pause_between_chunks)
+                yield b"chunk2"
+
+            # This should timeout because we pause longer than client_body_timeout
+            resp = requests.post(
+                f"{self.base_url}/update-greeting",
+                data=slow_body_generator(),
+                headers={"Content-Type": "application/octet-stream"},
+                timeout=pause_between_chunks + 30  # Client timeout higher than expected
+            )
+            test.duration_seconds = time.time() - start
+            test.details = {
+                "status_code": resp.status_code,
+                "pause_seconds": pause_between_chunks,
+                "actual_duration": test.duration_seconds
+            }
+
+            if resp.status_code in [408, 499, 502]:
+                test.result = TestResult.PASS
+                test.message = f"Request timed out as expected (HTTP {resp.status_code})"
+            elif resp.status_code == 200:
+                # If we got 200, check if we actually waited
+                if test.duration_seconds >= pause_between_chunks * 0.9:
+                    test.result = TestResult.FAIL
+                    test.message = f"Request succeeded after {test.duration_seconds:.1f}s (timeout not enforced)"
+                else:
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"Request completed in {test.duration_seconds:.1f}s (generator may not have paused)"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"HTTP {resp.status_code} after {test.duration_seconds:.1f}s"
+
+        except requests.exceptions.ChunkedEncodingError as e:
+            test.duration_seconds = time.time() - start
+            # Connection dropped mid-transfer - this is what we expect
+            test.result = TestResult.PASS
+            test.message = f"Connection dropped after {test.duration_seconds:.1f}s (client body timeout working)"
+        except requests.exceptions.ConnectionError as e:
+            test.duration_seconds = time.time() - start
+            if test.duration_seconds < timeout_seconds + 10:
+                test.result = TestResult.PASS
+                test.message = f"Connection closed after {test.duration_seconds:.1f}s (timeout enforced)"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"Connection error after {test.duration_seconds:.1f}s: {e}"
+        except requests.exceptions.Timeout:
+            test.duration_seconds = time.time() - start
+            test.result = TestResult.INCONCLUSIVE
+            test.message = f"Client timeout after {test.duration_seconds:.1f}s"
         except requests.exceptions.RequestException as e:
             test.duration_seconds = time.time() - start
             test.result = TestResult.INCONCLUSIVE
@@ -373,9 +478,9 @@ class AdvancedNetworkingTester:
 
         start = time.time()
         try:
-            # Use a simple POST with raw data
+            # Use a simple POST with raw data to the dedicated body-size test endpoint
             resp = self.session.post(
-                f"{self.base_url}/update-greeting",
+                f"{self.base_url}/test/body-size",
                 data=payload_data,
                 headers={"Content-Type": "application/octet-stream"},
                 timeout=120
@@ -471,7 +576,10 @@ class AdvancedNetworkingTester:
 
         def make_request(i):
             try:
-                resp = requests.get(f"{self.base_url}/healthz", timeout=10)
+                resp = requests.get(f"{self.base_url}/test/rate-limit", timeout=10)
+                if resp.status_code == 404:
+                    # Fall back to /healthz if new endpoint not available
+                    resp = requests.get(f"{self.base_url}/healthz", timeout=10)
                 return resp.status_code
             except Exception as e:
                 return f"error:{type(e).__name__}:{e}"
@@ -584,7 +692,7 @@ class AdvancedNetworkingTester:
 
         try:
             resp = self.session.get(
-                f"{self.base_url}/large-headers?size_kb={test_size_kb}",
+                f"{self.base_url}/test/buffering?size_kb={test_size_kb}",
                 timeout=30
             )
             test.duration_seconds = time.time() - start
@@ -595,7 +703,7 @@ class AdvancedNetworkingTester:
                 test.message = f"Headers within buffer accepted (HTTP 200)"
             elif resp.status_code == 404:
                 test.result = TestResult.SKIP
-                test.message = "/large-headers endpoint not found - redeploy with updated server.py"
+                test.message = "/test/buffering endpoint not found - redeploy with updated server.py"
             elif resp.status_code == 502:
                 test.result = TestResult.FAIL
                 test.message = f"Got 502 but headers ({test_size_kb}KB) should be within buffer ({buffer_size_kb}KB)"
@@ -625,7 +733,7 @@ class AdvancedNetworkingTester:
 
         try:
             resp = self.session.get(
-                f"{self.base_url}/large-headers?size_kb={test_size_kb}",
+                f"{self.base_url}/test/buffering?size_kb={test_size_kb}",
                 timeout=30
             )
             test.duration_seconds = time.time() - start
@@ -636,7 +744,7 @@ class AdvancedNetworkingTester:
                 test.message = f"Correctly rejected with 502 (headers exceed buffer)"
             elif resp.status_code == 404:
                 test.result = TestResult.SKIP
-                test.message = "/large-headers endpoint not found - redeploy with updated server.py"
+                test.message = "/test/buffering endpoint not found - redeploy with updated server.py"
             elif resp.status_code == 200:
                 test.result = TestResult.FAIL
                 test.message = f"Headers ({test_size_kb}KB) accepted but should exceed buffer ({buffer_size_kb}KB)"
@@ -698,10 +806,16 @@ class AdvancedNetworkingTester:
         start = time.time()
         try:
             for i in range(10):
-                resp = session.get(f"{self.base_url}/config", timeout=10)
+                resp = session.get(f"{self.base_url}/test/session-affinity", timeout=10)
                 if resp.status_code == 200:
                     data = resp.json()
                     hostnames.add(data.get("hostname", "unknown"))
+                elif resp.status_code == 404:
+                    # Fall back to /config if new endpoint not available
+                    resp = session.get(f"{self.base_url}/config", timeout=10)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        hostnames.add(data.get("hostname", "unknown"))
                 time.sleep(0.1)
 
             test.duration_seconds = time.time() - start
@@ -739,10 +853,16 @@ class AdvancedNetworkingTester:
         try:
             # Don't use session to avoid cookie affinity
             for i in range(10):
-                resp = requests.get(f"{self.base_url}/config", timeout=10)
+                resp = requests.get(f"{self.base_url}/test/session-affinity", timeout=10)
                 if resp.status_code == 200:
                     data = resp.json()
                     hostnames.add(data.get("hostname", "unknown"))
+                elif resp.status_code == 404:
+                    # Fall back to /config if new endpoint not available
+                    resp = requests.get(f"{self.base_url}/config", timeout=10)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        hostnames.add(data.get("hostname", "unknown"))
                 time.sleep(0.1)
 
             test.duration_seconds = time.time() - start
@@ -762,12 +882,15 @@ class AdvancedNetworkingTester:
 
         self._record_result(test)
 
-    def _test_firewall(self, config: dict):
+    def _test_firewall(self, config: dict, upstream_context: Optional[dict] = None):
         """Test firewall/IP allowlisting and path blocking."""
         print(f"\n{colorize('▶ Firewall Tests', Colors.BOLD)}")
 
         allowed_cidrs = config.get("allowedCidrs", [])
         blocked_paths = config.get("blockedPaths", [])
+
+        # Check if realIpHeader is configured - affects how we test firewall
+        real_ip_header = upstream_context.get("realIpHeader", "") if upstream_context else ""
 
         if not allowed_cidrs and not blocked_paths:
             test = TestCase(
@@ -781,36 +904,71 @@ class AdvancedNetworkingTester:
 
         if allowed_cidrs:
             self.log(f"Allowlist: {allowed_cidrs}")
+            if real_ip_header:
+                self.log(f"Note: realIpHeader ({real_ip_header}) is configured - firewall uses that header for IP")
 
             # Test 1: Check if we're allowed (verifies allowlist works for our IP)
-            self._test_firewall_allowed(allowed_cidrs)
+            # When realIpHeader is configured, we need to send that header to get through
+            self._test_firewall_allowed(allowed_cidrs, real_ip_header)
 
-            # Test 2: Verify behavior is correct for our IP vs the allowlist
-            self._test_firewall_ip_match(allowed_cidrs)
+            # Test 2: Verify pod self-test (only if no realIpHeader or we can reach the endpoint)
+            if not real_ip_header:
+                self._test_firewall_ip_match(allowed_cidrs)
 
         if blocked_paths:
             self.log(f"Blocked paths: {blocked_paths}")
-            self._test_blocked_paths(blocked_paths)
+            self._test_blocked_paths(blocked_paths, real_ip_header, allowed_cidrs)
 
-    def _test_firewall_allowed(self, allowed_cidrs: list):
+    def _test_firewall_allowed(self, allowed_cidrs: list, real_ip_header: str = ""):
         """Test basic firewall access."""
         test = TestCase(
             name="firewall_access",
             description=f"Test access with allowlist configured"
         )
 
+        # If realIpHeader is configured, we need to send that header to get through
+        headers = {}
+        if real_ip_header and allowed_cidrs:
+            # Use the first allowed IP from the CIDR
+            allowed_ip = allowed_cidrs[0].split("/")[0]
+            headers[real_ip_header] = allowed_ip
+            test.description = f"Test access with {real_ip_header}: {allowed_ip}"
+
         start = time.time()
         try:
-            resp = self.session.get(f"{self.base_url}/healthz", timeout=10)
+            resp = self.session.get(f"{self.base_url}/test/firewall", headers=headers, timeout=10)
             test.duration_seconds = time.time() - start
-            test.details = {"status_code": resp.status_code, "allowed_cidrs": allowed_cidrs}
+            test.details = {
+                "status_code": resp.status_code,
+                "allowed_cidrs": allowed_cidrs,
+                "headers_sent": headers
+            }
 
             if resp.status_code == 200:
                 test.result = TestResult.PASS
-                test.message = "Access allowed (your IP is in the allowlist)"
+                if real_ip_header:
+                    test.message = f"Access allowed via {real_ip_header} header"
+                else:
+                    test.message = "Access allowed (your IP is in the allowlist)"
+            elif resp.status_code == 404:
+                # Fall back to /healthz if new endpoint not available
+                resp = self.session.get(f"{self.base_url}/healthz", headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    test.result = TestResult.PASS
+                    test.message = "Access allowed (your IP is in the allowlist)"
+                elif resp.status_code == 403:
+                    test.result = TestResult.PASS
+                    test.message = "Access denied (your IP is NOT in the allowlist) - firewall working!"
+                else:
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"HTTP {resp.status_code}"
             elif resp.status_code == 403:
-                test.result = TestResult.PASS
-                test.message = "Access denied (your IP is NOT in the allowlist) - firewall working!"
+                if real_ip_header:
+                    test.result = TestResult.FAIL
+                    test.message = f"Access denied even with {real_ip_header} header - realIpHeader may not be working"
+                else:
+                    test.result = TestResult.PASS
+                    test.message = "Access denied (your IP is NOT in the allowlist) - firewall working!"
             else:
                 test.result = TestResult.INCONCLUSIVE
                 test.message = f"HTTP {resp.status_code}"
@@ -895,8 +1053,14 @@ class AdvancedNetworkingTester:
 
         self._record_result(test)
 
-    def _test_blocked_paths(self, blocked_paths: list):
+    def _test_blocked_paths(self, blocked_paths: list, real_ip_header: str = "", allowed_cidrs: list = None):
         """Test that configured blocked paths return 403."""
+        # If realIpHeader is configured, we need to send that header to pass IP allowlist
+        headers = {}
+        if real_ip_header and allowed_cidrs:
+            allowed_ip = allowed_cidrs[0].split("/")[0]
+            headers[real_ip_header] = allowed_ip
+
         for path in blocked_paths:
             test = TestCase(
                 name=f"blocked_path_{path.replace('/', '_')}",
@@ -907,9 +1071,9 @@ class AdvancedNetworkingTester:
             start = time.time()
 
             try:
-                resp = self.session.get(f"{self.base_url}{path}", timeout=10)
+                resp = self.session.get(f"{self.base_url}{path}", headers=headers, timeout=10)
                 test.duration_seconds = time.time() - start
-                test.details = {"status_code": resp.status_code, "path": path}
+                test.details = {"status_code": resp.status_code, "path": path, "headers_sent": headers}
 
                 if resp.status_code == 403:
                     test.result = TestResult.PASS
@@ -978,12 +1142,15 @@ class AdvancedNetworkingTester:
 
         test = TestCase(
             name="headers_echo_endpoint",
-            description="Verify /headers-echo endpoint is available"
+            description="Verify /test/headers endpoint is available"
         )
 
         start = time.time()
         try:
-            resp = self.session.get(f"{self.base_url}/headers-echo", timeout=10)
+            resp = self.session.get(f"{self.base_url}/test/headers", timeout=10)
+            # Fall back to /headers-echo if new endpoint not available
+            if resp.status_code == 404:
+                resp = self.session.get(f"{self.base_url}/headers-echo", timeout=10)
             test.duration_seconds = time.time() - start
 
             if resp.status_code == 200:
@@ -993,7 +1160,7 @@ class AdvancedNetworkingTester:
                 test.details = {"headers_count": len(data.get("request_headers", {}))}
             elif resp.status_code == 404:
                 test.result = TestResult.SKIP
-                test.message = "/headers-echo endpoint not found - redeploy with updated server.py"
+                test.message = "/test/headers endpoint not found - redeploy with updated server.py"
             else:
                 test.result = TestResult.INCONCLUSIVE
                 test.message = f"HTTP {resp.status_code}"
@@ -1017,14 +1184,17 @@ class AdvancedNetworkingTester:
             start = time.time()
 
             try:
-                resp = self.session.get(f"{self.base_url}/headers-echo", timeout=10)
+                resp = self.session.get(f"{self.base_url}/test/headers", timeout=10)
                 test.duration_seconds = time.time() - start
 
                 if resp.status_code == 404:
-                    test.result = TestResult.SKIP
-                    test.message = "/headers-echo endpoint not found"
-                    self._record_result(test)
-                    continue
+                    # Fall back to /headers-echo if new endpoint not available
+                    resp = self.session.get(f"{self.base_url}/headers-echo", timeout=10)
+                    if resp.status_code == 404:
+                        test.result = TestResult.SKIP
+                        test.message = "/test/headers endpoint not found"
+                        self._record_result(test)
+                        continue
 
                 if resp.status_code == 200:
                     data = resp.json()
@@ -1067,17 +1237,24 @@ class AdvancedNetworkingTester:
             try:
                 # Send request with the header that should be stripped
                 resp = self.session.get(
-                    f"{self.base_url}/headers-echo",
+                    f"{self.base_url}/test/headers",
                     headers={header_name: "test-value-should-be-stripped"},
                     timeout=10
                 )
                 test.duration_seconds = time.time() - start
 
                 if resp.status_code == 404:
-                    test.result = TestResult.SKIP
-                    test.message = "/headers-echo endpoint not found"
-                    self._record_result(test)
-                    continue
+                    # Fall back to /headers-echo if new endpoint not available
+                    resp = self.session.get(
+                        f"{self.base_url}/headers-echo",
+                        headers={header_name: "test-value-should-be-stripped"},
+                        timeout=10
+                    )
+                    if resp.status_code == 404:
+                        test.result = TestResult.SKIP
+                        test.message = "/test/headers endpoint not found"
+                        self._record_result(test)
+                        continue
 
                 if resp.status_code == 200:
                     data = resp.json()
@@ -1115,7 +1292,10 @@ class AdvancedNetworkingTester:
             start = time.time()
 
             try:
-                resp = self.session.get(f"{self.base_url}/healthz", timeout=10)
+                resp = self.session.get(f"{self.base_url}/test/headers", timeout=10)
+                # Fall back to /healthz if new endpoint not available
+                if resp.status_code == 404:
+                    resp = self.session.get(f"{self.base_url}/healthz", timeout=10)
                 test.duration_seconds = time.time() - start
 
                 actual_value = resp.headers.get(header_name)
@@ -1150,7 +1330,10 @@ class AdvancedNetworkingTester:
             start = time.time()
 
             try:
-                resp = self.session.get(f"{self.base_url}/healthz", timeout=10)
+                resp = self.session.get(f"{self.base_url}/test/headers", timeout=10)
+                # Fall back to /healthz if new endpoint not available
+                if resp.status_code == 404:
+                    resp = self.session.get(f"{self.base_url}/healthz", timeout=10)
                 test.duration_seconds = time.time() - start
 
                 actual_value = resp.headers.get(header_name)
@@ -1170,7 +1353,223 @@ class AdvancedNetworkingTester:
 
             self._record_result(test)
 
-    def _test_upstream_context(self, config: dict):
+    def _test_compression(self, config: dict):
+        """Test compression (gzip) configuration."""
+        print(f"\n{colorize('▶ Compression Tests', Colors.BOLD)}")
+
+        if not config.get("enabled", False):
+            test = TestCase(
+                name="compression_disabled",
+                description="Compression is not enabled",
+                result=TestResult.SKIP,
+                message="Compression not configured"
+            )
+            self._record_result(test)
+            return
+
+        # Test that compression is applied to compressible content
+        self._test_compression_applied(config)
+
+        # Test that compression respects Accept-Encoding
+        self._test_compression_accept_encoding()
+
+    def _test_compression_applied(self, config: dict):
+        """Test that gzip compression is applied to responses."""
+        test = TestCase(
+            name="compression_gzip_applied",
+            description="Verify gzip compression is applied to responses"
+        )
+
+        self.log("Testing gzip compression on JSON response...")
+        start = time.time()
+
+        try:
+            # Request with Accept-Encoding: gzip
+            resp = self.session.get(
+                f"{self.base_url}/test/compression",
+                headers={"Accept-Encoding": "gzip, deflate"},
+                timeout=10
+            )
+            # Fall back to /config if new endpoint not available
+            if resp.status_code == 404:
+                resp = self.session.get(
+                    f"{self.base_url}/config",
+                    headers={"Accept-Encoding": "gzip, deflate"},
+                    timeout=10
+                )
+            test.duration_seconds = time.time() - start
+
+            content_encoding = resp.headers.get("Content-Encoding", "")
+            content_length = resp.headers.get("Content-Length", "unknown")
+
+            test.details = {
+                "status_code": resp.status_code,
+                "content_encoding": content_encoding,
+                "content_length": content_length,
+                "content_type": resp.headers.get("Content-Type", "")
+            }
+
+            if resp.status_code == 200:
+                if "gzip" in content_encoding.lower():
+                    test.result = TestResult.PASS
+                    test.message = f"Response is gzip compressed (Content-Encoding: {content_encoding})"
+                else:
+                    # Compression may not be applied to small responses
+                    min_length = config.get("minLength", 256)
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"Response not compressed (may be below {min_length} byte threshold)"
+                    test.message += f"\n           Content-Length: {content_length}"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"HTTP {resp.status_code}"
+
+        except requests.exceptions.RequestException as e:
+            test.duration_seconds = time.time() - start
+            test.result = TestResult.FAIL
+            test.message = f"Request failed: {e}"
+
+        self._record_result(test)
+
+    def _test_compression_accept_encoding(self):
+        """Test that compression respects Accept-Encoding header."""
+        test = TestCase(
+            name="compression_respects_accept_encoding",
+            description="Verify compression is not applied when not requested"
+        )
+
+        self.log("Testing response without Accept-Encoding...")
+        start = time.time()
+
+        try:
+            # Request without Accept-Encoding
+            resp = self.session.get(
+                f"{self.base_url}/test/compression",
+                headers={"Accept-Encoding": "identity"},  # Explicitly request no compression
+                timeout=10
+            )
+            # Fall back to /config if new endpoint not available
+            if resp.status_code == 404:
+                resp = self.session.get(
+                    f"{self.base_url}/config",
+                    headers={"Accept-Encoding": "identity"},
+                    timeout=10
+                )
+            test.duration_seconds = time.time() - start
+
+            content_encoding = resp.headers.get("Content-Encoding", "")
+
+            test.details = {
+                "status_code": resp.status_code,
+                "content_encoding": content_encoding
+            }
+
+            if resp.status_code == 200:
+                if not content_encoding or content_encoding == "identity":
+                    test.result = TestResult.PASS
+                    test.message = "Response correctly not compressed when not requested"
+                elif "gzip" in content_encoding.lower():
+                    test.result = TestResult.FAIL
+                    test.message = "Response compressed despite Accept-Encoding: identity"
+                else:
+                    test.result = TestResult.INCONCLUSIVE
+                    test.message = f"Unexpected Content-Encoding: {content_encoding}"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"HTTP {resp.status_code}"
+
+        except requests.exceptions.RequestException as e:
+            test.duration_seconds = time.time() - start
+            test.result = TestResult.FAIL
+            test.message = f"Request failed: {e}"
+
+        self._record_result(test)
+
+    def _test_redirects(self, config: dict):
+        """Test host-based redirect configuration."""
+        print(f"\n{colorize('▶ Redirect Tests', Colors.BOLD)}")
+
+        host_redirects = config.get("hostRedirects", [])
+
+        if not host_redirects:
+            test = TestCase(
+                name="redirects_disabled",
+                description="No redirects configured",
+                result=TestResult.SKIP,
+                message="Redirects not configured"
+            )
+            self._record_result(test)
+            return
+
+        for redirect in host_redirects:
+            from_host = redirect.get("from", "")
+            to_host = redirect.get("to", "")
+            permanent = redirect.get("permanent", False)
+
+            if from_host and to_host:
+                self._test_host_redirect(from_host, to_host, permanent)
+
+    def _test_host_redirect(self, from_host: str, to_host: str, permanent: bool):
+        """Test a specific host redirect rule."""
+        expected_code = 301 if permanent else 302
+        test = TestCase(
+            name=f"redirect_{from_host.replace('.', '_')}_to_{to_host.replace('.', '_')}",
+            description=f"Verify redirect from '{from_host}' to '{to_host}' ({expected_code})"
+        )
+
+        self.log(f"Testing redirect: {from_host} -> {to_host} ({expected_code})...")
+
+        # Note: We can only test this if we can actually reach the from_host
+        # This test will be INCONCLUSIVE if we can't resolve/reach the from_host
+        # In a real scenario, you'd need DNS pointing from_host to the ingress
+
+        start = time.time()
+        try:
+            # Try to make a request with Host header set to the from_host
+            # This simulates what would happen if DNS pointed from_host to this server
+            resp = requests.get(
+                f"{self.base_url}/test/redirect",
+                headers={"Host": from_host},
+                allow_redirects=False,
+                timeout=10
+            )
+            test.duration_seconds = time.time() - start
+
+            test.details = {
+                "status_code": resp.status_code,
+                "location": resp.headers.get("Location", ""),
+                "from_host": from_host,
+                "to_host": to_host,
+                "expected_code": expected_code
+            }
+
+            if resp.status_code == expected_code:
+                location = resp.headers.get("Location", "")
+                if to_host in location:
+                    test.result = TestResult.PASS
+                    test.message = f"Correctly redirected ({expected_code}) to: {location}"
+                else:
+                    test.result = TestResult.FAIL
+                    test.message = f"Redirected but to wrong location: {location}"
+            elif resp.status_code in [301, 302, 307, 308]:
+                location = resp.headers.get("Location", "")
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"Got {resp.status_code} (expected {expected_code}) -> {location}"
+            elif resp.status_code == 200:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"No redirect occurred - Host header may not trigger redirect rule"
+                test.message += f"\n           (Redirect rules may only work with actual DNS resolution)"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"HTTP {resp.status_code}"
+
+        except requests.exceptions.RequestException as e:
+            test.duration_seconds = time.time() - start
+            test.result = TestResult.INCONCLUSIVE
+            test.message = f"Request failed: {e}"
+
+        self._record_result(test)
+
+    def _test_upstream_context(self, config: dict, firewall_config: Optional[dict] = None):
         """Test upstream context configuration (real IP header)."""
         print(f"\n{colorize('▶ Upstream Context Tests', Colors.BOLD)}")
 
@@ -1187,7 +1586,13 @@ class AdvancedNetworkingTester:
             return
 
         self.log(f"Real IP header configured: {real_ip_header}")
+
+        # Test 1: Verify header is passed to backend
         self._test_real_ip_header(real_ip_header)
+
+        # Test 2: Verify nginx uses the header for IP-based decisions (firewall)
+        if firewall_config and firewall_config.get("allowedCidrs"):
+            self._test_real_ip_header_firewall(real_ip_header, firewall_config["allowedCidrs"])
 
     def _test_real_ip_header(self, header_name: str):
         """Test that the real_ip_header directive is working."""
@@ -1199,22 +1604,29 @@ class AdvancedNetworkingTester:
         self.log(f"Testing real IP header extraction from: {header_name}...")
 
         # Use a distinctive test IP
-        test_ip = "203.0.113.42"
+        test_ip = "73.162.196.20"
 
         start = time.time()
         try:
             # Send request with the configured real IP header
             custom_headers = {header_name: test_ip}
             resp = self.session.get(
-                f"{self.base_url}/headers-echo",
+                f"{self.base_url}/test/headers",
                 headers=custom_headers,
                 timeout=10
             )
+            # Fall back to /headers-echo if new endpoint not available
+            if resp.status_code == 404:
+                resp = self.session.get(
+                    f"{self.base_url}/headers-echo",
+                    headers=custom_headers,
+                    timeout=10
+                )
             test.duration_seconds = time.time() - start
 
             if resp.status_code == 404:
                 test.result = TestResult.SKIP
-                test.message = "/headers-echo endpoint not found"
+                test.message = "/test/headers endpoint not found"
                 self._record_result(test)
                 return
 
@@ -1253,6 +1665,128 @@ class AdvancedNetworkingTester:
             test.message = f"Request failed: {e}"
 
         self._record_result(test)
+
+    def _test_real_ip_header_firewall(self, header_name: str, allowed_cidrs: list):
+        """Test that nginx uses real_ip_header for firewall (whitelist-source-range) decisions.
+
+        This is the CRITICAL test for real_ip_header functionality:
+        - If firewall allowedCidrs is set to a test IP (e.g., 73.162.196.20/32)
+        - And we send the header with that IP (e.g., CF-Connecting-IP: 73.162.196.20)
+        - nginx should use that IP for firewall evaluation
+        - If allowed: real_ip_header is working
+        - If blocked (403): nginx is using real client IP, not the header
+        """
+        test = TestCase(
+            name="real_ip_header_firewall_integration",
+            description=f"Verify nginx uses '{header_name}' for firewall decisions"
+        )
+
+        # Extract the test IP from the first CIDR in the allowlist
+        if not allowed_cidrs:
+            test.result = TestResult.SKIP
+            test.message = "No allowedCidrs configured"
+            self._record_result(test)
+            return
+
+        # Parse the test IP from CIDR (e.g., "73.162.196.20/32" -> "73.162.196.20")
+        test_ip = allowed_cidrs[0].split("/")[0]
+
+        self.log(f"Testing firewall with {header_name}: {test_ip}")
+        self.log(f"Allowlist: {allowed_cidrs}")
+
+        start = time.time()
+        try:
+            # Send request WITH the configured real IP header set to an allowed IP
+            custom_headers = {header_name: test_ip}
+            resp = self.session.get(
+                f"{self.base_url}/test/firewall",
+                headers=custom_headers,
+                timeout=10
+            )
+            # Fall back to /healthz if new endpoint not available
+            if resp.status_code == 404:
+                resp = self.session.get(
+                    f"{self.base_url}/healthz",
+                    headers=custom_headers,
+                    timeout=10
+                )
+            test.duration_seconds = time.time() - start
+            test.details = {
+                "header_name": header_name,
+                "header_value": test_ip,
+                "allowed_cidrs": allowed_cidrs,
+                "status_code": resp.status_code
+            }
+
+            if resp.status_code == 200:
+                test.result = TestResult.PASS
+                test.message = f"Firewall allowed request! nginx correctly used '{header_name}' ({test_ip}) for IP evaluation"
+                test.message += f"\n           This proves real_ip_header directive is working"
+            elif resp.status_code == 403:
+                test.result = TestResult.FAIL
+                test.message = f"Firewall blocked (403) - nginx is NOT using '{header_name}' for IP evaluation"
+                test.message += f"\n           nginx is likely using your real IP or the NLB IP instead"
+                test.message += f"\n           Check: Is real_ip_header in server-snippet? Is it overriding proxy_protocol?"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"Unexpected HTTP {resp.status_code}"
+
+        except requests.exceptions.RequestException as e:
+            test.duration_seconds = time.time() - start
+            if "403" in str(e):
+                test.result = TestResult.FAIL
+                test.message = f"Firewall blocked - nginx not using '{header_name}'"
+            else:
+                test.result = TestResult.INCONCLUSIVE
+                test.message = f"Request failed: {e}"
+
+        self._record_result(test)
+
+        # Also test WITHOUT the header to verify firewall blocks
+        test2 = TestCase(
+            name="real_ip_header_firewall_without_header",
+            description=f"Verify firewall blocks when '{header_name}' is not sent"
+        )
+
+        self.log(f"Testing firewall WITHOUT {header_name} header...")
+
+        start = time.time()
+        try:
+            # Send request WITHOUT the header - should be blocked
+            resp = self.session.get(
+                f"{self.base_url}/test/firewall",
+                timeout=10
+            )
+            # Fall back to /healthz if new endpoint not available
+            if resp.status_code == 404:
+                resp = self.session.get(
+                    f"{self.base_url}/healthz",
+                    timeout=10
+                )
+            test2.duration_seconds = time.time() - start
+            test2.details = {"status_code": resp.status_code, "allowed_cidrs": allowed_cidrs}
+
+            if resp.status_code == 403:
+                test2.result = TestResult.PASS
+                test2.message = "Correctly blocked (403) when header not present"
+                test2.message += f"\n           Your real IP is not in allowlist - firewall working!"
+            elif resp.status_code == 200:
+                test2.result = TestResult.INCONCLUSIVE
+                test2.message = "Request allowed without header - your real IP may be in allowlist"
+            else:
+                test2.result = TestResult.INCONCLUSIVE
+                test2.message = f"HTTP {resp.status_code}"
+
+        except requests.exceptions.RequestException as e:
+            test2.duration_seconds = time.time() - start
+            if "403" in str(e):
+                test2.result = TestResult.PASS
+                test2.message = "Correctly blocked when header not present"
+            else:
+                test2.result = TestResult.INCONCLUSIVE
+                test2.message = f"Request failed: {e}"
+
+        self._record_result(test2)
 
     def _record_result(self, test: TestCase):
         """Record and display a test result."""

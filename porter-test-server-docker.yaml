@@ -10,7 +10,7 @@ services:
   terminationGracePeriodSeconds: 30
   port: 8088
   domains:
-  - name: web-1-cdded00c-76e4daot.withporter.run
+  - name: web-1-9e53be2d-xabkw6ia.withporter.run
   sleep: false
   serviceMeshEnabled: false
   advancedNetworking:
@@ -18,6 +18,7 @@ services:
       connectSeconds: 20
       readSeconds: 20
       writeSeconds: 20
+      clientBodyTimeoutSeconds: 30
     requestBody:
       maxSizeBytes: 1048576
     rateLimit:
@@ -36,7 +37,7 @@ services:
       ttlSeconds: 600
     firewall:
       allowedCidrs:
-        - "216.158.129.250/32"
+        - "73.162.196.20/32"
       blockedPaths:
         - "/admin"
         - "/internal"
@@ -50,8 +51,20 @@ services:
         add:
           X-Frame-Options: "DENY"
           X-Content-Type-Options: "nosniff"
-    upstreamContext:
-      realIpHeader: "CF-Connecting-IP"
+    compression:
+      enabled: true
+      level: 6
+      minLength: 256
+      types:
+        - "application/json"
+        - "text/plain"
+        - "text/css"
+        - "application/javascript"
+    redirects:
+      hostRedirects:
+        - from: "old.example.com"
+          to: "new.example.com"
+          permanent: true
 build:
   context: ./
   method: docker

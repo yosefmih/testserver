@@ -1,0 +1,194 @@
+# flyctl launch added from .gitignore
+# Virtual Environment
+**/venv
+**/env
+**/ENV
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/*$py.class
+
+# IDE
+**/.vscode
+**/.idea
+
+# Misc
+**/.DS_Store 
+
+
+**/.env 
+
+**/.env.local
+
+**/.next
+
+**/node_modules
+**/tmp
+
+**/CLAUDE_audio_processing.md 
+**/CLAUDE.md
+**/*.wav
+**/*.mp3
+**/*.m4a
+**/*.ogg
+**/*.flac
+**/*.wav.gz
+**/*.mp3.gz
+**/*.m4a.gz
+**/*.ogg.gz
+**/*.flac.gz
+
+**/audio_worker_c/build
+**/spec/*
+
+# flyctl launch added from frontend/.gitignore
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+frontend/node_modules
+frontend/.pnp
+frontend/**/.pnp.*
+frontend/**/.yarn/*
+!frontend/**/.yarn/patches
+!frontend/**/.yarn/plugins
+!frontend/**/.yarn/releases
+!frontend/**/.yarn/versions
+
+# testing
+frontend/coverage
+
+# next.js
+frontend/.next
+frontend/out
+
+# production
+frontend/build
+
+# misc
+frontend/**/.DS_Store
+frontend/**/*.pem
+
+# debug
+frontend/**/npm-debug.log*
+frontend/**/yarn-debug.log*
+frontend/**/yarn-error.log*
+frontend/**/.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+frontend/**/.env*
+
+# vercel
+frontend/**/.vercel
+
+# typescript
+frontend/**/*.tsbuildinfo
+frontend/**/next-env.d.ts
+
+# flyctl launch added from github-release-crawler/.gitignore
+github-release-crawler/**/.env
+
+# Build outputs
+github-release-crawler/**/dist
+github-release-crawler/**/node_modules
+
+# TypeScript build cache
+github-release-crawler/**/*.tsbuildinfo
+
+github-release-crawler/**/helm/github-release-crawler/local-values.yaml
+
+# flyctl launch added from scraper/.gitignore
+# Environment
+scraper/**/.env
+scraper/**/venv
+scraper/**/env
+scraper/**/ENV
+
+# Python
+scraper/**/__pycache__
+scraper/**/*.py[cod]
+scraper/**/*$py.class
+scraper/**/*.so
+scraper/**/.Python
+
+# IDE
+scraper/**/.vscode
+scraper/**/.idea
+scraper/**/*.swp
+scraper/**/*.swo
+
+# Logs
+scraper/**/*.log
+
+# OS
+scraper/**/.DS_Store
+scraper/**/Thumbs.db
+
+
+# flyctl launch added from scraper/frontend/.gitignore
+# Logs
+scraper/frontend/**/logs
+scraper/frontend/**/*.log
+scraper/frontend/**/npm-debug.log*
+scraper/frontend/**/yarn-debug.log*
+scraper/frontend/**/yarn-error.log*
+scraper/frontend/**/pnpm-debug.log*
+scraper/frontend/**/lerna-debug.log*
+
+scraper/frontend/**/node_modules
+scraper/frontend/**/dist
+scraper/frontend/**/dist-ssr
+scraper/frontend/**/*.local
+
+# Editor directories and files
+scraper/frontend/**/.vscode/*
+!scraper/frontend/**/.vscode/extensions.json
+scraper/frontend/**/.idea
+scraper/frontend/**/.DS_Store
+scraper/frontend/**/*.suo
+scraper/frontend/**/*.ntvs*
+scraper/frontend/**/*.njsproj
+scraper/frontend/**/*.sln
+scraper/frontend/**/*.sw?
+
+
+# flyctl launch added from tmp/benchmark-results/porter-bench/shadcn-app/.gitignore
+# dependencies (bun install)
+tmp/benchmark-results/porter-bench/shadcn-app/**/node_modules
+
+# output
+tmp/benchmark-results/porter-bench/shadcn-app/**/out
+tmp/benchmark-results/porter-bench/shadcn-app/**/dist
+tmp/benchmark-results/porter-bench/shadcn-app/**/*.tgz
+
+# code coverage
+tmp/benchmark-results/porter-bench/shadcn-app/**/coverage
+tmp/benchmark-results/porter-bench/shadcn-app/**/*.lcov
+
+# logs
+tmp/benchmark-results/porter-bench/shadcn-app/**/logs
+tmp/benchmark-results/porter-bench/shadcn-app/**/_.log
+tmp/benchmark-results/porter-bench/shadcn-app/**/report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+tmp/benchmark-results/porter-bench/shadcn-app/**/.env
+tmp/benchmark-results/porter-bench/shadcn-app/**/.env.development.local
+tmp/benchmark-results/porter-bench/shadcn-app/**/.env.test.local
+tmp/benchmark-results/porter-bench/shadcn-app/**/.env.production.local
+tmp/benchmark-results/porter-bench/shadcn-app/**/.env.local
+
+# caches
+tmp/benchmark-results/porter-bench/shadcn-app/**/.eslintcache
+tmp/benchmark-results/porter-bench/shadcn-app/**/.cache
+tmp/benchmark-results/porter-bench/shadcn-app/**/*.tsbuildinfo
+
+# IntelliJ based IDEs
+tmp/benchmark-results/porter-bench/shadcn-app/**/.idea
+
+# Finder (MacOS) folder config
+tmp/benchmark-results/porter-bench/shadcn-app/**/.DS_Store
+
+# flyctl launch added from venv/.gitignore
+# Created by venv; see https://docs.python.org/3/library/venv.html
+venv/**/*
+fly.toml
