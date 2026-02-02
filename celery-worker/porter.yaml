@@ -1,0 +1,16 @@
+version: v2
+name: celery-worker
+services:
+- name: worker
+  type: worker
+  instances: 1
+  cpuCores: 2
+  ramMegabytes: 2048
+  terminationGracePeriodSeconds: 30
+  env:
+    CELERY_BROKER_URL: amqp://celery:celery123@rabbitmq.default.svc.cluster.local:5672/
+build:
+  context: ./
+  method: docker
+  dockerfile: Dockerfile
+deploymentStrategy: {}

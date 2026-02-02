@@ -1,0 +1,27 @@
+global:
+  security:
+    allowInsecureImages: true
+
+image:
+  registry: docker.io
+  repository: bitnamilegacy/rabbitmq
+  tag: latest
+
+auth:
+  username: celery
+  password: celery123
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+service:
+  type: ClusterIP
