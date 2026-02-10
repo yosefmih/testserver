@@ -1,5 +1,5 @@
 version: v2
-name: testserver2
+name: testserver
 services:
 - name: web
   run: "python server.py"
@@ -9,10 +9,6 @@ services:
   ramMegabytes: 100
   terminationGracePeriodSeconds: 30
   port: 8088
-  domains:
-  - name: web-4-6aeabb94-1ug4u8ke.withporter.run
-  sleep: false
-  serviceMeshEnabled: false
 build:
   context: ./
   method: pack

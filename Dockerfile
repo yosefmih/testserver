@@ -1,7 +1,7 @@
 # ---- Build Stage ----
 # Using a specific Python version and OS release (Debian Bullseye) for reproducibility. Good.
 # 'AS builder' names this stage, which is used later.
-FROM python:3.10-bullseye AS builder
+FROM python:3.13-bookworm AS builder
 
 # Set the working directory in the container. Standard practice.
 WORKDIR /app
@@ -32,7 +32,7 @@ RUN pip wheel --no-cache-dir --wheel-dir=/app/wheels -r requirements.txt
 # ---- Runtime Stage ----
 # Using a 'slim' variant for the runtime image is a great optimization.
 # It's much smaller as it doesn't include build tools or many development libraries.
-FROM python:3.10-slim-bullseye
+FROM python:3.13-slim-bookworm
 
 # Install ffmpeg, which is needed by pydub for MP3 processing
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \

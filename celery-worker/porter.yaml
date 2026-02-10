@@ -7,8 +7,13 @@ services:
   cpuCores: 2
   ramMegabytes: 2048
   terminationGracePeriodSeconds: 30
-  env:
-    CELERY_BROKER_URL: amqp://celery:celery123@rabbitmq.default.svc.cluster.local:5672/
+env:
+- key: CELERY_BROKER_URL
+  value: amqp://celery:celery123@rabbitmq.default.svc.cluster.local:5672
+- key: C_FORCE_ROOT
+  value: "true"
+- key: CELERY_CONCURRENCY
+  value: "4"
 build:
   context: ./
   method: docker
