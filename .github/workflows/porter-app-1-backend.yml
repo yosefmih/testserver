@@ -14,6 +14,10 @@ jobs:
               run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
             - name: Setup porter
               uses: porter-dev/setup-porter@v0.1.0
+            - name: Override porter CLI
+              run: |
+                docker pull ghcr.io/porter-dev/releases/porter-cli:0.66.0-dev.1
+                docker cp $(docker create ghcr.io/porter-dev/releases/porter-cli:0.66.0-dev.1):/porter $(which porter)
             - name: Deploy stack
               timeout-minutes: 30
               run: porter apply
