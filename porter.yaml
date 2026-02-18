@@ -2,24 +2,14 @@ version: v2
 name: testserver
 services:
 - name: web
-  run: python server.py
+  run: "python server.py"
   type: web
   instances: 1
-  cpuCores: 0.2
-  ramMegabytes: 300
+  cpuCores: 0.1
+  ramMegabytes: 400
   terminationGracePeriodSeconds: 30
   port: 3000
-  autoscaling:
-    enabled: true
-    gpu: false
-    minInstances: 1
-    maxInstances: 10
-    cpuThresholdPercent: 0
-    memoryThresholdPercent: 0
-    gpuThresholdPercent: 0
-    vramThresholdPercent: 0
-  sleep: false
 build:
   context: ./
   method: docker
-  dockerfile: ./Dockerfile
+  dockerfile: Dockerfile
