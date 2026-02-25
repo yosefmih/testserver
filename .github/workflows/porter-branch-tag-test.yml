@@ -1,0 +1,24 @@
+name: Test branch name as tag
+"on":
+  push:
+    branches:
+      - "**"
+jobs:
+  porter-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup porter
+        uses: porter-dev/setup-porter@v0.1.0
+      - name: Deploy stack
+        timeout-minutes: 30
+        run: porter apply
+        env:
+          PORTER_APP_NAME: testserver
+          PORTER_CLUSTER: "1"
+          PORTER_DEPLOYMENT_TARGET_ID: c8c39fe7-235d-42b1-9988-1029fdf0cf42
+          PORTER_HOST: https://ben.withporter.run
+          PORTER_PROJECT: "1"
+          PORTER_TAG: ${{ github.ref_name }}
+          PORTER_TOKEN: ${{ secrets.PORTER_APP_1_1167019324 }}
