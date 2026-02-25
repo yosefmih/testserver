@@ -1,7 +1,7 @@
 "on":
     push:
         branches:
-            - dev
+            - main
 name: Deploy to testserver
 jobs:
     porter-deploy:
@@ -20,8 +20,8 @@ jobs:
               env:
                 PORTER_APP_NAME: testserver
                 PORTER_CLUSTER: "1"
-                PORTER_DEPLOYMENT_TARGET_ID: 1e7e145b-f1fd-49b7-977b-482711bab696
-                PORTER_HOST: https://yosefdev2.withporter.run
+                PORTER_DEPLOYMENT_TARGET_ID: c8c39fe7-235d-42b1-9988-1029fdf0cf42
+                PORTER_HOST: https://ben.withporter.run
                 PORTER_PROJECT: "1"
                 PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
-                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_869731671 }}
+                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_1167019324 }}
