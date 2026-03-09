@@ -1,0 +1,14 @@
+version: v2
+name: linear-autopilot
+services:
+  - name: web
+    run: "uvicorn main:app --host 0.0.0.0 --port 8080"
+    type: web
+    instances: 1
+    cpuCores: 1
+    ramMegabytes: 2048
+    port: 8080
+build:
+  context: ./
+  method: docker
+  dockerfile: Dockerfile
