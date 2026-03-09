@@ -89,7 +89,7 @@ cp .env.example backend/.env
 Edit `backend/.env` with your values:
 
 ```
-DATABASE_URL=postgresql://user:password@localhost:5432/linear_autopilot
+DB_URL=postgresql://user:password@localhost:5432/linear_autopilot
 BASE_URL=http://localhost:8080
 
 GOOGLE_CLIENT_ID=your-google-client-id

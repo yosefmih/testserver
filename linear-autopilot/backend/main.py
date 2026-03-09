@@ -21,7 +21,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting up, connecting to database")
-    await init_pool(config.DATABASE_URL)
+    await init_pool(config.DB_URL)
     await run_migrations()
     logger.info("Database ready, migrations applied")
     yield

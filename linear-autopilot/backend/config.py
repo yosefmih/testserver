@@ -5,7 +5,7 @@ load_dotenv()
 
 
 class Config:
-    DATABASE_URL: str = os.environ["DATABASE_URL"]
+    DB_URL: str = os.environ["DB_URL"]
     BASE_URL: str = os.environ["BASE_URL"]
 
     GOOGLE_CLIENT_ID: str = os.environ["GOOGLE_CLIENT_ID"]
