@@ -1,7 +1,10 @@
 import asyncio
 import logging
+import time
 
-import porter_sdk
+from porter_sandbox_api_client import Client
+from porter_sandbox_api_client.api.sandboxes import create_sandbox, get_sandbox, delete_sandbox, get_sandbox_logs
+from porter_sandbox_api_client.models import SandboxSpec, SandboxSpecEnv
 
 from config import config
 from db import get_pool
@@ -9,6 +12,10 @@ from services.github_app import get_installation_token
 from services.linear_oauth import post_issue_comment
 
 logger = logging.getLogger(__name__)
+
+SANDBOX_API_URL = config.BASE_URL.replace("://", "://sandbox-central.kube-system.svc.cluster.local") if False else "http://sandbox-central.kube-system.svc.cluster.local"
+
+sandbox_client = Client(base_url=SANDBOX_API_URL)
 
 
 async def launch_autopilot(
@@ -40,35 +47,44 @@ Steps:
 5. Push the branch and create a PR linking to {issue_url}
 6. Comment on the Linear issue with the PR URL"""
 
-    sb = porter_sdk.NewSandbox(
+    spec = SandboxSpec(
         image=config.WORKER_IMAGE,
         command=["bash", "/app/entrypoint.sh"],
-        env={
+        ttl_seconds=config.SANDBOX_TTL,
+        env=SandboxSpecEnv.from_dict({
             "ANTHROPIC_API_KEY": config.ANTHROPIC_API_KEY,
             "GITHUB_TOKEN": github_token,
             "LINEAR_API_KEY": linear_access_token,
             "ISSUE_PROMPT": prompt,
-        },
-        ttl_seconds=config.SANDBOX_TTL,
+        }),
     )
 
+    sandbox_id = None
     try:
-        sb.Run(wait=True, timeout=60)
+        response = create_sandbox.sync(client=sandbox_client, body=spec)
+        if not hasattr(response, "id"):
+            raise Exception(f"Failed to create sandbox: {response}")
+        sandbox_id = response.id
 
         await pool.execute(
             "UPDATE jobs SET status = 'running', sandbox_id = $1 WHERE id = $2",
-            sb.id, job_id,
+            sandbox_id, job_id,
         )
 
-        while True:
-            status = sb.Status()
-            if status.get("phase") in ("succeeded", "failed"):
-                break
+        deadline = time.time() + config.SANDBOX_TTL
+        phase = "pending"
+        while time.time() < deadline:
+            status_response = get_sandbox.sync(id=sandbox_id, client=sandbox_client)
+            if hasattr(status_response, "phase"):
+                phase = status_response.phase
+                if phase in ("succeeded", "failed"):
+                    break
             await asyncio.sleep(10)
 
-        logs = sb.Logs()
-        phase = status.get("phase", "failed")
-        log_text = "\n".join(logs) if logs else ""
+        logs_response = get_sandbox_logs.sync(id=sandbox_id, client=sandbox_client)
+        log_text = ""
+        if hasattr(logs_response, "logs") and logs_response.logs:
+            log_text = "\n".join(logs_response.logs)
 
         pr_url = _extract_pr_url(log_text)
 
@@ -94,10 +110,11 @@ Steps:
         logger.exception("Sandbox execution failed for job %s", job_id)
         raise
     finally:
-        try:
-            sb.Destroy()
-        except Exception:
-            logger.warning("Failed to destroy sandbox for job %s", job_id)
+        if sandbox_id:
+            try:
+                delete_sandbox.sync(id=sandbox_id, client=sandbox_client)
+            except Exception:
+                logger.warning("Failed to destroy sandbox for job %s", job_id)
 
 
 def _extract_pr_url(log_text: str) -> str | None:

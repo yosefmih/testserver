@@ -6,4 +6,4 @@ pyjwt[crypto]==2.10.0
 python-dotenv==1.0.1
 pydantic==2.10.0
 cryptography==44.0.0
-porter-sdk @ git+https://github.com/porter-dev/experimental-releases.git@porter-sdk-v0.0.2#subdirectory=porter-sdk
+porter-sandbox-api-client @ https://github.com/porter-dev/experimental-releases/releases/download/sandbox-api-client-v0.0.2-rc.2/porter_sandbox_api_client-1.0.0-py3-none-any.whl
