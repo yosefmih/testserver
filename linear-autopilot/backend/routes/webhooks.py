@@ -4,6 +4,7 @@ import logging
 
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 
+from config import config
 from db import get_pool
 from services.sandbox_runner import launch_autopilot
 
@@ -18,25 +19,12 @@ def _verify_signature(body: bytes, secret: str, signature: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-@router.post("/linear/{project_id}")
-async def linear_webhook(request: Request, project_id: str, background_tasks: BackgroundTasks):
+@router.post("/linear")
+async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
     body = await request.body()
     signature = request.headers.get("Linear-Signature", "")
 
-    pool = await get_pool()
-    project = await pool.fetchrow("""
-        SELECT id, linear_webhook_secret, linear_access_token, autopilot_label,
-               github_installation_id, github_repo
-        FROM projects WHERE id = $1
-    """, project_id)
-
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    if not project["linear_webhook_secret"]:
-        raise HTTPException(status_code=400, detail="Webhook not configured")
-
-    if not _verify_signature(body, project["linear_webhook_secret"], signature):
+    if not _verify_signature(body, config.LINEAR_WEBHOOK_SECRET, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     payload = await request.json()
@@ -49,16 +37,30 @@ async def linear_webhook(request: Request, project_id: str, background_tasks: Ba
         return {"status": "ignored", "reason": f"action {action} not handled"}
 
     issue_data = payload.get("data", {})
-    labels = [l.get("name", "") for l in issue_data.get("labels", [])]
+    team_id = issue_data.get("teamId") or payload.get("teamId")
+    if not team_id:
+        return {"status": "ignored", "reason": "no team in payload"}
 
+    pool = await get_pool()
+    project = await pool.fetchrow("""
+        SELECT id, linear_access_token, autopilot_label,
+               github_installation_id, github_repo
+        FROM projects WHERE linear_team_id = $1
+    """, team_id)
+
+    if not project:
+        return {"status": "ignored", "reason": "no project for this team"}
+
+    labels = [l.get("name", "") for l in issue_data.get("labels", [])]
     if project["autopilot_label"] not in labels:
         return {"status": "ignored", "reason": "autopilot label not present"}
 
     if not project["github_installation_id"] or not project["github_repo"]:
-        logger.warning("Project %s missing GitHub config, skipping", project_id)
+        logger.warning("Project %s missing GitHub config, skipping", project["id"])
         return {"status": "ignored", "reason": "GitHub not configured"}
 
     issue_id = issue_data.get("id", "")
+    project_id = str(project["id"])
     guard_key = f"{project_id}:{issue_id}"
     if guard_key in in_progress_issues:
         return {"status": "ignored", "reason": "already processing this issue"}

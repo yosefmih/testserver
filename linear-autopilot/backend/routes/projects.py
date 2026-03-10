@@ -18,7 +18,7 @@ async def list_projects(request: Request):
 
     rows = await pool.fetch("""
         SELECT id, name, github_installation_id, github_repo,
-               linear_team_id, autopilot_label, created_at
+               linear_access_token, linear_team_id, autopilot_label, created_at
         FROM projects
         WHERE user_id = $1
         ORDER BY created_at DESC
@@ -31,6 +31,7 @@ async def list_projects(request: Request):
             "github_connected": r["github_installation_id"] is not None,
             "github_repo": r["github_repo"],
             "linear_connected": r["linear_team_id"] is not None,
+            "linear_has_token": r["linear_access_token"] is not None,
             "autopilot_label": r["autopilot_label"],
             "created_at": r["created_at"].isoformat(),
         }
@@ -62,7 +63,7 @@ async def get_project(request: Request, project_id: str):
 
     project = await pool.fetchrow("""
         SELECT id, name, github_installation_id, github_repo,
-               linear_team_id, autopilot_label, created_at
+               linear_access_token, linear_team_id, autopilot_label, created_at
         FROM projects
         WHERE id = $1 AND user_id = $2
     """, project_id, user_id)
@@ -84,6 +85,7 @@ async def get_project(request: Request, project_id: str):
         "github_connected": project["github_installation_id"] is not None,
         "github_repo": project["github_repo"],
         "linear_connected": project["linear_team_id"] is not None,
+        "linear_has_token": project["linear_access_token"] is not None,
         "autopilot_label": project["autopilot_label"],
         "created_at": project["created_at"].isoformat(),
         "jobs": [

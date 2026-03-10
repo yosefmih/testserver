@@ -75,7 +75,7 @@ async def linear_connect(request: Request, project_id: str):
         "client_id": config.LINEAR_CLIENT_ID,
         "redirect_uri": config.LINEAR_REDIRECT_URL,
         "response_type": "code",
-        "scope": "read,write,admin",
+        "scope": "read,write",
         "state": state,
         "prompt": "consent",
     })
@@ -100,7 +100,7 @@ async def linear_callback(request: Request, code: str, state: str):
 
     pool = await get_pool()
     project = await pool.fetchrow(
-        "SELECT id, linear_webhook_id, linear_access_token FROM projects WHERE id = $1 AND user_id = $2",
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2",
         project_id, user_id,
     )
     if not project:
@@ -108,23 +108,13 @@ async def linear_callback(request: Request, code: str, state: str):
 
     tokens = await linear_oauth.exchange_code(code)
 
-    if project["linear_webhook_id"] and project["linear_access_token"]:
-        await linear_oauth.delete_webhook(project["linear_access_token"], project["linear_webhook_id"])
-
-    webhook = await linear_oauth.create_webhook(
-        tokens["access_token"], project_id, config.BASE_URL
-    )
-
     await pool.execute("""
         UPDATE projects SET
             linear_access_token = $1,
             linear_refresh_token = $2,
-            linear_webhook_id = $3,
-            linear_webhook_secret = $4,
             updated_at = now()
-        WHERE id = $5
-    """, tokens["access_token"], tokens.get("refresh_token"),
-        webhook["webhook_id"], webhook["webhook_secret"], project_id)
+        WHERE id = $3
+    """, tokens["access_token"], tokens.get("refresh_token"), project_id)
 
     response = RedirectResponse(url=f"/projects/{project_id}/settings", status_code=302)
     response.delete_cookie("linear_oauth_state")

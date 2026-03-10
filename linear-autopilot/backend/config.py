@@ -24,7 +24,7 @@ class Config:
     LINEAR_CLIENT_ID: str = os.environ["LINEAR_CLIENT_ID"]
     LINEAR_CLIENT_SECRET: str = os.environ["LINEAR_CLIENT_SECRET"]
     LINEAR_REDIRECT_URL: str = os.environ["LINEAR_REDIRECT_URL"]
-
+    LINEAR_WEBHOOK_SECRET: str = os.environ["LINEAR_WEBHOOK_SECRET"]
     ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]
     WORKER_IMAGE: str = os.environ["WORKER_IMAGE"]
     SANDBOX_TTL: int = int(os.getenv("SANDBOX_TTL", "900"))

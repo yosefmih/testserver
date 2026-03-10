@@ -1,5 +1,4 @@
 import logging
-import secrets
 
 import httpx
 
@@ -50,63 +49,6 @@ async def get_teams(access_token: str) -> list[dict]:
         resp.raise_for_status()
         nodes = resp.json()["data"]["teams"]["nodes"]
         return [{"id": n["id"], "name": n["name"], "key": n["key"]} for n in nodes]
-
-
-async def create_webhook(access_token: str, project_id: str, base_url: str) -> dict:
-    webhook_url = f"{base_url}/webhooks/linear/{project_id}"
-    secret = secrets.token_hex(32)
-
-    mutation = """
-    mutation WebhookCreate($input: WebhookCreateInput!) {
-        webhookCreate(input: $input) {
-            success
-            webhook {
-                id
-            }
-        }
-    }
-    """
-    variables = {
-        "input": {
-            "url": webhook_url,
-            "secret": secret,
-            "resourceTypes": ["Issue"],
-        }
-    }
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            LINEAR_GRAPHQL_URL,
-            json={"query": mutation, "variables": variables},
-            headers={"Authorization": access_token},
-        )
-        resp.raise_for_status()
-        body = resp.json()
-        if body.get("errors"):
-            logger.error("Linear webhookCreate errors: %s", body["errors"])
-            raise Exception(f"Linear webhook creation failed: {body['errors']}")
-        result = body["data"]["webhookCreate"]
-        if not result["success"]:
-            raise Exception("Failed to create Linear webhook")
-        return {
-            "webhook_id": result["webhook"]["id"],
-            "webhook_secret": secret,
-        }
-
-
-async def delete_webhook(access_token: str, webhook_id: str):
-    mutation = """
-    mutation($id: String!) {
-        webhookDelete(id: $id) {
-            success
-        }
-    }
-    """
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            LINEAR_GRAPHQL_URL,
-            json={"query": mutation, "variables": {"id": webhook_id}},
-            headers={"Authorization": access_token},
-        )
 
 
 async def post_issue_comment(access_token: str, issue_id: str, body: str):
