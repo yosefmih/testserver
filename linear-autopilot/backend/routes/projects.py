@@ -179,7 +179,7 @@ async def get_ticket(request: Request, project_id: str, ticket_id: str):
 
     ticket = await pool.fetchrow("""
         SELECT id, linear_issue_id, linear_issue_title, linear_issue_url,
-               pr_repo, pr_number, pr_url, volume_id, status, debounce_until, created_at, updated_at
+               pr_repo, pr_number, pr_url, volume_id, status, created_at, updated_at
         FROM tickets WHERE id = $1 AND project_id = $2
     """, ticket_id, project_id)
     if not ticket:
@@ -189,11 +189,6 @@ async def get_ticket(request: Request, project_id: str, ticket_id: str):
         SELECT id, kind, sandbox_id, status, error, created_at, finished_at
         FROM runs WHERE ticket_id = $1
         ORDER BY created_at DESC
-    """, ticket_id)
-
-    pending_comments = await pool.fetchval("""
-        SELECT COUNT(*) FROM review_comments
-        WHERE ticket_id = $1 AND addressed = false
     """, ticket_id)
 
     return {
@@ -206,8 +201,6 @@ async def get_ticket(request: Request, project_id: str, ticket_id: str):
         "pr_url": ticket["pr_url"],
         "volume_id": ticket["volume_id"],
         "status": ticket["status"],
-        "debounce_until": ticket["debounce_until"].isoformat() if ticket["debounce_until"] else None,
-        "pending_comments": pending_comments,
         "created_at": ticket["created_at"].isoformat(),
         "updated_at": ticket["updated_at"].isoformat(),
         "runs": [

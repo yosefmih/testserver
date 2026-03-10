@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
 
 from porter_sandbox_api_client.api.sandboxes import get_sandbox, delete_sandbox
 
@@ -38,8 +37,8 @@ async def _launch_pending_runs():
     logger.info("Ticket sync: launching %d pending runs", len(runs))
 
     for run in runs:
-        run_id = str(run["id"])
-        ticket_id = str(run["ticket_id"])
+        run_id = run["id"]
+        ticket_id = run["ticket_id"]
 
         active_run = await pool.fetchrow("""
             SELECT id FROM runs
@@ -78,7 +77,7 @@ async def _launch_pending_runs():
                     pr_number = ticket_info["pr_number"]
 
             sandbox_id = await create_sandbox_for_run(
-                run_id=run_id,
+                run_id=str(run_id),
                 callback_token=callback_token,
                 kind=run["kind"],
                 volume_id=volume_id,
@@ -142,9 +141,9 @@ async def _sync_active_runs():
     logger.info("Ticket sync: checking %d running runs", len(runs))
 
     for run in runs:
-        run_id = str(run["id"])
+        run_id = run["id"]
         sandbox_id = run["sandbox_id"]
-        ticket_id = str(run["ticket_id"])
+        ticket_id = run["ticket_id"]
 
         try:
             status_response = get_sandbox.sync(id=sandbox_id, client=sandbox_client)
@@ -182,16 +181,6 @@ async def _sync_active_runs():
                 WHERE id = $3 AND status = 'running'
             """, final_status, error_text, run_id)
 
-            if run["kind"] == "review" and final_status == "success":
-                await pool.execute("""
-                    UPDATE review_comments SET addressed = true
-                    WHERE ticket_id = $1 AND addressed = false
-                """, ticket_id)
-                await pool.execute(
-                    "UPDATE tickets SET debounce_until = NULL, updated_at = now() WHERE id = $1",
-                    ticket_id,
-                )
-
             logger.info("Ticket sync: run %s finished as %s", run_id, final_status)
 
             if final_status == "failed":
@@ -216,47 +205,12 @@ async def _sync_active_runs():
             logger.exception("Ticket sync: error checking run %s sandbox %s", run_id, sandbox_id)
 
 
-async def _check_review_debounce():
-    pool = await get_pool()
-
-    cutoff = datetime.now(timezone.utc).timestamp() - config.REVIEW_DEBOUNCE_SECONDS
-    tickets = await pool.fetch("""
-        SELECT DISTINCT t.id, t.debounce_until
-        FROM tickets t
-        WHERE t.status = 'active'
-          AND t.debounce_until IS NOT NULL
-          AND t.debounce_until <= now()
-          AND NOT EXISTS (
-              SELECT 1 FROM runs r
-              WHERE r.ticket_id = t.id AND r.status IN ('pending', 'launching', 'running')
-          )
-          AND EXISTS (
-              SELECT 1 FROM review_comments rc
-              WHERE rc.ticket_id = t.id AND rc.addressed = false
-          )
-    """)
-
-    for ticket in tickets:
-        ticket_id = str(ticket["id"])
-        logger.info("Ticket sync: debounce fired for ticket %s, creating review run", ticket_id)
-
-        await pool.execute("""
-            INSERT INTO runs (ticket_id, kind, status) VALUES ($1, 'review', 'pending')
-        """, ticket_id)
-
-        await pool.execute(
-            "UPDATE tickets SET debounce_until = NULL, updated_at = now() WHERE id = $1",
-            ticket_id,
-        )
-
-
 async def ticket_sync_loop():
     logger.info("Ticket sync loop started (interval=%ds)", SYNC_INTERVAL_SECONDS)
     while True:
         try:
             await _launch_pending_runs()
             await _sync_active_runs()
-            await _check_review_debounce()
         except Exception:
             logger.exception("Ticket sync loop iteration failed")
         await asyncio.sleep(SYNC_INTERVAL_SECONDS)

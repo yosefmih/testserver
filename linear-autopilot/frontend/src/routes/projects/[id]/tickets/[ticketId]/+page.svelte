@@ -37,14 +37,6 @@
 	const projectId = page.params.id;
 	const ticketId = page.params.ticketId;
 
-	function debounceTimeLeft(debounceUntil: string | null): string | null {
-		if (!debounceUntil) return null;
-		const diff = new Date(debounceUntil).getTime() - Date.now();
-		if (diff <= 0) return 'shortly';
-		const mins = Math.ceil(diff / 60000);
-		return mins === 1 ? '~1 minute' : `~${mins} minutes`;
-	}
-
 	async function handleTriggerReview() {
 		triggering = true;
 		try {
@@ -228,6 +220,7 @@
 			<a href="/projects/{projectId}" class="text-warm-500 text-sm hover:text-cream transition-colors duration-200 no-underline">&larr; Back to project</a>
 		</div>
 
+		{@const hasActiveRun = ticket.runs.some((r: Run) => ['pending', 'launching', 'running'].includes(r.status))}
 		<div class="flex items-start justify-between mb-8">
 			<div>
 				<h1 class="font-serif text-2xl tracking-tight mb-2">{ticket.linear_issue_title}</h1>
@@ -237,6 +230,15 @@
 				</div>
 			</div>
 			<div class="flex gap-3">
+				{#if ticket.pr_url && ticket.status === 'active'}
+					<button
+						class="border border-warm-600 text-cream-dim px-4 py-2 text-sm hover:bg-surface-raised hover:border-warm-400 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+						onclick={handleTriggerReview}
+						disabled={triggering || hasActiveRun}
+					>
+						{triggering ? 'Triggering...' : 'Run review'}
+					</button>
+				{/if}
 				{#if ticket.linear_issue_url}
 					<a href={ticket.linear_issue_url} target="_blank" class="border border-warm-600 text-cream-dim px-4 py-2 text-sm hover:bg-surface-raised hover:border-warm-400 transition-all duration-200 no-underline">Linear &rarr;</a>
 				{/if}
@@ -255,24 +257,6 @@
 				<span>Volume: <span class="text-cream-dim font-mono">{ticket.volume_id.slice(0, 12)}</span></span>
 			{/if}
 		</div>
-
-		{#if ticket.pending_comments > 0 && ticket.status === 'active'}
-			<div class="border border-accent/30 bg-accent/5 px-5 py-3 mb-6 flex items-center justify-between">
-				<div class="text-sm">
-					<span class="text-cream">{ticket.pending_comments} unaddressed comment{ticket.pending_comments === 1 ? '' : 's'}</span>
-					{#if debounceTimeLeft(ticket.debounce_until)}
-						<span class="text-warm-500 ml-2">— review run in {debounceTimeLeft(ticket.debounce_until)}</span>
-					{/if}
-				</div>
-				<button
-					class="border border-accent/60 text-accent px-3 py-1.5 text-xs hover:bg-accent/10 transition-all duration-200 disabled:opacity-50"
-					onclick={handleTriggerReview}
-					disabled={triggering || ticket.runs.some((r: Run) => ['pending', 'launching', 'running'].includes(r.status))}
-				>
-					{triggering ? 'Triggering...' : 'Run now'}
-				</button>
-			</div>
-		{/if}
 
 		<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Runs ({ticket.runs.length})</h2>
 

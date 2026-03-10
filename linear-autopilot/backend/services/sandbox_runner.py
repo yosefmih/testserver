@@ -130,13 +130,16 @@ The repo is already cloned at /workspace/repo. Your previous work is preserved t
 Steps:
 1. cd /workspace/repo and pull latest changes
 2. Use the GitHub MCP server to fetch ALL comments on PR #{pr_number} in {pr_repo}:
-   - Use mcp__github__pull_request_read to get PR details and review comments
-   - Fetch both inline review comments and conversation comments
+   - Use mcp__github__pull_request_read to get PR details and all review comments
+   - This returns both inline review comments and conversation comments
 3. Read /workspace/.addressed_comments.json if it exists — this tracks comment IDs you have already addressed in previous runs. If the file does not exist, treat all comments as new.
 4. Identify which comments are NEW (not in the addressed list) and not authored by you (skip bot/automation comments)
 5. Address each new comment by making the requested code changes
 6. Commit and push to the existing branch
-7. Reply to each addressed comment on GitHub acknowledging the change
+7. Reply to EACH comment individually on GitHub:
+   - For inline review comments: use mcp__github__add_reply_to_pull_request_comment to reply directly on the comment thread so the reviewer sees the response in context
+   - For general PR conversation comments: use mcp__github__add_issue_comment to respond
+   - Keep replies concise — briefly describe what you changed
 8. Update /workspace/.addressed_comments.json — append the IDs of all comments you addressed in this run
 9. Report completion
 

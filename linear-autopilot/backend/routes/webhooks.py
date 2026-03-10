@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import logging
-from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Request, HTTPException
 
@@ -154,6 +153,38 @@ async def _create_ticket_for_issue(issue: dict, project):
 
 # --- GitHub webhook ---
 
+AUTOPILOT_MENTION = "@autopilot"
+
+
+async def _find_ticket_for_pr(repo_full_name: str, pr_number: int):
+    pool = await get_pool()
+    return await pool.fetchrow("""
+        SELECT id FROM tickets
+        WHERE pr_repo = $1 AND pr_number = $2 AND status = 'active'
+    """, repo_full_name, pr_number)
+
+
+async def _trigger_review_run(ticket_id: str, reason: str) -> dict:
+    pool = await get_pool()
+    active = await pool.fetchval("""
+        SELECT COUNT(*) FROM runs
+        WHERE ticket_id = $1 AND status IN ('pending', 'launching', 'running')
+    """, ticket_id)
+    if active > 0:
+        logger.info("Review run skipped for ticket %s: already has active run (%s)", ticket_id, reason)
+        return {"status": "accepted", "ticket_id": ticket_id, "run": "skipped_active"}
+
+    await pool.execute("""
+        INSERT INTO runs (ticket_id, kind, status) VALUES ($1, 'review', 'pending')
+    """, ticket_id)
+    await pool.execute(
+        "UPDATE tickets SET debounce_until = NULL, updated_at = now() WHERE id = $1",
+        ticket_id,
+    )
+    logger.info("Review run queued for ticket %s (%s)", ticket_id, reason)
+    return {"status": "accepted", "ticket_id": ticket_id, "run": "queued"}
+
+
 @router.post("/github")
 async def github_webhook(request: Request):
     body = await request.body()
@@ -171,7 +202,9 @@ async def github_webhook(request: Request):
 
     logger.info("GitHub webhook: event=%s action=%s", event, payload.get("action"))
 
-    if event == "pull_request_review_comment" and payload.get("action") == "created":
+    if event == "pull_request_review" and payload.get("action") == "submitted":
+        return await _handle_pr_review_submitted(payload)
+    elif event == "pull_request_review_comment" and payload.get("action") == "created":
         return await _handle_pr_review_comment(payload)
     elif event == "issue_comment" and payload.get("action") == "created":
         return await _handle_issue_comment(payload)
@@ -181,8 +214,29 @@ async def github_webhook(request: Request):
         return _ignore("unhandled github event", event=event)
 
 
+async def _handle_pr_review_submitted(payload: dict):
+    review = payload.get("review", {})
+    pr = payload.get("pull_request", {})
+    repo = payload.get("repository", {})
+
+    repo_full_name = repo.get("full_name", "")
+    pr_number = pr.get("number")
+    review_state = review.get("state", "")
+
+    if not repo_full_name or not pr_number:
+        return _ignore("missing repo or PR number")
+
+    if review_state == "approved":
+        return _ignore("review approved, nothing to address")
+
+    ticket = await _find_ticket_for_pr(repo_full_name, pr_number)
+    if not ticket:
+        return _ignore("no active ticket for this PR", repo=repo_full_name, pr=pr_number)
+
+    return await _trigger_review_run(str(ticket["id"]), f"review submitted ({review_state})")
+
+
 async def _handle_issue_comment(payload: dict):
-    """Handle regular PR conversation comments (issue_comment event)."""
     issue = payload.get("issue", {})
     comment = payload.get("comment", {})
     repo = payload.get("repository", {})
@@ -192,37 +246,19 @@ async def _handle_issue_comment(payload: dict):
 
     repo_full_name = repo.get("full_name", "")
     pr_number = issue.get("number")
-    comment_id = comment.get("id")
-    author = comment.get("user", {}).get("login", "")
     body = comment.get("body", "")
 
     if not repo_full_name or not pr_number:
         return _ignore("missing repo or PR number")
 
-    pool = await get_pool()
-    ticket = await pool.fetchrow("""
-        SELECT id FROM tickets
-        WHERE pr_repo = $1 AND pr_number = $2 AND status = 'active'
-    """, repo_full_name, pr_number)
+    if AUTOPILOT_MENTION not in body.lower():
+        return _ignore("no autopilot mention")
 
+    ticket = await _find_ticket_for_pr(repo_full_name, pr_number)
     if not ticket:
         return _ignore("no active ticket for this PR", repo=repo_full_name, pr=pr_number)
 
-    ticket_id = str(ticket["id"])
-
-    await pool.execute("""
-        INSERT INTO review_comments (ticket_id, github_comment_id, author, body)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (github_comment_id) DO NOTHING
-    """, ticket_id, comment_id, author, body)
-
-    debounce_until = datetime.now(timezone.utc) + timedelta(seconds=config.REVIEW_DEBOUNCE_SECONDS)
-    await pool.execute("""
-        UPDATE tickets SET debounce_until = $1, updated_at = now() WHERE id = $2
-    """, debounce_until, ticket_id)
-
-    logger.info("PR comment stored for ticket %s, debounce set to %s", ticket_id, debounce_until)
-    return {"status": "accepted", "ticket_id": ticket_id}
+    return await _trigger_review_run(str(ticket["id"]), "mentioned in PR comment")
 
 
 async def _handle_pr_review_comment(payload: dict):
@@ -232,39 +268,19 @@ async def _handle_pr_review_comment(payload: dict):
 
     repo_full_name = repo.get("full_name", "")
     pr_number = pr.get("number")
-    comment_id = comment.get("id")
-    author = comment.get("user", {}).get("login", "")
     body = comment.get("body", "")
-    path = comment.get("path")
-    position = comment.get("position")
 
     if not repo_full_name or not pr_number:
         return _ignore("missing repo or PR number")
 
-    pool = await get_pool()
-    ticket = await pool.fetchrow("""
-        SELECT id FROM tickets
-        WHERE pr_repo = $1 AND pr_number = $2 AND status = 'active'
-    """, repo_full_name, pr_number)
+    if AUTOPILOT_MENTION not in body.lower():
+        return _ignore("no autopilot mention")
 
+    ticket = await _find_ticket_for_pr(repo_full_name, pr_number)
     if not ticket:
         return _ignore("no active ticket for this PR", repo=repo_full_name, pr=pr_number)
 
-    ticket_id = str(ticket["id"])
-
-    await pool.execute("""
-        INSERT INTO review_comments (ticket_id, github_comment_id, author, body, path, position)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (github_comment_id) DO NOTHING
-    """, ticket_id, comment_id, author, body, path, position)
-
-    debounce_until = datetime.now(timezone.utc) + timedelta(seconds=config.REVIEW_DEBOUNCE_SECONDS)
-    await pool.execute("""
-        UPDATE tickets SET debounce_until = $1, updated_at = now() WHERE id = $2
-    """, debounce_until, ticket_id)
-
-    logger.info("Review comment stored for ticket %s, debounce set to %s", ticket_id, debounce_until)
-    return {"status": "accepted", "ticket_id": ticket_id}
+    return await _trigger_review_run(str(ticket["id"]), "mentioned in review comment")
 
 
 async def _handle_pr_event(payload: dict):
@@ -279,16 +295,12 @@ async def _handle_pr_event(payload: dict):
     if action not in ("closed",):
         return _ignore("PR action not relevant", action=action)
 
-    pool = await get_pool()
-    ticket = await pool.fetchrow("""
-        SELECT id FROM tickets
-        WHERE pr_repo = $1 AND pr_number = $2 AND status = 'active'
-    """, repo_full_name, pr_number)
-
+    ticket = await _find_ticket_for_pr(repo_full_name, pr_number)
     if not ticket:
         return _ignore("no active ticket for this PR")
 
     new_status = "merged" if merged else "closed"
+    pool = await get_pool()
     await pool.execute("""
         UPDATE tickets SET status = $1, debounce_until = NULL, updated_at = now() WHERE id = $2
     """, new_status, str(ticket["id"]))
