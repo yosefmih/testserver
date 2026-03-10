@@ -197,7 +197,7 @@ async def delete_job(request: Request, project_id: str, job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    if job["status"] not in ("pending", "running"):
+    if job["status"] not in ("pending", "launching", "running"):
         raise HTTPException(status_code=400, detail="Job is not in a cancellable state")
 
     if job["sandbox_id"]:

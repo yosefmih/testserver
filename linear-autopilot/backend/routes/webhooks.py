@@ -3,12 +3,11 @@ import hmac
 import json
 import logging
 
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Request, HTTPException
 
 from config import config
 from db import get_pool
 from services import linear_oauth
-from services.sandbox_runner import launch_autopilot
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,7 +24,6 @@ def _ignore(reason: str, **extra) -> dict:
 
 
 async def _resolve_issue_from_label_event(payload: dict) -> dict | None:
-    """For IssueLabel events, fetch full issue details from Linear API."""
     data = payload.get("data", {})
     issue_id = data.get("issueId")
     if not issue_id:
@@ -53,7 +51,7 @@ async def _resolve_issue_from_label_event(payload: dict) -> dict | None:
 
 
 @router.post("/linear")
-async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
+async def linear_webhook(request: Request):
     body = await request.body()
     signature = request.headers.get("Linear-Signature", "")
 
@@ -69,14 +67,14 @@ async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
     logger.debug("Webhook payload: %s", json.dumps(payload, default=str)[:2000])
 
     if event_type == "IssueLabel":
-        return await _handle_issue_label_event(payload, action, background_tasks)
+        return await _handle_issue_label_event(payload, action)
     elif event_type == "Issue":
-        return await _handle_issue_event(payload, action, background_tasks)
+        return await _handle_issue_event(payload, action)
     else:
         return _ignore("unhandled event type", type=event_type)
 
 
-async def _handle_issue_label_event(payload: dict, action: str, background_tasks: BackgroundTasks):
+async def _handle_issue_label_event(payload: dict, action: str):
     data = payload.get("data", {})
     label_name = data.get("label", {}).get("name") or data.get("name", "")
     issue_id = data.get("issueId", "unknown")
@@ -104,10 +102,10 @@ async def _handle_issue_label_event(payload: dict, action: str, background_tasks
                 issue["id"], issue["title"], issue["teamId"],
                 [l["name"] for l in issue["labels"]])
 
-    return await _process_issue(issue, background_tasks)
+    return await _process_issue(issue)
 
 
-async def _handle_issue_event(payload: dict, action: str, background_tasks: BackgroundTasks):
+async def _handle_issue_event(payload: dict, action: str):
     issue_data = payload.get("data", {})
     issue_id = issue_data.get("id", "unknown")
     issue_title = issue_data.get("title", "")
@@ -137,11 +135,10 @@ async def _handle_issue_event(payload: dict, action: str, background_tasks: Back
         "labels": issue_data.get("labels", []),
     }
 
-    return await _process_issue(issue, background_tasks)
+    return await _process_issue(issue)
 
 
-async def _process_issue(issue: dict, background_tasks: BackgroundTasks):
-    """Common path: we have a resolved issue, check project match and launch autopilot."""
+async def _process_issue(issue: dict):
     team_id = issue.get("teamId")
     issue_id = issue["id"]
 
@@ -180,52 +177,11 @@ async def _process_issue(issue: dict, background_tasks: BackgroundTasks):
     if existing:
         return _ignore("job already in progress", issue_id=issue_id, project_id=project_id)
 
-    logger.info("Launching autopilot for issue %s (title=%r) in project %s", issue_id, issue["title"], project_id)
-
     job = await pool.fetchrow("""
-        INSERT INTO jobs (project_id, linear_issue_id, linear_issue_title, linear_issue_url, status)
-        VALUES ($1, $2, $3, $4, 'pending')
+        INSERT INTO jobs (project_id, linear_issue_id, linear_issue_title, linear_issue_description, linear_issue_url, status)
+        VALUES ($1, $2, $3, $4, $5, 'pending')
         RETURNING id
-    """, project_id, issue_id, issue.get("title", ""), issue.get("url", ""))
+    """, project_id, issue_id, issue.get("title", ""), issue.get("description", ""), issue.get("url", ""))
 
-    background_tasks.add_task(
-        _run_autopilot,
-        job_id=str(job["id"]),
-        issue_id=issue_id,
-        issue_title=issue.get("title", ""),
-        issue_description=issue.get("description", ""),
-        issue_url=issue.get("url", ""),
-        github_installation_id=project["github_installation_id"],
-        linear_access_token=project["linear_access_token"],
-    )
-
-    logger.info("Job %s created for issue %s", job["id"], issue_id)
+    logger.info("Job %s queued for issue %s in project %s", job["id"], issue_id, project_id)
     return {"status": "accepted", "job_id": str(job["id"])}
-
-
-async def _run_autopilot(
-    job_id: str,
-    issue_id: str,
-    issue_title: str,
-    issue_description: str,
-    issue_url: str,
-    github_installation_id: int,
-    linear_access_token: str,
-):
-    try:
-        await launch_autopilot(
-            job_id=job_id,
-            issue_id=issue_id,
-            issue_title=issue_title,
-            issue_description=issue_description,
-            issue_url=issue_url,
-            github_installation_id=github_installation_id,
-            linear_access_token=linear_access_token,
-        )
-    except Exception as e:
-        logger.exception("Autopilot failed for job %s", job_id)
-        pool = await get_pool()
-        await pool.execute(
-            "UPDATE jobs SET status = 'failed', error = $1, finished_at = now() WHERE id = $2",
-            str(e), job_id,
-        )

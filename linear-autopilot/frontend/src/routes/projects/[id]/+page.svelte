@@ -12,6 +12,7 @@
 	function statusColor(status: string) {
 		if (status === 'success') return 'text-success';
 		if (status === 'running') return 'text-accent';
+		if (status === 'launching') return 'text-accent';
 		if (status === 'pending') return 'text-warm-500';
 		return 'text-danger';
 	}
@@ -19,6 +20,7 @@
 	function dotColor(status: string) {
 		if (status === 'success') return 'bg-success';
 		if (status === 'running') return 'bg-accent';
+		if (status === 'launching') return 'bg-accent';
 		if (status === 'pending') return 'bg-warm-500';
 		return 'bg-danger';
 	}

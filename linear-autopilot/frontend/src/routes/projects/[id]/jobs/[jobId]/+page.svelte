@@ -34,11 +34,11 @@
 		job = await getJob(projectId, jobId);
 		await loadLogs();
 
-		if (job.status === 'pending' || job.status === 'running') {
+		if (ACTIVE_STATUSES.includes(job.status)) {
 			autoRefresh = setInterval(async () => {
 				job = await getJob(projectId, jobId);
 				await loadLogs();
-				if (job.status !== 'pending' && job.status !== 'running') {
+				if (!ACTIVE_STATUSES.includes(job.status)) {
 					if (autoRefresh) clearInterval(autoRefresh);
 				}
 			}, 5000);
@@ -116,9 +116,12 @@
 		return result;
 	}
 
+	const ACTIVE_STATUSES = ['pending', 'launching', 'running'];
+
 	function statusColor(status: string) {
 		if (status === 'success') return 'text-success';
 		if (status === 'running') return 'text-accent';
+		if (status === 'launching') return 'text-accent';
 		if (status === 'pending') return 'text-warm-500';
 		return 'text-danger';
 	}
@@ -126,6 +129,7 @@
 	function dotColor(status: string) {
 		if (status === 'success') return 'bg-success';
 		if (status === 'running') return 'bg-accent';
+		if (status === 'launching') return 'bg-accent';
 		if (status === 'pending') return 'bg-warm-500';
 		return 'bg-danger';
 	}
@@ -166,7 +170,7 @@
 					<span class="flex items-center gap-1.5 {statusColor(job.status)}">
 						<span class="w-1.5 h-1.5 rounded-full {dotColor(job.status)}"></span>
 						{job.status}
-						{#if job.status === 'running'}
+						{#if job.status === 'running' || job.status === 'launching'}
 							<span class="animate-pulse">&hellip;</span>
 						{/if}
 					</span>
@@ -179,7 +183,7 @@
 				{#if job.pr_url}
 					<a href={job.pr_url} target="_blank" class="bg-accent/10 border border-accent text-accent px-4 py-2 text-sm hover:bg-accent/20 transition-all duration-200 no-underline">View PR &rarr;</a>
 				{/if}
-				{#if job.status === 'pending' || job.status === 'running'}
+				{#if ACTIVE_STATUSES.includes(job.status)}
 					<button
 						onclick={forceClose}
 						disabled={deleting}
@@ -292,7 +296,9 @@
 					<div class="px-5 py-12 text-center">
 						<p class="text-warm-500 text-sm">
 							{#if job.status === 'pending'}
-								Waiting for sandbox to start...
+								Queued, waiting for next sync cycle...
+							{:else if job.status === 'launching'}
+								Launching sandbox...
 							{:else if job.status === 'running'}
 								Sandbox is running, logs will appear shortly...
 							{:else}

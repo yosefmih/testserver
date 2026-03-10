@@ -5,7 +5,7 @@ from porter_sandbox_api_client.api.sandboxes import get_sandbox, get_sandbox_log
 from porter_sandbox_api_client.types import Unset
 
 from db import get_pool
-from services.sandbox_runner import sandbox_client
+from services.sandbox_runner import sandbox_client, create_sandbox_for_job
 from services.linear_oauth import post_issue_comment
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,51 @@ def _extract_pr_url(log_text: str) -> str | None:
     return None
 
 
-async def sync_running_jobs():
+async def _launch_pending_jobs():
+    pool = await get_pool()
+
+    jobs = await pool.fetch("""
+        SELECT j.id, j.linear_issue_id, j.linear_issue_title, j.linear_issue_description,
+               j.linear_issue_url, p.github_installation_id, p.linear_access_token
+        FROM jobs j
+        JOIN projects p ON p.id = j.project_id
+        WHERE j.status = 'pending'
+    """)
+
+    if not jobs:
+        return
+
+    logger.info("Job sync: launching %d pending jobs", len(jobs))
+
+    for job in jobs:
+        job_id = str(job["id"])
+        try:
+            await pool.execute("UPDATE jobs SET status = 'launching' WHERE id = $1", job_id)
+
+            sandbox_id = await create_sandbox_for_job(
+                issue_id=job["linear_issue_id"],
+                issue_title=job["linear_issue_title"],
+                issue_description=job["linear_issue_description"] or "",
+                issue_url=job["linear_issue_url"] or "",
+                github_installation_id=job["github_installation_id"],
+                linear_access_token=job["linear_access_token"],
+            )
+
+            await pool.execute(
+                "UPDATE jobs SET status = 'running', sandbox_id = $1 WHERE id = $2",
+                sandbox_id, job_id,
+            )
+            logger.info("Job sync: job %s launched sandbox %s", job_id, sandbox_id)
+
+        except Exception as e:
+            logger.exception("Job sync: failed to launch sandbox for job %s", job_id)
+            await pool.execute(
+                "UPDATE jobs SET status = 'failed', error = $1, finished_at = now() WHERE id = $2",
+                str(e), job_id,
+            )
+
+
+async def _sync_active_jobs():
     pool = await get_pool()
 
     jobs = await pool.fetch("""
@@ -47,14 +91,14 @@ async def sync_running_jobs():
                p.linear_access_token
         FROM jobs j
         JOIN projects p ON p.id = j.project_id
-        WHERE j.status IN ('pending', 'running')
+        WHERE j.status = 'running'
           AND j.sandbox_id IS NOT NULL
     """)
 
     if not jobs:
         return
 
-    logger.info("Job sync: checking %d active jobs", len(jobs))
+    logger.info("Job sync: checking %d running jobs", len(jobs))
 
     for job in jobs:
         job_id = str(job["id"])
@@ -93,7 +137,7 @@ async def sync_running_jobs():
             pr_url = _extract_pr_url(log_text)
 
             await pool.execute("""
-                UPDATE jobs SET status = $1, pr_url = $2, finished_at = now() WHERE id = $3 AND status IN ('pending', 'running')
+                UPDATE jobs SET status = $1, pr_url = $2, finished_at = now() WHERE id = $3 AND status = 'running'
             """, final_status, pr_url, job_id)
 
             if final_status == "success" and pr_url and linear_access_token:
@@ -134,7 +178,8 @@ async def job_sync_loop():
     logger.info("Job sync loop started (interval=%ds)", SYNC_INTERVAL_SECONDS)
     while True:
         try:
-            await sync_running_jobs()
+            await _launch_pending_jobs()
+            await _sync_active_jobs()
         except Exception:
             logger.exception("Job sync loop iteration failed")
         await asyncio.sleep(SYNC_INTERVAL_SECONDS)
