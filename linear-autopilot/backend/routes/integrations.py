@@ -91,6 +91,46 @@ async def linear_connect(request: Request, project_id: str):
     return response
 
 
+@router.delete("/projects/{project_id}/integrations/github")
+async def github_disconnect(request: Request, project_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    await pool.execute(
+        "UPDATE projects SET github_installation_id = NULL, updated_at = now() WHERE id = $1",
+        project_id,
+    )
+    return {"status": "disconnected"}
+
+
+@router.delete("/projects/{project_id}/integrations/linear")
+async def linear_disconnect(request: Request, project_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    await pool.execute("""
+        UPDATE projects SET
+            linear_access_token = NULL,
+            linear_refresh_token = NULL,
+            linear_organization_id = NULL,
+            updated_at = now()
+        WHERE id = $1
+    """, project_id)
+    return {"status": "disconnected"}
+
+
 @callbacks_router.get("/linear/callback")
 async def linear_callback(request: Request, code: str, state: str):
     stored_state = request.cookies.get("linear_oauth_state")
