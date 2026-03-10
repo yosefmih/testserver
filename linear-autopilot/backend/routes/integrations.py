@@ -15,6 +15,15 @@ callbacks_router = APIRouter()
 logger = logging.getLogger(__name__)
 
 LINEAR_AUTH_URL = "https://linear.app/oauth/authorize"
+LINEAR_OAUTH_STATE_COOKIE = "linear_oauth_state"
+LINEAR_SCOPE = "read,write"
+LINEAR_RESPONSE_TYPE = "code"
+LINEAR_ACTOR = "app"
+LINEAR_PROMPT = "consent"
+
+GITHUB_INSTALL_BASE_URL = "https://github.com/apps"
+
+STATUS_DISCONNECTED = "disconnected"
 
 
 # --- GitHub App Installation ---
@@ -22,7 +31,7 @@ LINEAR_AUTH_URL = "https://linear.app/oauth/authorize"
 @router.get("/projects/{project_id}/integrations/github/install")
 async def github_install(request: Request, project_id: str):
     get_current_user_id(request)
-    install_url = f"https://github.com/apps/{config.GITHUB_APP_SLUG}/installations/new"
+    install_url = f"{GITHUB_INSTALL_BASE_URL}/{config.GITHUB_APP_SLUG}/installations/new"
     params = urlencode({"state": project_id})
     return RedirectResponse(url=f"{install_url}?{params}")
 
@@ -75,16 +84,16 @@ async def linear_connect(request: Request, project_id: str):
     params = urlencode({
         "client_id": config.LINEAR_CLIENT_ID,
         "redirect_uri": config.LINEAR_REDIRECT_URL,
-        "response_type": "code",
-        "scope": "read,write",
+        "response_type": LINEAR_RESPONSE_TYPE,
+        "scope": LINEAR_SCOPE,
         "state": state,
-        "actor": "app",
-        "prompt": "consent",
+        "actor": LINEAR_ACTOR,
+        "prompt": LINEAR_PROMPT,
     })
 
     response = RedirectResponse(url=f"{LINEAR_AUTH_URL}?{params}")
     response.set_cookie(
-        "linear_oauth_state", state,
+        LINEAR_OAUTH_STATE_COOKIE, state,
         httponly=True, samesite="lax", max_age=300,
         secure=request.url.scheme == "https",
     )
@@ -106,7 +115,7 @@ async def github_disconnect(request: Request, project_id: str):
         "UPDATE projects SET github_installation_id = NULL, updated_at = now() WHERE id = $1",
         project_id,
     )
-    return {"status": "disconnected"}
+    return {"status": STATUS_DISCONNECTED}
 
 
 @router.delete("/projects/{project_id}/integrations/linear")
@@ -128,12 +137,12 @@ async def linear_disconnect(request: Request, project_id: str):
             updated_at = now()
         WHERE id = $1
     """, project_id)
-    return {"status": "disconnected"}
+    return {"status": STATUS_DISCONNECTED}
 
 
 @callbacks_router.get("/linear/callback")
 async def linear_callback(request: Request, code: str, state: str):
-    stored_state = request.cookies.get("linear_oauth_state")
+    stored_state = request.cookies.get(LINEAR_OAUTH_STATE_COOKIE)
     if not stored_state or stored_state != state:
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
 
@@ -175,5 +184,5 @@ async def linear_callback(request: Request, code: str, state: str):
     logger.info("Linear connected: project=%s org=%s (%s)", project_id, org_id, org["name"])
 
     response = RedirectResponse(url=f"/projects/{project_id}/settings", status_code=302)
-    response.delete_cookie("linear_oauth_state")
+    response.delete_cookie(LINEAR_OAUTH_STATE_COOKIE)
     return response
