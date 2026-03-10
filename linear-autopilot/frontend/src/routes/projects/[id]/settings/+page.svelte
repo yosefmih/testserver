@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getProject, updateProjectSettings, deleteProject } from '$lib/api';
+	import { getProject, updateProjectSettings, deleteProject, listGithubRepos, selectGithubRepo, disconnectGithub, disconnectLinear } from '$lib/api';
 
 	let project = $state<any>(null);
 	let autopilotLabel = $state('');
@@ -9,12 +9,77 @@
 	let message = $state('');
 	let deleting = $state(false);
 
+	let githubRepos = $state<Array<{ full_name: string; private: boolean }>>([]);
+	let selectedRepo = $state('');
+	let loadingRepos = $state(false);
+	let reposLoaded = $state(false);
+	let savingRepo = $state(false);
+	let disconnectingGithub = $state(false);
+	let disconnectingLinear = $state(false);
+
 	const projectId = page.params.id;
 
 	onMount(async () => {
 		project = await getProject(projectId);
 		autopilotLabel = project.autopilot_label || 'autopilot';
+		selectedRepo = project.github_repo || '';
 	});
+
+	async function loadRepos() {
+		loadingRepos = true;
+		try {
+			githubRepos = await listGithubRepos(projectId);
+			reposLoaded = true;
+		} catch (e: any) {
+			message = e.message;
+		}
+		loadingRepos = false;
+	}
+
+	async function saveRepo() {
+		if (!selectedRepo) return;
+		savingRepo = true;
+		message = '';
+		try {
+			await selectGithubRepo(projectId, selectedRepo);
+			project = await getProject(projectId);
+			message = 'Repository updated';
+		} catch (e: any) {
+			message = e.message;
+		}
+		savingRepo = false;
+	}
+
+	async function handleDisconnectGithub() {
+		if (!confirm('Disconnect GitHub? Autopilot will no longer be able to create pull requests.')) return;
+		disconnectingGithub = true;
+		message = '';
+		try {
+			await disconnectGithub(projectId);
+			project = await getProject(projectId);
+			githubRepos = [];
+			reposLoaded = false;
+			selectedRepo = '';
+			message = 'GitHub disconnected';
+		} catch (e: any) {
+			message = e.message;
+		}
+		disconnectingGithub = false;
+	}
+
+	async function handleDisconnectLinear() {
+		if (!confirm('Disconnect Linear? Autopilot will stop listening for new issues.')) return;
+		disconnectingLinear = true;
+		message = '';
+		try {
+			await disconnectLinear(projectId);
+			project = await getProject(projectId);
+			message = 'Linear disconnected';
+		} catch (e: any) {
+			message = e.message;
+		}
+		disconnectingLinear = false;
+	}
 
 	async function handleDelete() {
 		if (!confirm(`Delete project "${project.name}"? All jobs will be permanently removed. This cannot be undone.`)) return;
@@ -64,13 +129,62 @@
 			<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">GitHub Integration</h2>
 			<div class="border border-warm-700/50 px-6 py-5">
 				{#if project.github_connected}
-					<div class="flex items-center gap-2">
-						<span class="w-2 h-2 rounded-full bg-success"></span>
-						<span class="text-success text-sm">Connected</span>
+					<div class="flex items-center justify-between mb-4">
+						<div class="flex items-center gap-2">
+							<span class="w-2 h-2 rounded-full bg-success"></span>
+							<span class="text-success text-sm">Connected</span>
+						</div>
+						<div class="flex items-center gap-4">
+							<a
+								href="/api/v1/projects/{projectId}/integrations/github/install"
+								class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
+							>
+								Reinstall
+							</a>
+							<button
+								class="text-red-400 text-xs hover:text-red-300 transition-colors duration-200 disabled:opacity-50"
+								onclick={handleDisconnectGithub}
+								disabled={disconnectingGithub}
+							>
+								{disconnectingGithub ? 'Disconnecting...' : 'Disconnect'}
+							</button>
+						</div>
 					</div>
-					<p class="text-warm-500 text-xs mt-2">
-						Autopilot automatically detects the relevant repo from the issue context.
-					</p>
+
+					<div>
+						<label class="text-warm-500 text-xs uppercase tracking-wider block mb-2">Repository</label>
+						{#if project.github_repo}
+							<p class="text-cream text-sm mb-3">{project.github_repo}</p>
+						{/if}
+						{#if !reposLoaded}
+							<button
+								class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 disabled:opacity-50"
+								onclick={loadRepos}
+								disabled={loadingRepos}
+							>
+								{loadingRepos ? 'Loading repos...' : project.github_repo ? 'Change repository' : 'Select a repository'}
+							</button>
+						{:else}
+							<div class="flex items-center gap-3">
+								<select
+									bind:value={selectedRepo}
+									class="flex-1 bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream focus:outline-none focus:border-accent transition-colors duration-200"
+								>
+									<option value="">-- Select a repository --</option>
+									{#each githubRepos as repo}
+										<option value={repo.full_name}>{repo.full_name}{repo.private ? ' (private)' : ''}</option>
+									{/each}
+								</select>
+								<button
+									class="bg-accent/10 border border-accent text-accent px-4 py-2.5 text-sm hover:bg-accent/20 transition-all duration-200 disabled:opacity-50"
+									onclick={saveRepo}
+									disabled={savingRepo || !selectedRepo}
+								>
+									{savingRepo ? 'Saving...' : 'Save'}
+								</button>
+							</div>
+						{/if}
+					</div>
 				{:else}
 					<p class="text-warm-500 text-sm mb-4">Connect your GitHub account to enable auto-PRs.</p>
 					<a
@@ -92,13 +206,25 @@
 						<div class="flex items-center gap-2">
 							<span class="w-2 h-2 rounded-full bg-success"></span>
 							<span class="text-success text-sm">Connected</span>
+							{#if project.linear_organization_id}
+								<span class="text-warm-500 text-xs">({project.linear_organization_id})</span>
+							{/if}
 						</div>
-						<a
-							href="/api/v1/projects/{projectId}/integrations/linear/connect"
-							class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
-						>
-							Reconnect
-						</a>
+						<div class="flex items-center gap-4">
+							<a
+								href="/api/v1/projects/{projectId}/integrations/linear/connect"
+								class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
+							>
+								Reconnect
+							</a>
+							<button
+								class="text-red-400 text-xs hover:text-red-300 transition-colors duration-200 disabled:opacity-50"
+								onclick={handleDisconnectLinear}
+								disabled={disconnectingLinear}
+							>
+								{disconnectingLinear ? 'Disconnecting...' : 'Disconnect'}
+							</button>
+						</div>
 					</div>
 				{:else}
 					<p class="text-warm-500 text-sm mb-4">{project.linear_has_token ? 'Linear needs to be reconnected.' : 'Connect Linear to listen for issues.'}</p>

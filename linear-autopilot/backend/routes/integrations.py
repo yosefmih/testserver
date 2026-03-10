@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
 from config import config
 from db import get_pool
@@ -63,6 +64,56 @@ async def list_github_repos(request: Request, project_id: str):
 
     repos = await github_app.get_installation_repos(project["github_installation_id"])
     return repos
+
+
+class SelectGithubRepoRequest(BaseModel):
+    repo: str
+
+
+@router.patch("/projects/{project_id}/integrations/github/repo")
+async def select_github_repo(request: Request, project_id: str, body: SelectGithubRepoRequest):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id, github_installation_id FROM projects WHERE id = $1 AND user_id = $2",
+        project_id, user_id,
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not project["github_installation_id"]:
+        raise HTTPException(status_code=400, detail="GitHub not connected")
+
+    repos = await github_app.get_installation_repos(project["github_installation_id"])
+    repo_names = [r["full_name"] for r in repos]
+    if body.repo not in repo_names:
+        raise HTTPException(status_code=400, detail="Repository not accessible via this GitHub App installation")
+
+    await pool.execute(
+        "UPDATE projects SET github_repo = $1, updated_at = now() WHERE id = $2",
+        body.repo, project_id,
+    )
+
+    return {"status": "updated", "github_repo": body.repo}
+
+
+@router.delete("/projects/{project_id}/integrations/github")
+async def disconnect_github(request: Request, project_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    await pool.execute(
+        "UPDATE projects SET github_installation_id = NULL, github_repo = NULL, updated_at = now() WHERE id = $1",
+        project_id,
+    )
+
+    return {"status": "disconnected"}
 
 
 # --- Linear OAuth ---
@@ -137,3 +188,26 @@ async def linear_callback(request: Request, code: str, state: str):
     response = RedirectResponse(url=f"/projects/{project_id}/settings", status_code=302)
     response.delete_cookie("linear_oauth_state")
     return response
+
+
+@router.delete("/projects/{project_id}/integrations/linear")
+async def disconnect_linear(request: Request, project_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    await pool.execute("""
+        UPDATE projects SET
+            linear_access_token = NULL,
+            linear_refresh_token = NULL,
+            linear_organization_id = NULL,
+            updated_at = now()
+        WHERE id = $1
+    """, project_id)
+
+    return {"status": "disconnected"}
