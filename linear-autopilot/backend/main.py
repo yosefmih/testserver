@@ -13,7 +13,10 @@ from routes.projects import router as projects_router
 from routes.integrations import router as integrations_router
 from routes.webhooks import router as webhooks_router
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=getattr(logging, config.LOG_LEVEL.upper(), logging.DEBUG), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+# Enable httpx request/response logging so sandbox API interactions are visible
+logging.getLogger("httpx").setLevel(getattr(logging, config.LOG_LEVEL.upper(), logging.DEBUG))
+logging.getLogger("httpcore").setLevel(getattr(logging, config.LOG_LEVEL.upper(), logging.DEBUG))
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"

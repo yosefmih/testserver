@@ -5,6 +5,7 @@ import time
 from porter_sandbox_api_client import Client
 from porter_sandbox_api_client.api.sandboxes import create_sandbox, get_sandbox, delete_sandbox, get_sandbox_logs
 from porter_sandbox_api_client.models import SandboxSpec, SandboxSpecEnv
+from porter_sandbox_api_client.types import Unset
 
 from config import config
 from db import get_pool
@@ -65,6 +66,7 @@ Steps:
         if not hasattr(response, "id"):
             raise Exception(f"Failed to create sandbox: {response}")
         sandbox_id = response.id
+        logger.debug("Sandbox created: id=%s raw_response=%s", sandbox_id, vars(response) if hasattr(response, '__dict__') else response)
 
         await pool.execute(
             "UPDATE jobs SET status = 'running', sandbox_id = $1 WHERE id = $2",
@@ -76,10 +78,13 @@ Steps:
         exit_code = None
         while time.time() < deadline:
             status_response = get_sandbox.sync(id=sandbox_id, client=sandbox_client)
+            logger.debug("Sandbox %s status poll: raw=%s", sandbox_id, vars(status_response) if hasattr(status_response, '__dict__') else status_response)
             if hasattr(status_response, "phase"):
                 phase = status_response.phase
-            if hasattr(status_response, "exit_code") and status_response.exit_code is not None:
-                exit_code = status_response.exit_code
+            raw_exit = getattr(status_response, "exit_code", None)
+            logger.debug("Sandbox %s phase=%s exit_code=%r exit_code_type=%s", sandbox_id, phase, raw_exit, type(raw_exit).__name__)
+            if raw_exit is not None and not isinstance(raw_exit, Unset):
+                exit_code = raw_exit
                 logger.info("Sandbox %s exited with code %d (phase=%s)", sandbox_id, exit_code, phase)
                 if phase not in ("succeeded", "failed"):
                     phase = "succeeded" if exit_code == 0 else "failed"
@@ -88,10 +93,12 @@ Steps:
                 break
             await asyncio.sleep(10)
 
+        logger.debug("Sandbox %s polling done: final phase=%s exit_code=%s", sandbox_id, phase, exit_code)
         logs_response = get_sandbox_logs.sync(id=sandbox_id, client=sandbox_client)
         log_text = ""
         if hasattr(logs_response, "logs") and logs_response.logs:
             log_text = "\n".join(logs_response.logs)
+        logger.debug("Sandbox %s logs fetched: %d chars", sandbox_id, len(log_text))
 
         pr_url = _extract_pr_url(log_text)
 

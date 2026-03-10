@@ -29,6 +29,7 @@ class Config:
     WORKER_IMAGE: str = os.environ["WORKER_IMAGE"]
     SANDBOX_TTL: int = int(os.getenv("SANDBOX_TTL", "900"))
 
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "DEBUG")
     AUTOPILOT_LABEL_DEFAULT: str = os.getenv("AUTOPILOT_LABEL_DEFAULT", "autopilot")
 
 
