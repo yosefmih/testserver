@@ -27,7 +27,7 @@ def _create_session_token(user_id: str, email: str) -> str:
         "user_id": user_id,
         "email": email,
         "iat": now,
-        "exp": now + timedelta(hours=config.SESSION_TTL_HOURS),
+        "exp": now + timedelta(minutes=config.SESSION_TTL_MINUTES),
     }
     return jwt.encode(payload, config.JWT_SECRET, algorithm=config.JWT_ALGORITHM)
 
@@ -103,7 +103,7 @@ async def google_callback(request: Request, code: str, state: str):
         session_token,
         httponly=True,
         samesite="lax",
-        max_age=config.SESSION_TTL_HOURS * 3600,
+        max_age=config.SESSION_TTL_MINUTES * 60,
         secure=request.url.scheme == "https",
     )
     response.delete_cookie("oauth_state")

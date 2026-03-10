@@ -14,7 +14,7 @@ class Config:
 
     JWT_SECRET: str = os.environ["JWT_SECRET"]
     JWT_ALGORITHM: str = "HS256"
-    SESSION_TTL_HOURS: int = int(os.getenv("SESSION_TTL_HOURS", "168"))
+    SESSION_TTL_MINUTES: int = int(os.getenv("SESSION_TTL_MINUTES", "60"))
     SESSION_COOKIE_NAME: str = "autopilot_session"
 
     GITHUB_APP_ID: str = os.environ["GITHUB_APP_ID"]

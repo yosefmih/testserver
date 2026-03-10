@@ -100,6 +100,7 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_REDIRECT_URL=http://localhost:8080/auth/google/callback
 
 JWT_SECRET=generate-a-random-string-here
+SESSION_TTL_MINUTES=60
 
 GITHUB_APP_ID=123456
 GITHUB_APP_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----
@@ -112,6 +113,8 @@ LINEAR_WEBHOOK_SECRET=your-webhook-signing-secret
 
 ANTHROPIC_API_KEY=sk-ant-...
 WORKER_IMAGE=linear-autopilot-worker:latest
+SANDBOX_TTL=900
+LOG_LEVEL=DEBUG
 ```
 
 For `GITHUB_APP_PRIVATE_KEY`, either paste the PEM contents with `\n` for newlines, or set it to the file path and adjust `config.py` to read from file.
