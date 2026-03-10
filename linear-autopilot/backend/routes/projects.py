@@ -184,6 +184,45 @@ async def get_job(request: Request, project_id: str, job_id: str):
     }
 
 
+@router.delete("/projects/{project_id}/jobs/{job_id}")
+async def delete_job(request: Request, project_id: str, job_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    job = await pool.fetchrow(
+        "SELECT id, sandbox_id, status FROM jobs WHERE id = $1 AND project_id = $2",
+        job_id, project_id,
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job["status"] not in ("pending", "running"):
+        raise HTTPException(status_code=400, detail="Job is not in a cancellable state")
+
+    if job["sandbox_id"]:
+        try:
+            from porter_sandbox_api_client.api.sandboxes import delete_sandbox
+            from services.sandbox_runner import sandbox_client
+
+            delete_sandbox.sync(id=job["sandbox_id"], client=sandbox_client)
+            logger.info("Deleted sandbox %s for job %s", job["sandbox_id"], job_id)
+        except Exception as e:
+            logger.warning("Failed to delete sandbox %s for job %s: %s", job["sandbox_id"], job_id, e)
+
+    await pool.execute(
+        "UPDATE jobs SET status = 'cancelled', finished_at = now() WHERE id = $1",
+        job_id,
+    )
+
+    return {"status": "cancelled"}
+
+
 @router.get("/projects/{project_id}/jobs/{job_id}/logs")
 async def get_job_logs(request: Request, project_id: str, job_id: str):
     user_id = get_current_user_id(request)

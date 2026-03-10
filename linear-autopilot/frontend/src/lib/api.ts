@@ -107,6 +107,12 @@ export function getJobLogs(projectId: string, jobId: string) {
 	return apiFetch<{ logs: string[]; error?: string }>(`/api/v1/projects/${projectId}/jobs/${jobId}/logs`);
 }
 
+export function deleteJob(projectId: string, jobId: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/jobs/${jobId}`, {
+		method: 'DELETE',
+	});
+}
+
 export function logout() {
 	return apiFetch('/auth/logout', { method: 'POST' });
 }

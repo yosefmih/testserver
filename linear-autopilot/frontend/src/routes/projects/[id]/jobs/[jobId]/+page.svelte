@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getJob, getJobLogs } from '$lib/api';
+	import { getJob, getJobLogs, deleteJob } from '$lib/api';
 
 	let job = $state<any>(null);
 	let logs = $state<string[]>([]);
 	let logsError = $state('');
 	let loadingLogs = $state(false);
 	let autoRefresh = $state<ReturnType<typeof setInterval> | null>(null);
+	let deleting = $state(false);
 
 	const projectId = page.params.id;
 	const jobId = page.params.jobId;
@@ -59,6 +60,20 @@
 		if (status === 'pending') return 'bg-warm-500';
 		return 'bg-danger';
 	}
+
+	async function forceClose() {
+		if (!confirm('Are you sure you want to force close this job? The sandbox will be deleted.')) return;
+		deleting = true;
+		try {
+			await deleteJob(projectId, jobId);
+			if (autoRefresh) clearInterval(autoRefresh);
+			job = await getJob(projectId, jobId);
+		} catch (e: any) {
+			alert(`Failed to force close job: ${e.message}`);
+		} finally {
+			deleting = false;
+		}
+	}
 </script>
 
 {#if job}
@@ -94,6 +109,15 @@
 				{/if}
 				{#if job.pr_url}
 					<a href={job.pr_url} target="_blank" class="bg-accent/10 border border-accent text-accent px-4 py-2 text-sm hover:bg-accent/20 transition-all duration-200 no-underline">View PR &rarr;</a>
+				{/if}
+				{#if job.status === 'pending' || job.status === 'running'}
+					<button
+						onclick={forceClose}
+						disabled={deleting}
+						class="border border-danger/60 text-danger px-4 py-2 text-sm hover:bg-danger/10 hover:border-danger transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+					>
+						{deleting ? 'Closing...' : 'Force Close'}
+					</button>
 				{/if}
 			</div>
 		</div>
