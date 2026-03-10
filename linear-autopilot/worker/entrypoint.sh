@@ -8,8 +8,6 @@ echo "GITHUB_TOKEN set: $([ -n "$GITHUB_TOKEN" ] && echo "yes (${#GITHUB_TOKEN} 
 echo "LINEAR_API_KEY set: $([ -n "$LINEAR_API_KEY" ] && echo "yes (${#LINEAR_API_KEY} chars)" || echo "NO")"
 echo "ISSUE_PROMPT set: $([ -n "$ISSUE_PROMPT" ] && echo "yes (${#ISSUE_PROMPT} chars)" || echo "NO")"
 
-# gh CLI auto-detects GITHUB_TOKEN from the environment, no login needed.
-# Configure git to use the token for HTTPS cloning.
 git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 echo "Git credential helper configured"
 
@@ -29,5 +27,8 @@ EXIT_CODE=$?
 
 echo "=== Claude exited with code $EXIT_CODE ==="
 
-kill -- -$$ 2>/dev/null || true
+# Kill the entire process tree. In a container, bash is PID 1 and orphaned
+# MCP server processes (npx -> node) prevent the container from exiting.
+# SIGKILL the whole tree since these are disposable processes.
+kill -9 -1 2>/dev/null || true
 exit $EXIT_CODE
