@@ -3,12 +3,22 @@
 	import { page } from '$app/state';
 	import { getJob, getJobLogs, deleteJob } from '$lib/api';
 
+	type LogEntry =
+		| { kind: 'text'; text: string }
+		| { kind: 'tool_use'; tool: string; input: string }
+		| { kind: 'tool_result'; content: string }
+		| { kind: 'system'; text: string }
+		| { kind: 'result'; cost: string; duration: string }
+		| { kind: 'raw'; text: string };
+
 	let job = $state<any>(null);
 	let logs = $state<string[]>([]);
+	let entries = $derived(parseLogs(logs));
 	let logsError = $state('');
 	let loadingLogs = $state(false);
 	let autoRefresh = $state<ReturnType<typeof setInterval> | null>(null);
 	let deleting = $state(false);
+	let showRaw = $state(false);
 
 	const projectId = page.params.id;
 	const jobId = page.params.jobId;
@@ -45,6 +55,65 @@
 			logsError = e.message;
 		}
 		loadingLogs = false;
+	}
+
+	function parseLogs(lines: string[]): LogEntry[] {
+		const result: LogEntry[] = [];
+		for (const line of lines) {
+			const trimmed = line.trim();
+			if (!trimmed) continue;
+
+			let parsed: any;
+			try {
+				parsed = JSON.parse(trimmed);
+			} catch {
+				result.push({ kind: 'raw', text: trimmed });
+				continue;
+			}
+
+			if (parsed.type === 'assistant') {
+				const content = parsed.message?.content;
+				if (Array.isArray(content)) {
+					for (const block of content) {
+						if (block.type === 'text' && block.text) {
+							result.push({ kind: 'text', text: block.text });
+						} else if (block.type === 'tool_use') {
+							const input = typeof block.input === 'string'
+								? block.input
+								: JSON.stringify(block.input, null, 2);
+							result.push({ kind: 'tool_use', tool: block.name, input });
+						}
+					}
+				}
+			} else if (parsed.type === 'tool_use' || parsed.type === 'content_block_start') {
+				const tool = parsed.tool || parsed.content_block;
+				if (tool?.type === 'tool_use') {
+					const input = typeof tool.input === 'string'
+						? tool.input
+						: JSON.stringify(tool.input, null, 2);
+					result.push({ kind: 'tool_use', tool: tool.name, input });
+				}
+			} else if (parsed.type === 'tool_result') {
+				const content = typeof parsed.tool_result?.content === 'string'
+					? parsed.tool_result.content
+					: JSON.stringify(parsed.tool_result?.content, null, 2);
+				if (content && content !== '{}' && content !== 'null') {
+					result.push({ kind: 'tool_result', content });
+				}
+			} else if (parsed.type === 'system' || parsed.type === 'init') {
+				const text = parsed.message || parsed.session_id
+					? `Session: ${parsed.session_id || 'unknown'}`
+					: JSON.stringify(parsed);
+				result.push({ kind: 'system', text });
+			} else if (parsed.type === 'result') {
+				const cost = parsed.cost_usd != null ? `$${parsed.cost_usd.toFixed(4)}` : '';
+				const duration = parsed.duration_ms != null ? `${(parsed.duration_ms / 1000).toFixed(1)}s` : '';
+				result.push({ kind: 'result', cost, duration });
+			} else {
+				result.push({ kind: 'raw', text: trimmed });
+			}
+		}
+		return result;
 	}
 
 	function statusColor(status: string) {
@@ -144,13 +213,21 @@
 		<section>
 			<div class="flex items-center justify-between mb-3">
 				<h2 class="text-xs text-warm-500 uppercase tracking-wider">Sandbox Logs</h2>
-				<button
-					class="text-xs text-warm-500 hover:text-cream transition-colors duration-200"
-					onclick={loadLogs}
-					disabled={loadingLogs}
-				>
-					{loadingLogs ? 'Loading...' : 'Refresh'}
-				</button>
+				<div class="flex items-center gap-4">
+					<button
+						class="text-xs transition-colors duration-200 {showRaw ? 'text-cream' : 'text-warm-500 hover:text-cream'}"
+						onclick={() => showRaw = !showRaw}
+					>
+						{showRaw ? 'Parsed' : 'Raw'}
+					</button>
+					<button
+						class="text-xs text-warm-500 hover:text-cream transition-colors duration-200"
+						onclick={loadLogs}
+						disabled={loadingLogs}
+					>
+						{loadingLogs ? 'Loading...' : 'Refresh'}
+					</button>
+				</div>
 			</div>
 
 			{#if logsError}
@@ -161,9 +238,56 @@
 
 			<div class="border border-warm-700/50 bg-surface-base overflow-hidden">
 				{#if logs.length > 0}
-					<div class="overflow-x-auto max-h-[70vh] overflow-y-auto">
-						<pre class="px-5 py-4 text-xs font-mono text-cream-dim leading-relaxed">{logs.join('\n')}</pre>
-					</div>
+					{#if showRaw}
+						<div class="overflow-x-auto max-h-[70vh] overflow-y-auto">
+							<pre class="px-5 py-4 text-xs font-mono text-cream-dim leading-relaxed">{logs.join('\n')}</pre>
+						</div>
+					{:else}
+						<div class="max-h-[70vh] overflow-y-auto divide-y divide-warm-700/30">
+							{#each entries as entry}
+								{#if entry.kind === 'text'}
+									<div class="px-5 py-3">
+										<pre class="text-sm text-cream whitespace-pre-wrap font-sans leading-relaxed">{entry.text}</pre>
+									</div>
+								{:else if entry.kind === 'tool_use'}
+									<div class="px-5 py-3 bg-warm-900/20">
+										<div class="flex items-center gap-2 mb-1.5">
+											<span class="text-[10px] font-mono uppercase tracking-wider text-accent/80 bg-accent/10 px-1.5 py-0.5">tool</span>
+											<span class="text-xs font-mono text-accent">{entry.tool}</span>
+										</div>
+										{#if entry.input && entry.input !== '{}'}
+											<pre class="text-xs font-mono text-warm-400 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">{entry.input}</pre>
+										{/if}
+									</div>
+								{:else if entry.kind === 'tool_result'}
+									<div class="px-5 py-3 bg-warm-900/10">
+										<span class="text-[10px] font-mono uppercase tracking-wider text-warm-500 mb-1.5 block">result</span>
+										<pre class="text-xs font-mono text-warm-400 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">{entry.content}</pre>
+									</div>
+								{:else if entry.kind === 'system'}
+									<div class="px-5 py-2">
+										<span class="text-xs font-mono text-warm-600">{entry.text}</span>
+									</div>
+								{:else if entry.kind === 'result'}
+									<div class="px-5 py-3 bg-success/5 border-t border-success/20">
+										<div class="flex items-center gap-4 text-xs">
+											<span class="text-[10px] font-mono uppercase tracking-wider text-success/80">completed</span>
+											{#if entry.duration}
+												<span class="font-mono text-warm-400">{entry.duration}</span>
+											{/if}
+											{#if entry.cost}
+												<span class="font-mono text-warm-400">{entry.cost}</span>
+											{/if}
+										</div>
+									</div>
+								{:else}
+									<div class="px-5 py-2">
+										<pre class="text-xs font-mono text-warm-500 whitespace-pre-wrap">{entry.text}</pre>
+									</div>
+								{/if}
+							{/each}
+						</div>
+					{/if}
 				{:else if !logsError}
 					<div class="px-5 py-12 text-center">
 						<p class="text-warm-500 text-sm">

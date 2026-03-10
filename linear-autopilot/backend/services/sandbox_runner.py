@@ -81,29 +81,34 @@ Steps:
         deadline = time.time() + config.SANDBOX_TTL
         phase = "pending"
         exit_code = None
+        poll_count = 0
         while time.time() < deadline:
+            poll_count += 1
+
             status_response = get_sandbox.sync(id=sandbox_id, client=sandbox_client)
-            logger.debug("Sandbox %s status poll: raw=%s", sandbox_id, vars(status_response) if hasattr(status_response, '__dict__') else status_response)
             if hasattr(status_response, "phase"):
-                phase = status_response.phase
+                raw_phase = status_response.phase
+                phase = raw_phase.value if hasattr(raw_phase, "value") else str(raw_phase)
             raw_exit = getattr(status_response, "exit_code", None)
-            logger.debug("Sandbox %s phase=%s exit_code=%r exit_code_type=%s", sandbox_id, phase, raw_exit, type(raw_exit).__name__)
+            logger.info("Sandbox %s poll #%d: phase=%s exit_code=%r", sandbox_id, poll_count, phase, raw_exit)
+
             if raw_exit is not None and not isinstance(raw_exit, Unset):
                 exit_code = raw_exit
-                logger.info("Sandbox %s exited with code %d (phase=%s)", sandbox_id, exit_code, phase)
                 if phase not in ("succeeded", "failed"):
                     phase = "succeeded" if exit_code == 0 else "failed"
+                logger.info("Sandbox %s completed via exit_code=%d phase=%s", sandbox_id, exit_code, phase)
                 break
             if phase in ("succeeded", "failed", "cancelled"):
+                logger.info("Sandbox %s completed via phase=%s", sandbox_id, phase)
                 break
+
             await asyncio.sleep(10)
 
-        logger.debug("Sandbox %s polling done: final phase=%s exit_code=%s", sandbox_id, phase, exit_code)
+        logger.info("Sandbox %s polling done after %d polls: phase=%s exit_code=%s", sandbox_id, poll_count, phase, exit_code)
         logs_response = get_sandbox_logs.sync(id=sandbox_id, client=sandbox_client)
         log_text = ""
         if hasattr(logs_response, "logs") and logs_response.logs:
             log_text = "\n".join(logs_response.logs)
-        logger.debug("Sandbox %s logs fetched: %d chars", sandbox_id, len(log_text))
 
         pr_url = _extract_pr_url(log_text)
 
