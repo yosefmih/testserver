@@ -1,8 +1,11 @@
+import logging
 import secrets
 
 import httpx
 
 from config import config
+
+logger = logging.getLogger(__name__)
 
 LINEAR_AUTH_URL = "https://linear.app/oauth/authorize"
 LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token"
@@ -54,12 +57,8 @@ async def create_webhook(access_token: str, project_id: str, base_url: str) -> d
     secret = secrets.token_hex(32)
 
     mutation = """
-    mutation($url: String!, $secret: String!) {
-        webhookCreate(input: {
-            url: $url,
-            secret: $secret,
-            resourceTypes: ["Issue"]
-        }) {
+    mutation WebhookCreate($input: WebhookCreateInput!) {
+        webhookCreate(input: $input) {
             success
             webhook {
                 id
@@ -67,14 +66,25 @@ async def create_webhook(access_token: str, project_id: str, base_url: str) -> d
         }
     }
     """
+    variables = {
+        "input": {
+            "url": webhook_url,
+            "secret": secret,
+            "resourceTypes": ["Issue"],
+        }
+    }
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             LINEAR_GRAPHQL_URL,
-            json={"query": mutation, "variables": {"url": webhook_url, "secret": secret}},
+            json={"query": mutation, "variables": variables},
             headers={"Authorization": access_token},
         )
         resp.raise_for_status()
-        result = resp.json()["data"]["webhookCreate"]
+        body = resp.json()
+        if body.get("errors"):
+            logger.error("Linear webhookCreate errors: %s", body["errors"])
+            raise Exception(f"Linear webhook creation failed: {body['errors']}")
+        result = body["data"]["webhookCreate"]
         if not result["success"]:
             raise Exception("Failed to create Linear webhook")
         return {
