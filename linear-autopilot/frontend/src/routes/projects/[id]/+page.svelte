@@ -9,67 +9,95 @@
 		project = await getProject(page.params.id);
 	});
 
-	function badgeClass(status: string) {
-		if (status === 'success') return 'badge-success';
-		if (status === 'running') return 'badge-running';
-		if (status === 'pending') return 'badge-pending';
-		return 'badge-failed';
+	function statusColor(status: string) {
+		if (status === 'success') return 'text-success';
+		if (status === 'running') return 'text-accent';
+		if (status === 'pending') return 'text-warm-500';
+		return 'text-danger';
+	}
+
+	function dotColor(status: string) {
+		if (status === 'success') return 'bg-success';
+		if (status === 'running') return 'bg-accent';
+		if (status === 'pending') return 'bg-warm-500';
+		return 'bg-danger';
 	}
 </script>
 
 {#if project}
-<div class="container">
-	<div class="header">
-		<div>
-			<a href="/projects" style="color: #666; font-size: 0.875rem;">&larr; Projects</a>
-			<h1 style="margin-top: 0.25rem;">{project.name}</h1>
+<div class="min-h-screen">
+	<header class="border-b border-warm-700/50 px-8 py-4">
+		<div class="max-w-5xl mx-auto flex items-center justify-between">
+			<a href="/" class="font-serif text-2xl text-cream hover:text-cream no-underline">Autopilot</a>
 		</div>
-		<a href="/projects/{project.id}/settings" class="btn btn-secondary">Settings</a>
-	</div>
+	</header>
 
-	<div class="card" style="display: flex; gap: 1.5rem;">
-		<div>
-			<span class="status-dot" class:connected={project.github_connected} class:disconnected={!project.github_connected}></span>
-			GitHub: {project.github_repo || 'Not configured'}
+	<main class="max-w-5xl mx-auto px-8 py-12">
+		<div class="mb-8">
+			<a href="/projects" class="text-warm-500 text-sm hover:text-cream transition-colors duration-200 no-underline">&larr; Projects</a>
 		</div>
-		<div>
-			<span class="status-dot" class:connected={project.linear_connected} class:disconnected={!project.linear_connected}></span>
-			Linear: {project.linear_connected ? 'Connected' : 'Not connected'}
-		</div>
-		<div>
-			Label: <code style="background: #2a2a2a; padding: 0.1rem 0.4rem; border-radius: 3px;">{project.autopilot_label}</code>
-		</div>
-	</div>
 
-	<h2 style="font-size: 1rem; margin-bottom: 0.75rem;">Recent Jobs</h2>
+		<div class="flex items-start justify-between mb-12">
+			<h1 class="font-serif text-3xl tracking-tight">{project.name}</h1>
+			<a
+				href="/projects/{project.id}/settings"
+				class="border border-warm-600 text-cream-dim px-4 py-2 text-sm hover:bg-surface-raised hover:border-warm-400 transition-all duration-200 no-underline"
+			>
+				Settings
+			</a>
+		</div>
 
-	{#each project.jobs as job}
-		<div class="card">
-			<div style="display: flex; justify-content: space-between; align-items: center;">
-				<div>
-					<strong>{job.linear_issue_title}</strong>
-					<span style="color: #666; font-size: 0.875rem; margin-left: 0.5rem;">{job.linear_issue_id}</span>
-				</div>
-				<span class="badge {badgeClass(job.status)}">{job.status}</span>
+		<div class="flex items-center gap-8 mb-12 pb-6 border-b border-warm-700/50">
+			<div class="flex items-center gap-2 text-sm">
+				<span class="w-2 h-2 rounded-full {project.github_connected ? 'bg-success' : 'bg-warm-600'}"></span>
+				<span class="text-warm-500">GitHub:</span>
+				<span class="font-mono text-xs text-cream-dim">{project.github_repo || 'Not configured'}</span>
 			</div>
-			{#if job.pr_url}
-				<a href={job.pr_url} target="_blank" style="font-size: 0.875rem; margin-top: 0.25rem; display: block;">
-					View PR &rarr;
-				</a>
-			{/if}
-			{#if job.error}
-				<p style="color: #f87171; font-size: 0.875rem; margin-top: 0.25rem;">{job.error}</p>
-			{/if}
-			<p style="color: #666; font-size: 0.75rem; margin-top: 0.25rem;">
-				{new Date(job.created_at).toLocaleString()}
-			</p>
+			<div class="flex items-center gap-2 text-sm">
+				<span class="w-2 h-2 rounded-full {project.linear_connected ? 'bg-success' : 'bg-warm-600'}"></span>
+				<span class="text-warm-500">Linear:</span>
+				<span class="text-cream-dim">{project.linear_connected ? 'Connected' : 'Not connected'}</span>
+			</div>
+			<div class="flex items-center gap-2 text-sm">
+				<span class="text-warm-500">Label:</span>
+				<span class="font-mono text-xs bg-surface-raised border border-warm-700 px-2 py-0.5 text-cream-dim">{project.autopilot_label}</span>
+			</div>
 		</div>
-	{/each}
 
-	{#if project.jobs.length === 0}
-		<div class="card" style="text-align: center; color: #666;">
-			No jobs yet. Tag a Linear issue with "{project.autopilot_label}" to get started.
-		</div>
-	{/if}
+		<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Recent Jobs</h2>
+
+		{#if project.jobs.length > 0}
+			<div class="border border-warm-700/50">
+				<div class="grid grid-cols-[1fr_auto_auto] gap-4 px-6 py-3 text-xs text-warm-500 uppercase tracking-wider border-b border-warm-700/30">
+					<span>Issue</span>
+					<span>Status</span>
+					<span>Created</span>
+				</div>
+				{#each project.jobs as job}
+					<div class="grid grid-cols-[1fr_auto_auto] gap-4 items-center px-6 py-4 border-t border-warm-700/30 first:border-t-0 hover:bg-surface-raised/50 transition-all duration-200">
+						<div>
+							<span class="text-sm text-cream">{job.linear_issue_title}</span>
+							<span class="text-xs text-warm-500 ml-2 font-mono">{job.linear_issue_id}</span>
+							{#if job.pr_url}
+								<a href={job.pr_url} target="_blank" class="text-accent text-xs ml-2 hover:text-accent/80 no-underline">View PR &rarr;</a>
+							{/if}
+							{#if job.error}
+								<p class="text-danger text-xs mt-1 truncate max-w-lg">{job.error}</p>
+							{/if}
+						</div>
+						<span class="flex items-center gap-1.5 {statusColor(job.status)}">
+							<span class="w-1.5 h-1.5 rounded-full {dotColor(job.status)}"></span>
+							<span class="text-xs">{job.status}</span>
+						</span>
+						<span class="text-xs text-warm-500 font-mono">{new Date(job.created_at).toLocaleDateString()}</span>
+					</div>
+				{/each}
+			</div>
+		{:else}
+			<div class="border border-warm-700/50 px-6 py-12 text-center">
+				<p class="text-warm-500 text-sm">No jobs yet. Tag a Linear issue with "{project.autopilot_label}" to get started.</p>
+			</div>
+		{/if}
+	</main>
 </div>
 {/if}

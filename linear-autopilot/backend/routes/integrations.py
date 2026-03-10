@@ -75,7 +75,7 @@ async def linear_connect(request: Request, project_id: str):
         "client_id": config.LINEAR_CLIENT_ID,
         "redirect_uri": config.LINEAR_REDIRECT_URL,
         "response_type": "code",
-        "scope": "read,write",
+        "scope": "read,write,admin",
         "state": state,
         "prompt": "consent",
     })
