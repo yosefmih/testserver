@@ -1,20 +1,16 @@
-import asyncio
 import logging
-import time
 
 from porter_sandbox_api_client import Client
-from porter_sandbox_api_client.api.sandboxes import create_sandbox, get_sandbox, delete_sandbox, get_sandbox_logs
+from porter_sandbox_api_client.api.sandboxes import create_sandbox
 from porter_sandbox_api_client.models import SandboxSpec, SandboxSpecEnv
-from porter_sandbox_api_client.types import Unset
 
 from config import config
 from db import get_pool
 from services.github_app import get_installation_token, get_installation_repos
-from services.linear_oauth import post_issue_comment
 
 logger = logging.getLogger(__name__)
 
-SANDBOX_API_URL = config.BASE_URL.replace("://", "://sandbox-central.kube-system.svc.cluster.local") if False else "http://sandbox-central.kube-system.svc.cluster.local"
+SANDBOX_API_URL = "http://sandbox-central.kube-system.svc.cluster.local"
 
 sandbox_client = Client(base_url=SANDBOX_API_URL)
 
@@ -65,89 +61,14 @@ Steps:
         }),
     )
 
-    sandbox_id = None
-    try:
-        response = create_sandbox.sync(client=sandbox_client, body=spec)
-        if not hasattr(response, "id"):
-            raise Exception(f"Failed to create sandbox: {response}")
-        sandbox_id = response.id
-        logger.debug("Sandbox created: id=%s raw_response=%s", sandbox_id, vars(response) if hasattr(response, '__dict__') else response)
+    response = create_sandbox.sync(client=sandbox_client, body=spec)
+    if not hasattr(response, "id"):
+        raise Exception(f"Failed to create sandbox: {response}")
 
-        await pool.execute(
-            "UPDATE jobs SET status = 'running', sandbox_id = $1 WHERE id = $2",
-            sandbox_id, job_id,
-        )
+    sandbox_id = response.id
+    logger.info("Sandbox created for job %s: sandbox_id=%s", job_id, sandbox_id)
 
-        deadline = time.time() + config.SANDBOX_TTL
-        phase = "pending"
-        exit_code = None
-        poll_count = 0
-        while time.time() < deadline:
-            poll_count += 1
-
-            status_response = get_sandbox.sync(id=sandbox_id, client=sandbox_client)
-            if hasattr(status_response, "phase"):
-                raw_phase = status_response.phase
-                phase = raw_phase.value if hasattr(raw_phase, "value") else str(raw_phase)
-            raw_exit = getattr(status_response, "exit_code", None)
-            logger.info("Sandbox %s poll #%d: phase=%s exit_code=%r", sandbox_id, poll_count, phase, raw_exit)
-
-            if raw_exit is not None and not isinstance(raw_exit, Unset):
-                exit_code = raw_exit
-                if phase not in ("succeeded", "failed"):
-                    phase = "succeeded" if exit_code == 0 else "failed"
-                logger.info("Sandbox %s completed via exit_code=%d phase=%s", sandbox_id, exit_code, phase)
-                break
-            if phase in ("succeeded", "failed", "cancelled"):
-                logger.info("Sandbox %s completed via phase=%s", sandbox_id, phase)
-                break
-
-            await asyncio.sleep(10)
-
-        logger.info("Sandbox %s polling done after %d polls: phase=%s exit_code=%s", sandbox_id, poll_count, phase, exit_code)
-        logs_response = get_sandbox_logs.sync(id=sandbox_id, client=sandbox_client)
-        log_text = ""
-        if hasattr(logs_response, "logs") and logs_response.logs:
-            log_text = "\n".join(logs_response.logs)
-
-        pr_url = _extract_pr_url(log_text)
-
-        await pool.execute("""
-            UPDATE jobs SET status = $1, pr_url = $2, finished_at = now() WHERE id = $3
-        """, "success" if phase == "succeeded" else "failed", pr_url, job_id)
-
-        if phase == "succeeded" and pr_url:
-            await post_issue_comment(
-                linear_access_token, issue_id,
-                f"Autopilot created a PR: {pr_url}"
-            )
-        elif phase == "failed":
-            await pool.execute(
-                "UPDATE jobs SET error = $1 WHERE id = $2", log_text[-2000:], job_id
-            )
-            await post_issue_comment(
-                linear_access_token, issue_id,
-                "Autopilot failed to create a fix. Check the dashboard for details."
-            )
-
-    except Exception:
-        logger.exception("Sandbox execution failed for job %s", job_id)
-        raise
-    finally:
-        if sandbox_id:
-            try:
-                delete_sandbox.sync(id=sandbox_id, client=sandbox_client)
-            except Exception:
-                logger.warning("Failed to destroy sandbox for job %s", job_id)
-
-
-def _extract_pr_url(log_text: str) -> str | None:
-    for line in log_text.split("\n"):
-        stripped = line.strip()
-        if "github.com" in stripped and "/pull/" in stripped:
-            for word in stripped.split():
-                if "github.com" in word and "/pull/" in word:
-                    url = word.strip("()[]<>\"'")
-                    if url.startswith("http"):
-                        return url
-    return None
+    await pool.execute(
+        "UPDATE jobs SET status = 'running', sandbox_id = $1 WHERE id = $2",
+        sandbox_id, job_id,
+    )

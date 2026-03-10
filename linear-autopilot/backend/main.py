@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,6 +13,7 @@ from routes.auth import router as auth_router
 from routes.projects import router as projects_router
 from routes.integrations import router as integrations_router
 from routes.webhooks import router as webhooks_router
+from services.job_sync import job_sync_loop
 
 logging.basicConfig(level=getattr(logging, config.LOG_LEVEL.upper(), logging.DEBUG), format="%(asctime)s %(levelname)s %(name)s %(message)s")
 # Enable httpx request/response logging so sandbox API interactions are visible
@@ -28,7 +30,13 @@ async def lifespan(app: FastAPI):
     await init_pool(config.DB_URL)
     await run_migrations()
     logger.info("Database ready, migrations applied")
+    sync_task = asyncio.create_task(job_sync_loop())
     yield
+    sync_task.cancel()
+    try:
+        await sync_task
+    except asyncio.CancelledError:
+        pass
     logger.info("Shutting down")
     await close_pool()
 

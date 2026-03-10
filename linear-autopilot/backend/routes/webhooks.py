@@ -13,8 +13,6 @@ from services.sandbox_runner import launch_autopilot
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-in_progress_issues: set[str] = set()
-
 
 def _verify_signature(body: bytes, secret: str, signature: str) -> bool:
     expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
@@ -174,9 +172,13 @@ async def _process_issue(issue: dict, background_tasks: BackgroundTasks):
                         issue_id=issue_id)
 
     project_id = str(project["id"])
-    guard_key = f"{project_id}:{issue_id}"
-    if guard_key in in_progress_issues:
-        return _ignore("already processing this issue", issue_id=issue_id, project_id=project_id)
+
+    existing = await pool.fetchrow("""
+        SELECT id FROM jobs
+        WHERE project_id = $1 AND linear_issue_id = $2 AND status IN ('pending', 'running')
+    """, project_id, issue_id)
+    if existing:
+        return _ignore("job already in progress", issue_id=issue_id, project_id=project_id)
 
     logger.info("Launching autopilot for issue %s (title=%r) in project %s", issue_id, issue["title"], project_id)
 
@@ -186,11 +188,8 @@ async def _process_issue(issue: dict, background_tasks: BackgroundTasks):
         RETURNING id
     """, project_id, issue_id, issue.get("title", ""), issue.get("url", ""))
 
-    in_progress_issues.add(guard_key)
-
     background_tasks.add_task(
         _run_autopilot,
-        project_id=project_id,
         job_id=str(job["id"]),
         issue_id=issue_id,
         issue_title=issue.get("title", ""),
@@ -198,7 +197,6 @@ async def _process_issue(issue: dict, background_tasks: BackgroundTasks):
         issue_url=issue.get("url", ""),
         github_installation_id=project["github_installation_id"],
         linear_access_token=project["linear_access_token"],
-        guard_key=guard_key,
     )
 
     logger.info("Job %s created for issue %s", job["id"], issue_id)
@@ -206,7 +204,6 @@ async def _process_issue(issue: dict, background_tasks: BackgroundTasks):
 
 
 async def _run_autopilot(
-    project_id: str,
     job_id: str,
     issue_id: str,
     issue_title: str,
@@ -214,7 +211,6 @@ async def _run_autopilot(
     issue_url: str,
     github_installation_id: int,
     linear_access_token: str,
-    guard_key: str,
 ):
     try:
         await launch_autopilot(
@@ -233,5 +229,3 @@ async def _run_autopilot(
             "UPDATE jobs SET status = 'failed', error = $1, finished_at = now() WHERE id = $2",
             str(e), job_id,
         )
-    finally:
-        in_progress_issues.discard(guard_key)
