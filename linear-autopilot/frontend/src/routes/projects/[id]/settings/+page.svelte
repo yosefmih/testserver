@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getProject, updateProjectSettings, deleteProject } from '$lib/api';
+	import { getProject, updateProjectSettings, deleteProject, disconnectGithub, disconnectLinear } from '$lib/api';
 
 	let project = $state<any>(null);
 	let autopilotLabel = $state('');
@@ -15,6 +15,26 @@
 		project = await getProject(projectId);
 		autopilotLabel = project.autopilot_label || 'autopilot';
 	});
+
+	async function handleDisconnectGithub() {
+		if (!confirm('Disconnect GitHub integration? This will stop autopilot from creating PRs.')) return;
+		try {
+			await disconnectGithub(projectId);
+			project = await getProject(projectId);
+		} catch (e: any) {
+			message = e.message;
+		}
+	}
+
+	async function handleDisconnectLinear() {
+		if (!confirm('Disconnect Linear integration? This will stop autopilot from receiving issues.')) return;
+		try {
+			await disconnectLinear(projectId);
+			project = await getProject(projectId);
+		} catch (e: any) {
+			message = e.message;
+		}
+	}
 
 	async function handleDelete() {
 		if (!confirm(`Delete project "${project.name}"? All tickets and runs will be permanently removed. This cannot be undone.`)) return;
@@ -64,9 +84,25 @@
 			<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">GitHub Integration</h2>
 			<div class="border border-warm-700/50 px-6 py-5">
 				{#if project.github_connected}
-					<div class="flex items-center gap-2">
-						<span class="w-2 h-2 rounded-full bg-success"></span>
-						<span class="text-success text-sm">Connected</span>
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-2">
+							<span class="w-2 h-2 rounded-full bg-success"></span>
+							<span class="text-success text-sm">Connected</span>
+						</div>
+						<div class="flex items-center gap-4">
+							<a
+								href="/api/v1/projects/{projectId}/integrations/github/install"
+								class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
+							>
+								Update Integration
+							</a>
+							<button
+								class="text-warm-500 text-xs hover:text-red-400 transition-colors duration-200"
+								onclick={handleDisconnectGithub}
+							>
+								Disconnect
+							</button>
+						</div>
 					</div>
 					<p class="text-warm-500 text-xs mt-2">
 						Autopilot automatically detects the relevant repo from the issue context.
@@ -93,12 +129,20 @@
 							<span class="w-2 h-2 rounded-full bg-success"></span>
 							<span class="text-success text-sm">Connected</span>
 						</div>
-						<a
-							href="/api/v1/projects/{projectId}/integrations/linear/connect"
-							class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
-						>
-							Reconnect
-						</a>
+						<div class="flex items-center gap-4">
+							<a
+								href="/api/v1/projects/{projectId}/integrations/linear/connect"
+								class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
+							>
+								Update Integration
+							</a>
+							<button
+								class="text-warm-500 text-xs hover:text-red-400 transition-colors duration-200"
+								onclick={handleDisconnectLinear}
+							>
+								Disconnect
+							</button>
+						</div>
 					</div>
 				{:else}
 					<p class="text-warm-500 text-sm mb-4">{project.linear_has_token ? 'Linear needs to be reconnected.' : 'Connect Linear to listen for issues.'}</p>

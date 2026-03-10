@@ -128,6 +128,18 @@ export function deleteProject(id: string) {
 	});
 }
 
+export function disconnectGithub(projectId: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/integrations/github`, {
+		method: 'DELETE',
+	});
+}
+
+export function disconnectLinear(projectId: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/integrations/linear`, {
+		method: 'DELETE',
+	});
+}
+
 export function logout() {
 	return apiFetch('/auth/logout', { method: 'POST' });
 }
