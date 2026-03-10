@@ -94,7 +94,7 @@
 								href="/api/v1/projects/{projectId}/integrations/github/install"
 								class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
 							>
-								Update Installation
+								Update Integration
 							</a>
 							<button
 								class="text-warm-500 text-xs hover:text-red-400 transition-colors duration-200"
@@ -134,7 +134,7 @@
 								href="/api/v1/projects/{projectId}/integrations/linear/connect"
 								class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
 							>
-								Reconnect
+								Update Integration
 							</a>
 							<button
 								class="text-warm-500 text-xs hover:text-red-400 transition-colors duration-200"
