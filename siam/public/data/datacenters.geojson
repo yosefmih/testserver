@@ -1,0 +1,389 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.4875,
+          39.0438
+        ]
+      },
+      "properties": {
+        "name": "AWS us-east-1",
+        "provider": "AWS",
+        "region_id": "us-east-1",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -82.9988,
+          39.9612
+        ]
+      },
+      "properties": {
+        "name": "AWS us-east-2",
+        "provider": "AWS",
+        "region_id": "us-east-2",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.8863,
+          37.3382
+        ]
+      },
+      "properties": {
+        "name": "AWS us-west-1",
+        "provider": "AWS",
+        "region_id": "us-west-1",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -119.705,
+          45.8399
+        ]
+      },
+      "properties": {
+        "name": "AWS us-west-2",
+        "provider": "AWS",
+        "region_id": "us-west-2",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -95.8608,
+          41.2619
+        ]
+      },
+      "properties": {
+        "name": "GCP us-central1",
+        "provider": "GCP",
+        "region_id": "us-central1",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.0131,
+          33.196
+        ]
+      },
+      "properties": {
+        "name": "GCP us-east1",
+        "provider": "GCP",
+        "region_id": "us-east1",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.474,
+          39.0438
+        ]
+      },
+      "properties": {
+        "name": "GCP us-east4",
+        "provider": "GCP",
+        "region_id": "us-east4",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.1787,
+          45.5946
+        ]
+      },
+      "properties": {
+        "name": "GCP us-west1",
+        "provider": "GCP",
+        "region_id": "us-west1",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -78.375,
+          36.6677
+        ]
+      },
+      "properties": {
+        "name": "Azure East US",
+        "provider": "Azure",
+        "region_id": "eastus",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -119.8526,
+          47.2343
+        ]
+      },
+      "properties": {
+        "name": "Azure West US",
+        "provider": "Azure",
+        "region_id": "westus",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -93.6091,
+          41.6006
+        ]
+      },
+      "properties": {
+        "name": "Azure Central US",
+        "provider": "Azure",
+        "region_id": "centralus",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -98.4936,
+          29.4241
+        ]
+      },
+      "properties": {
+        "name": "Azure South Central US",
+        "provider": "Azure",
+        "region_id": "southcentralus",
+        "dc_type": "hyperscale"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.4875,
+          39.0458
+        ]
+      },
+      "properties": {
+        "name": "Equinix Ashburn DC1-DC15",
+        "provider": "Equinix",
+        "region_id": "DC",
+        "dc_type": "ix"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.8893,
+          37.3352
+        ]
+      },
+      "properties": {
+        "name": "Equinix San Jose SV1-SV5",
+        "provider": "Equinix",
+        "region_id": "SV",
+        "dc_type": "ix"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -87.6298,
+          41.8781
+        ]
+      },
+      "properties": {
+        "name": "Equinix Chicago CH1-CH4",
+        "provider": "Equinix",
+        "region_id": "CH",
+        "dc_type": "ix"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -96.8167,
+          32.814
+        ]
+      },
+      "properties": {
+        "name": "Equinix Dallas DA1-DA3",
+        "provider": "Equinix",
+        "region_id": "DA",
+        "dc_type": "ix"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -118.2437,
+          34.0522
+        ]
+      },
+      "properties": {
+        "name": "Equinix Los Angeles LA1-LA4",
+        "provider": "Equinix",
+        "region_id": "LA",
+        "dc_type": "ix"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.1918,
+          25.7617
+        ]
+      },
+      "properties": {
+        "name": "Equinix Miami MI1-MI3",
+        "provider": "Equinix",
+        "region_id": "MI",
+        "dc_type": "ix"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -104.9903,
+          39.7392
+        ]
+      },
+      "properties": {
+        "name": "CoreSite Denver DE1",
+        "provider": "CoreSite",
+        "region_id": "DE1",
+        "dc_type": "colo"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.0839,
+          37.3861
+        ]
+      },
+      "properties": {
+        "name": "CoreSite Silicon Valley SV7",
+        "provider": "CoreSite",
+        "region_id": "SV7",
+        "dc_type": "colo"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -96.8297,
+          32.7767
+        ]
+      },
+      "properties": {
+        "name": "Digital Realty Dallas DFW",
+        "provider": "Digital Realty",
+        "region_id": "DFW",
+        "dc_type": "colo"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.471,
+          39.03
+        ]
+      },
+      "properties": {
+        "name": "Digital Realty Ashburn",
+        "provider": "Digital Realty",
+        "region_id": "IAD",
+        "dc_type": "colo"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -87.65,
+          41.85
+        ]
+      },
+      "properties": {
+        "name": "QTS Chicago",
+        "provider": "QTS",
+        "region_id": "ORD",
+        "dc_type": "colo"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -95.3414,
+          29.9841
+        ]
+      },
+      "properties": {
+        "name": "CyrusOne Houston",
+        "provider": "CyrusOne",
+        "region_id": "IAH",
+        "dc_type": "colo"
+      }
+    }
+  ]
+}

@@ -1,0 +1,855 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.4450699772385,
+          31.871950230956294
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1717.2,
+        "total_radiant_heat": 129.5,
+        "detection_count": 67,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.23828388831298,
+          31.70539533526254
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1541.2,
+        "total_radiant_heat": 95.1,
+        "detection_count": 141,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.0425436583625,
+          32.264347182104665
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1580.4,
+        "total_radiant_heat": 315.9,
+        "detection_count": 186,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.90428909447876,
+          32.23804732007211
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1403.3,
+        "total_radiant_heat": 177.2,
+        "detection_count": 50,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.62483328155021,
+          31.456813757981507
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1256.8,
+        "total_radiant_heat": 481.5,
+        "detection_count": 37,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -101.74543303605975,
+          32.62036506887856
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1373.8,
+        "total_radiant_heat": 205.0,
+        "detection_count": 34,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -101.50777634921333,
+          31.96819335867874
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1313.2,
+        "total_radiant_heat": 166.3,
+        "detection_count": 73,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.69138795670649,
+          32.3871847947604
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1776.3,
+        "total_radiant_heat": 355.9,
+        "detection_count": 191,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.01605004938845,
+          31.352966934696187
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1642.2,
+        "total_radiant_heat": 344.1,
+        "detection_count": 94,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.62280458453003,
+          31.817319749017614
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1472.2,
+        "total_radiant_heat": 410.9,
+        "detection_count": 48,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.66106874805855,
+          31.62656608877205
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1676.4,
+        "total_radiant_heat": 357.7,
+        "detection_count": 98,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -101.36663216577067,
+          32.16275321206048
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1642.6,
+        "total_radiant_heat": 175.1,
+        "detection_count": 12,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.76352891288626,
+          31.612405106696585
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1652.1,
+        "total_radiant_heat": 341.1,
+        "detection_count": 149,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -101.43900502851832,
+          31.694433124307782
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1538.1,
+        "total_radiant_heat": 232.0,
+        "detection_count": 102,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -101.70485871538901,
+          31.77618268100379
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1564.0,
+        "total_radiant_heat": 76.7,
+        "detection_count": 120,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.11033228667289,
+          32.36499962409716
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1484.4,
+        "total_radiant_heat": 114.2,
+        "detection_count": 174,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.7865079183199,
+          32.32921981639994
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1589.7,
+        "total_radiant_heat": 464.5,
+        "detection_count": 26,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.78315188223031,
+          31.680868729235286
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1364.3,
+        "total_radiant_heat": 359.7,
+        "detection_count": 170,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -101.65487057938009,
+          32.24952469669044
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1787.4,
+        "total_radiant_heat": 77.4,
+        "detection_count": 133,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.14358954478836,
+          32.64530325807124
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1238.9,
+        "total_radiant_heat": 280.5,
+        "detection_count": 163,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -101.8058724156087,
+          31.761864934599995
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1239.2,
+        "total_radiant_heat": 271.0,
+        "detection_count": 112,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.4322374104962,
+          31.86432098614428
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1765.7,
+        "total_radiant_heat": 82.7,
+        "detection_count": 74,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.46918226969795,
+          31.48439462572993
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1279.4,
+        "total_radiant_heat": 466.6,
+        "detection_count": 111,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -101.52009230324123,
+          32.211395905042295
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1250.5,
+        "total_radiant_heat": 456.0,
+        "detection_count": 44,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.46646529169456,
+          31.69003254953032
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1695.3,
+        "total_radiant_heat": 159.4,
+        "detection_count": 189,
+        "basin": "Permian Basin",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.27332617090107,
+          47.62791992563068
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1502.6,
+        "total_radiant_heat": 438.9,
+        "detection_count": 187,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.40671136036516,
+          47.49538478094973
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1350.0,
+        "total_radiant_heat": 154.3,
+        "detection_count": 162,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.98556838477924,
+          47.812068885107344
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1780.4,
+        "total_radiant_heat": 461.0,
+        "detection_count": 47,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -104.04995472179219,
+          48.572954493811025
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1747.2,
+        "total_radiant_heat": 472.1,
+        "detection_count": 184,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.43526932503302,
+          48.26579152437861
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1545.1,
+        "total_radiant_heat": 334.6,
+        "detection_count": 185,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.7825392334216,
+          48.01066578200893
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1293.8,
+        "total_radiant_heat": 116.4,
+        "detection_count": 11,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -104.17373004467925,
+          47.76725919571319
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1618.3,
+        "total_radiant_heat": 323.5,
+        "detection_count": 52,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -104.17027090827598,
+          47.56313684851734
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1272.4,
+        "total_radiant_heat": 226.1,
+        "detection_count": 138,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.52612365569588,
+          47.37161927143905
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1441.7,
+        "total_radiant_heat": 176.4,
+        "detection_count": 171,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.0235288403243,
+          47.52636173628578
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1239.9,
+        "total_radiant_heat": 293.9,
+        "detection_count": 91,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.0193773630714,
+          48.66899075444071
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1373.2,
+        "total_radiant_heat": 65.4,
+        "detection_count": 62,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -104.16940814916008,
+          47.464013007825265
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1245.2,
+        "total_radiant_heat": 303.1,
+        "detection_count": 50,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.87379904024596,
+          48.55463236868821
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1363.8,
+        "total_radiant_heat": 220.0,
+        "detection_count": 105,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.6781502781087,
+          47.64758636816925
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1289.4,
+        "total_radiant_heat": 168.5,
+        "detection_count": 113,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -103.88957655240642,
+          48.37563868549189
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1768.7,
+        "total_radiant_heat": 266.1,
+        "detection_count": 82,
+        "basin": "Bakken Formation",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.50812060068282,
+          28.930798794918527
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1483.4,
+        "total_radiant_heat": 405.0,
+        "detection_count": 186,
+        "basin": "Eagle Ford Shale",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -98.35452976269258,
+          29.108804506280684
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1796.6,
+        "total_radiant_heat": 266.2,
+        "detection_count": 38,
+        "basin": "Eagle Ford Shale",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -98.6706373139529,
+          29.42285716955595
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1316.0,
+        "total_radiant_heat": 426.6,
+        "detection_count": 132,
+        "basin": "Eagle Ford Shale",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.72779235220779,
+          29.550158803895545
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1407.0,
+        "total_radiant_heat": 213.7,
+        "detection_count": 118,
+        "basin": "Eagle Ford Shale",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -99.1372951589899,
+          28.901145646189214
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1363.8,
+        "total_radiant_heat": 474.4,
+        "detection_count": 121,
+        "basin": "Eagle Ford Shale",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -98.76226651054047,
+          28.43627043371174
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1522.3,
+        "total_radiant_heat": 58.7,
+        "detection_count": 173,
+        "basin": "Eagle Ford Shale",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.91587098750422,
+          28.595305914658518
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1595.1,
+        "total_radiant_heat": 336.4,
+        "detection_count": 96,
+        "basin": "Eagle Ford Shale",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.40022453061954,
+          28.92110495638786
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1543.7,
+        "total_radiant_heat": 71.4,
+        "detection_count": 53,
+        "basin": "Eagle Ford Shale",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.75958521311443,
+          29.213353058035803
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1404.3,
+        "total_radiant_heat": 350.3,
+        "detection_count": 99,
+        "basin": "Eagle Ford Shale",
+        "type": "flare"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.68465678786026,
+          28.53663544419076
+        ]
+      },
+      "properties": {
+        "avg_temp_bb": 1486.4,
+        "total_radiant_heat": 474.6,
+        "detection_count": 28,
+        "basin": "Eagle Ford Shale",
+        "type": "flare"
+      }
+    }
+  ]
+}

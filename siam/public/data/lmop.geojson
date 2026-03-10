@@ -1,0 +1,195 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -118.017,
+          33.9886
+        ]
+      },
+      "properties": {
+        "name": "Puente Hills",
+        "state": "CA",
+        "city": "Whittier",
+        "waste_in_place_tons": 1433912,
+        "lfg_collection_status": "Collecting",
+        "project_status": "Candidate",
+        "type": "methane"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.1843,
+          40.5794
+        ]
+      },
+      "properties": {
+        "name": "Fresh Kills",
+        "state": "NY",
+        "city": "Staten Island",
+        "waste_in_place_tons": 2554301,
+        "lfg_collection_status": "Collecting",
+        "project_status": "Operational",
+        "type": "methane"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -114.9208,
+          36.3894
+        ]
+      },
+      "properties": {
+        "name": "Apex Regional",
+        "state": "NV",
+        "city": "Las Vegas",
+        "waste_in_place_tons": 1359791,
+        "lfg_collection_status": "Collecting",
+        "project_status": "Candidate",
+        "type": "methane"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.75,
+          37.7369
+        ]
+      },
+      "properties": {
+        "name": "Altamont",
+        "state": "CA",
+        "city": "Livermore",
+        "waste_in_place_tons": 766612,
+        "lfg_collection_status": "Collecting",
+        "project_status": "Operational",
+        "type": "methane"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -84.6897,
+          39.228
+        ]
+      },
+      "properties": {
+        "name": "Rumpke Sanitary",
+        "state": "OH",
+        "city": "Cincinnati",
+        "waste_in_place_tons": 2334068,
+        "lfg_collection_status": "Collecting",
+        "project_status": "Operational",
+        "type": "methane"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.8249,
+          40.1876
+        ]
+      },
+      "properties": {
+        "name": "Grows Landfill",
+        "state": "PA",
+        "city": "Morrisville",
+        "waste_in_place_tons": 2167971,
+        "lfg_collection_status": "Planned",
+        "project_status": "Operational",
+        "type": "methane"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -118.7815,
+          34.2694
+        ]
+      },
+      "properties": {
+        "name": "Simi Valley",
+        "state": "CA",
+        "city": "Simi Valley",
+        "waste_in_place_tons": 4268238,
+        "lfg_collection_status": "Planned",
+        "project_status": "Operational",
+        "type": "methane"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -93.0702,
+          44.8128
+        ]
+      },
+      "properties": {
+        "name": "Pine Bend",
+        "state": "MN",
+        "city": "Inver Grove Heights",
+        "waste_in_place_tons": 1839319,
+        "lfg_collection_status": "Planned",
+        "project_status": "Candidate",
+        "type": "methane"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -83.5344,
+          42.3847
+        ]
+      },
+      "properties": {
+        "name": "Arbor Hills",
+        "state": "MI",
+        "city": "Northville",
+        "waste_in_place_tons": 2830953,
+        "lfg_collection_status": "Collecting",
+        "project_status": "Operational",
+        "type": "methane"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -120.2143,
+          45.7474
+        ]
+      },
+      "properties": {
+        "name": "Roosevelt Regional",
+        "state": "WA",
+        "city": "Roosevelt",
+        "waste_in_place_tons": 3323559,
+        "lfg_collection_status": "Collecting",
+        "project_status": "Operational",
+        "type": "methane"
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  --panel-bg: #0f172a;
+  --panel-border: #1e293b;
+  --accent: #38bdf8;
+  --accent-dim: #0ea5e9;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --energy-flare: #f97316;
+  --energy-wind: #22d3ee;
+  --energy-solar: #facc15;
+  --energy-methane: #a3e635;
+  --fiber-color: #c084fc;
+  --dc-color: #f472b6;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #020617;
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.maplibregl-popup-content {
+  background: var(--panel-bg) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+}

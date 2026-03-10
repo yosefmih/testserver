@@ -1,0 +1,293 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -118.4107551354726,
+          34.98771036786747
+        ]
+      },
+      "properties": {
+        "plant_name": "Tehachapi Wind Farm",
+        "state": "CA",
+        "nameplate_capacity_mw": 123,
+        "technology": "Wind",
+        "balancing_authority": "CAISO",
+        "type": "wind"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.66602456558995,
+          37.82188126990576
+        ]
+      },
+      "properties": {
+        "plant_name": "Altamont Pass",
+        "state": "CA",
+        "nameplate_capacity_mw": 407,
+        "technology": "Wind",
+        "balancing_authority": "CAISO",
+        "type": "wind"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -116.58936215430676,
+          33.97859025433106
+        ]
+      },
+      "properties": {
+        "plant_name": "San Gorgonio Pass",
+        "state": "CA",
+        "nameplate_capacity_mw": 305,
+        "technology": "Wind",
+        "balancing_authority": "CAISO",
+        "type": "wind"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -115.46718429232777,
+          35.571797667472296
+        ]
+      },
+      "properties": {
+        "plant_name": "Ivanpah Solar",
+        "state": "CA",
+        "nameplate_capacity_mw": 345,
+        "technology": "Solar",
+        "balancing_authority": "CAISO",
+        "type": "solar"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -119.90954227336184,
+          35.02447493616418
+        ]
+      },
+      "properties": {
+        "plant_name": "Topaz Solar",
+        "state": "CA",
+        "nameplate_capacity_mw": 330,
+        "technology": "Solar",
+        "balancing_authority": "CAISO",
+        "type": "solar"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -115.30985499555757,
+          33.907301647894556
+        ]
+      },
+      "properties": {
+        "plant_name": "Desert Sunlight",
+        "state": "CA",
+        "nameplate_capacity_mw": 251,
+        "technology": "Solar",
+        "balancing_authority": "CAISO",
+        "type": "solar"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -100.45982494964107,
+          32.38523762085694
+        ]
+      },
+      "properties": {
+        "plant_name": "Roscoe Wind Farm",
+        "state": "TX",
+        "nameplate_capacity_mw": 469,
+        "technology": "Wind",
+        "balancing_authority": "ERCOT",
+        "type": "wind"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -100.34930641815701,
+          31.994910359644678
+        ]
+      },
+      "properties": {
+        "plant_name": "Horse Hollow",
+        "state": "TX",
+        "nameplate_capacity_mw": 132,
+        "technology": "Wind",
+        "balancing_authority": "ERCOT",
+        "type": "wind"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -100.4008045522441,
+          32.47248606925385
+        ]
+      },
+      "properties": {
+        "plant_name": "Sweetwater Wind",
+        "state": "TX",
+        "nameplate_capacity_mw": 445,
+        "technology": "Wind",
+        "balancing_authority": "ERCOT",
+        "type": "wind"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.29435989721615,
+          27.17737036138358
+        ]
+      },
+      "properties": {
+        "plant_name": "Gulf Wind",
+        "state": "TX",
+        "nameplate_capacity_mw": 189,
+        "technology": "Wind",
+        "balancing_authority": "ERCOT",
+        "type": "wind"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -96.12461496284077,
+          33.44503178504384
+        ]
+      },
+      "properties": {
+        "plant_name": "Samson Solar",
+        "state": "TX",
+        "nameplate_capacity_mw": 75,
+        "technology": "Solar",
+        "balancing_authority": "ERCOT",
+        "type": "solar"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -102.6626761243613,
+          32.215853571983
+        ]
+      },
+      "properties": {
+        "plant_name": "Roadrunner Solar",
+        "state": "TX",
+        "nameplate_capacity_mw": 81,
+        "technology": "Solar",
+        "balancing_authority": "ERCOT",
+        "type": "solar"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.99076804328668,
+          37.91781964028735
+        ]
+      },
+      "properties": {
+        "plant_name": "Meridian Way",
+        "state": "KS",
+        "nameplate_capacity_mw": 89,
+        "technology": "Wind",
+        "balancing_authority": "SPP",
+        "type": "wind"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.82939185799921,
+          37.20445054564405
+        ]
+      },
+      "properties": {
+        "plant_name": "Flat Ridge",
+        "state": "KS",
+        "nameplate_capacity_mw": 488,
+        "technology": "Wind",
+        "balancing_authority": "SPP",
+        "type": "wind"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -100.31920249621155,
+          37.11271541652735
+        ]
+      },
+      "properties": {
+        "plant_name": "Cimarron Bend",
+        "state": "KS",
+        "nameplate_capacity_mw": 382,
+        "technology": "Wind",
+        "balancing_authority": "SPP",
+        "type": "wind"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -98.48118025832655,
+          36.335850335748546
+        ]
+      },
+      "properties": {
+        "plant_name": "Traverse Wind",
+        "state": "OK",
+        "nameplate_capacity_mw": 368,
+        "technology": "Wind",
+        "balancing_authority": "SPP",
+        "type": "wind"
+      }
+    }
+  ]
+}
