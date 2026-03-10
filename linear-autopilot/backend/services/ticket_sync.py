@@ -118,6 +118,15 @@ async def _launch_pending_runs():
                 "UPDATE runs SET status = 'failed', error = $1, finished_at = now() WHERE id = $2",
                 str(e), run_id,
             )
+            remaining = await pool.fetchval("""
+                SELECT COUNT(*) FROM runs
+                WHERE ticket_id = $1 AND status IN ('pending', 'launching', 'running') AND id != $2
+            """, ticket_id, run_id)
+            if remaining == 0:
+                await pool.execute(
+                    "UPDATE tickets SET status = 'failed', updated_at = now() WHERE id = $1 AND status = 'active'",
+                    ticket_id,
+                )
 
 
 async def _sync_active_runs():
@@ -182,6 +191,18 @@ async def _sync_active_runs():
                 """, ticket_id)
 
             logger.info("Ticket sync: run %s finished as %s", run_id, final_status)
+
+            if final_status == "failed":
+                remaining = await pool.fetchval("""
+                    SELECT COUNT(*) FROM runs
+                    WHERE ticket_id = $1 AND status IN ('pending', 'launching', 'running')
+                """, ticket_id)
+                if remaining == 0:
+                    await pool.execute(
+                        "UPDATE tickets SET status = 'failed', updated_at = now() WHERE id = $1 AND status = 'active'",
+                        ticket_id,
+                    )
+                    logger.info("Ticket sync: ticket %s marked as failed (no remaining runs)", ticket_id)
 
             try:
                 delete_sandbox.sync(id=sandbox_id, client=sandbox_client)

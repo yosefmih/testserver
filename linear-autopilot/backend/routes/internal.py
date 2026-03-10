@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
 
 from db import get_pool
+from services.linear_oauth import post_issue_comment
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -62,6 +63,23 @@ async def report_run_metadata(request: Request, run_id: str, body: RunMetadata):
         await pool.execute(query, *params)
         logger.info("Run %s reported PR metadata for ticket %s: url=%s repo=%s number=%s",
                      run_id, ticket_id, body.pr_url, body.pr_repo, body.pr_number)
+
+        if body.pr_url:
+            try:
+                ticket = await pool.fetchrow("""
+                    SELECT t.linear_issue_id, p.linear_access_token
+                    FROM tickets t
+                    JOIN projects p ON p.id = t.project_id
+                    WHERE t.id = $1
+                """, ticket_id)
+                if ticket and ticket["linear_access_token"]:
+                    await post_issue_comment(
+                        ticket["linear_access_token"],
+                        ticket["linear_issue_id"],
+                        f"PR created: {body.pr_url}",
+                    )
+            except Exception:
+                logger.warning("Failed to post PR comment to Linear for ticket %s", ticket_id)
 
     await pool.execute(
         "UPDATE runs SET callback_token = NULL WHERE id = $1",

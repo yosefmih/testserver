@@ -1,9 +1,10 @@
+import asyncio
 import logging
 import secrets
 
 from porter_sandbox_api_client import Client
 from porter_sandbox_api_client.api.sandboxes import create_sandbox, get_sandbox, get_sandbox_logs, delete_sandbox
-from porter_sandbox_api_client.api.volumes import create_volume
+from porter_sandbox_api_client.api.volumes import create_volume, get_volume
 from porter_sandbox_api_client.models import (
     SandboxSpec, SandboxSpecEnv, Mount, MountAccessMode,
     VolumeSpec, VolumeSpecType,
@@ -19,9 +20,33 @@ SANDBOX_API_URL = "http://sandbox-central.kube-system.svc.cluster.local"
 
 sandbox_client = Client(base_url=SANDBOX_API_URL)
 
+VOLUME_READY_POLL_INTERVAL = 2
+VOLUME_READY_TIMEOUT = 60
+SANDBOX_CREATE_RETRIES = 3
+SANDBOX_CREATE_RETRY_DELAY = 5
+
 
 def generate_callback_token() -> str:
     return secrets.token_urlsafe(48)
+
+
+async def wait_for_volume_ready(volume_id: str) -> None:
+    elapsed = 0
+    while elapsed < VOLUME_READY_TIMEOUT:
+        response = get_volume.sync(id=volume_id, client=sandbox_client)
+        phase = response.phase.value if hasattr(response.phase, "value") else str(response.phase)
+
+        if phase == "ready":
+            logger.info("Volume %s is ready (waited %ds)", volume_id, elapsed)
+            return
+        if phase == "failed":
+            raise Exception(f"Volume {volume_id} failed to provision")
+
+        logger.debug("Volume %s phase=%s, waiting...", volume_id, phase)
+        await asyncio.sleep(VOLUME_READY_POLL_INTERVAL)
+        elapsed += VOLUME_READY_POLL_INTERVAL
+
+    raise Exception(f"Volume {volume_id} not ready after {VOLUME_READY_TIMEOUT}s")
 
 
 async def create_volume_for_ticket() -> str:
@@ -33,8 +58,20 @@ async def create_volume_for_ticket() -> str:
     response = create_volume.sync(client=sandbox_client, body=spec)
     if not hasattr(response, "id"):
         raise Exception(f"Failed to create volume: {response}")
-    logger.info("Volume created: volume_id=%s", response.id)
+    logger.info("Volume created: volume_id=%s phase=%s", response.id, response.phase)
+
+    await wait_for_volume_ready(response.id)
     return response.id
+
+
+async def ensure_volume_ready(volume_id: str) -> None:
+    response = get_volume.sync(id=volume_id, client=sandbox_client)
+    phase = response.phase.value if hasattr(response.phase, "value") else str(response.phase)
+    if phase == "ready":
+        return
+    if phase == "failed":
+        raise Exception(f"Volume {volume_id} is in failed state")
+    await wait_for_volume_ready(volume_id)
 
 
 def _build_initial_prompt(
@@ -61,7 +98,8 @@ Steps:
 4. Understand and fix the issue
 5. Commit your changes with a descriptive message
 6. Push the branch and create a PR linking to {issue_url}
-7. Comment on the Linear issue with the PR URL
+
+Do NOT comment on the Linear issue — the server handles that automatically.
 
 IMPORTANT: After creating the PR, you MUST report the metadata by running:
 curl -s -X POST "{callback_url}?token=$CALLBACK_TOKEN" \\
@@ -117,6 +155,8 @@ async def create_sandbox_for_run(
     pr_url: str | None = None,
     review_comments: str | None = None,
 ) -> str:
+    await ensure_volume_ready(volume_id)
+
     github_token = await get_installation_token(github_installation_id)
     repos = await get_installation_repos(github_installation_id)
     repo_list = "\n".join(f"- {r['full_name']}" for r in repos)
@@ -162,12 +202,20 @@ async def create_sandbox_for_run(
         ],
     )
 
-    response = create_sandbox.sync(client=sandbox_client, body=spec)
-    if not hasattr(response, "id"):
-        raise Exception(f"Failed to create sandbox: {response}")
+    last_error = None
+    for attempt in range(1, SANDBOX_CREATE_RETRIES + 1):
+        response = create_sandbox.sync(client=sandbox_client, body=spec)
+        if hasattr(response, "id"):
+            logger.info("Sandbox created: sandbox_id=%s run_id=%s kind=%s (attempt %d)",
+                        response.id, run_id, kind, attempt)
+            return response.id
 
-    logger.info("Sandbox created: sandbox_id=%s run_id=%s kind=%s", response.id, run_id, kind)
-    return response.id
+        last_error = response
+        logger.warning("Sandbox creation attempt %d/%d failed: %s", attempt, SANDBOX_CREATE_RETRIES, response)
+        if attempt < SANDBOX_CREATE_RETRIES:
+            await asyncio.sleep(SANDBOX_CREATE_RETRY_DELAY)
+
+    raise Exception(f"Failed to create sandbox after {SANDBOX_CREATE_RETRIES} attempts: {last_error}")
 
 
 def parse_sandbox_phase(status_response) -> str:

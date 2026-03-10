@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getTicket, getRunLogs, closeTicket } from '$lib/api';
+	import { getTicket, getRunLogs } from '$lib/api';
 	import type { Run } from '$lib/api';
 
 	type LogEntry =
@@ -18,7 +18,6 @@
 	const ACTIVE_STATUSES = ['pending', 'launching', 'running'];
 
 	let ticket = $state<any>(null);
-	let closing = $state(false);
 	let expandedRun = $state<string | null>(null);
 	let runLogs = $state<Record<string, string[]>>({});
 	let runEntries = $derived.by(() => {
@@ -93,20 +92,6 @@
 		expandedEntries = next;
 	}
 
-	async function handleClose() {
-		if (!confirm('Close this ticket? All active runs will be cancelled.')) return;
-		closing = true;
-		try {
-			await closeTicket(projectId, ticketId);
-			if (autoRefresh) clearInterval(autoRefresh);
-			ticket = await getTicket(projectId, ticketId);
-		} catch (e: any) {
-			alert(`Failed: ${e.message}`);
-		} finally {
-			closing = false;
-		}
-	}
-
 	function runStatusColor(status: string) {
 		if (status === 'success') return 'text-success';
 		if (status === 'running' || status === 'launching') return 'text-accent';
@@ -124,6 +109,7 @@
 	function ticketStatusColor(status: string) {
 		if (status === 'active') return 'text-accent';
 		if (status === 'merged') return 'text-success';
+		if (status === 'failed') return 'text-danger';
 		return 'text-warm-500';
 	}
 
@@ -237,15 +223,6 @@
 				{#if ticket.pr_url}
 					<a href={ticket.pr_url} target="_blank" class="border border-accent/60 text-accent px-4 py-2 text-sm hover:bg-accent/10 hover:border-accent transition-all duration-200 no-underline">PR &rarr;</a>
 				{/if}
-				{#if ticket.status === 'active'}
-					<button
-						onclick={handleClose}
-						disabled={closing}
-						class="border border-danger/60 text-danger px-4 py-2 text-sm hover:bg-danger/10 hover:border-danger transition-all duration-200 disabled:opacity-50"
-					>
-						{closing ? 'Closing...' : 'Close Ticket'}
-					</button>
-				{/if}
 			</div>
 		</div>
 
@@ -279,6 +256,9 @@
 										<span class="animate-pulse">&hellip;</span>
 									{/if}
 								</span>
+								{#if run.sandbox_id}
+									<span class="text-[10px] font-mono text-warm-600">{run.sandbox_id}</span>
+								{/if}
 							</div>
 							<div class="flex items-center gap-4 text-xs text-warm-500 font-mono">
 								<span>{new Date(run.created_at).toLocaleString()}</span>

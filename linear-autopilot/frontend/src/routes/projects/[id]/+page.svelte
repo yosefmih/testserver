@@ -13,14 +13,16 @@
 		if (status === 'active') return 'text-accent';
 		if (status === 'merged') return 'text-success';
 		if (status === 'closed') return 'text-warm-500';
-		return 'text-danger';
+		if (status === 'failed') return 'text-danger';
+		return 'text-warm-500';
 	}
 
 	function dotColor(status: string) {
 		if (status === 'active') return 'bg-accent';
 		if (status === 'merged') return 'bg-success';
 		if (status === 'closed') return 'bg-warm-500';
-		return 'bg-danger';
+		if (status === 'failed') return 'bg-danger';
+		return 'bg-warm-500';
 	}
 </script>
 
@@ -67,31 +69,22 @@
 		<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Tickets</h2>
 
 		{#if project.tickets.length > 0}
-			<div class="border border-warm-700/50">
-				<div class="grid grid-cols-[1fr_auto_auto_auto] gap-4 px-6 py-3 text-xs text-warm-500 uppercase tracking-wider border-b border-warm-700/30">
-					<span>Issue</span>
-					<span>PR</span>
-					<span>Status</span>
-					<span>Created</span>
-				</div>
+			<div class="space-y-1">
 				{#each project.tickets as ticket}
-					<a href="/projects/{project.id}/tickets/{ticket.id}" class="grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center px-6 py-4 border-t border-warm-700/30 first:border-t-0 hover:bg-surface-raised/50 transition-all duration-200 no-underline block">
-						<div>
-							<span class="text-sm text-cream">{ticket.linear_issue_title}</span>
-							<span class="text-xs text-warm-500 ml-2 font-mono">{ticket.linear_issue_id}</span>
-						</div>
-						<span class="text-xs">
+					<a href="/projects/{project.id}/tickets/{ticket.id}" class="flex items-center justify-between px-5 py-3 border border-warm-700/50 hover:bg-surface-raised/50 transition-all duration-200 no-underline group">
+						<div class="flex items-center gap-4">
+							<span class="flex items-center gap-1.5 {statusColor(ticket.status)}">
+								<span class="w-1.5 h-1.5 rounded-full {dotColor(ticket.status)}"></span>
+							</span>
+							<span class="font-mono text-sm text-cream">{ticket.linear_issue_id}</span>
 							{#if ticket.pr_url}
-								<span class="text-accent font-mono">PR</span>
-							{:else}
-								<span class="text-warm-600">&mdash;</span>
+								<span class="text-[10px] font-mono uppercase tracking-wider text-accent/80 bg-accent/10 px-1.5 py-0.5">PR</span>
 							{/if}
-						</span>
-						<span class="flex items-center gap-1.5 {statusColor(ticket.status)}">
-							<span class="w-1.5 h-1.5 rounded-full {dotColor(ticket.status)}"></span>
-							<span class="text-xs">{ticket.status}</span>
-						</span>
-						<span class="text-xs text-warm-500 font-mono">{new Date(ticket.created_at).toLocaleDateString()}</span>
+						</div>
+						<div class="flex items-center gap-4 text-xs text-warm-500">
+							<span class={statusColor(ticket.status)}>{ticket.status}</span>
+							<span class="font-mono">{new Date(ticket.created_at).toLocaleDateString()}</span>
+						</div>
 					</a>
 				{/each}
 			</div>
