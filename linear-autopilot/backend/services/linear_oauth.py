@@ -51,6 +51,41 @@ async def get_teams(access_token: str) -> list[dict]:
         return [{"id": n["id"], "name": n["name"], "key": n["key"]} for n in nodes]
 
 
+async def get_issue(access_token: str, issue_id: str) -> dict | None:
+    query = """
+    query($id: String!) {
+        issue(id: $id) {
+            id
+            title
+            description
+            url
+            team { id }
+            labels { nodes { id name } }
+        }
+    }
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            LINEAR_GRAPHQL_URL,
+            json={"query": query, "variables": {"id": issue_id}},
+            headers={"Authorization": access_token},
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        if body.get("errors") or not body.get("data", {}).get("issue"):
+            logger.error("Failed to fetch issue %s: %s", issue_id, body.get("errors"))
+            return None
+        issue = body["data"]["issue"]
+        return {
+            "id": issue["id"],
+            "title": issue["title"],
+            "description": issue.get("description", ""),
+            "url": issue.get("url", ""),
+            "teamId": issue["team"]["id"] if issue.get("team") else None,
+            "labels": [{"id": l["id"], "name": l["name"]} for l in issue.get("labels", {}).get("nodes", [])],
+        }
+
+
 async def post_issue_comment(access_token: str, issue_id: str, body: str):
     mutation = """
     mutation($issueId: String!, $body: String!) {
