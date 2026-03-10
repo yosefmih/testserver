@@ -173,10 +173,56 @@ async def github_webhook(request: Request):
 
     if event == "pull_request_review_comment" and payload.get("action") == "created":
         return await _handle_pr_review_comment(payload)
+    elif event == "issue_comment" and payload.get("action") == "created":
+        return await _handle_issue_comment(payload)
     elif event == "pull_request":
         return await _handle_pr_event(payload)
     else:
         return _ignore("unhandled github event", event=event)
+
+
+async def _handle_issue_comment(payload: dict):
+    """Handle regular PR conversation comments (issue_comment event)."""
+    issue = payload.get("issue", {})
+    comment = payload.get("comment", {})
+    repo = payload.get("repository", {})
+
+    if not issue.get("pull_request"):
+        return _ignore("issue_comment not on a PR")
+
+    repo_full_name = repo.get("full_name", "")
+    pr_number = issue.get("number")
+    comment_id = comment.get("id")
+    author = comment.get("user", {}).get("login", "")
+    body = comment.get("body", "")
+
+    if not repo_full_name or not pr_number:
+        return _ignore("missing repo or PR number")
+
+    pool = await get_pool()
+    ticket = await pool.fetchrow("""
+        SELECT id FROM tickets
+        WHERE pr_repo = $1 AND pr_number = $2 AND status = 'active'
+    """, repo_full_name, pr_number)
+
+    if not ticket:
+        return _ignore("no active ticket for this PR", repo=repo_full_name, pr=pr_number)
+
+    ticket_id = str(ticket["id"])
+
+    await pool.execute("""
+        INSERT INTO review_comments (ticket_id, github_comment_id, author, body)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (github_comment_id) DO NOTHING
+    """, ticket_id, comment_id, author, body)
+
+    debounce_until = datetime.now(timezone.utc) + timedelta(seconds=config.REVIEW_DEBOUNCE_SECONDS)
+    await pool.execute("""
+        UPDATE tickets SET debounce_until = $1, updated_at = now() WHERE id = $2
+    """, debounce_until, ticket_id)
+
+    logger.info("PR comment stored for ticket %s, debounce set to %s", ticket_id, debounce_until)
+    return {"status": "accepted", "ticket_id": ticket_id}
 
 
 async def _handle_pr_review_comment(payload: dict):

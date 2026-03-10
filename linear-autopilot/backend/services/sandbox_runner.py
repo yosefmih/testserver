@@ -113,25 +113,32 @@ def _build_review_prompt(
     issue_title: str,
     issue_url: str,
     pr_url: str,
-    comments_text: str,
+    pr_repo: str,
+    pr_number: int,
     callback_url: str,
 ) -> str:
-    return f"""Address these PR review comments for the Linear issue.
+    return f"""Address new PR review comments for this Linear issue.
 
 Issue Title: {issue_title}
 Linear URL: {issue_url}
 PR: {pr_url}
-
-Review comments to address:
-{comments_text}
+Repo: {pr_repo}
+PR Number: {pr_number}
 
 The repo is already cloned at /workspace/repo. Your previous work is preserved there.
 
 Steps:
 1. cd /workspace/repo and pull latest changes
-2. Read and understand each review comment
-3. Make the requested changes
-4. Commit and push to the existing branch
+2. Use the GitHub MCP server to fetch ALL comments on PR #{pr_number} in {pr_repo}:
+   - Use mcp__github__pull_request_read to get PR details and review comments
+   - Fetch both inline review comments and conversation comments
+3. Read /workspace/.addressed_comments.json if it exists — this tracks comment IDs you have already addressed in previous runs. If the file does not exist, treat all comments as new.
+4. Identify which comments are NEW (not in the addressed list) and not authored by you (skip bot/automation comments)
+5. Address each new comment by making the requested code changes
+6. Commit and push to the existing branch
+7. Reply to each addressed comment on GitHub acknowledging the change
+8. Update /workspace/.addressed_comments.json — append the IDs of all comments you addressed in this run
+9. Report completion
 
 IMPORTANT: After pushing, report completion by running:
 curl -s -X POST "{callback_url}?token=$CALLBACK_TOKEN" \\
@@ -153,7 +160,8 @@ async def create_sandbox_for_run(
     github_installation_id: int,
     linear_access_token: str,
     pr_url: str | None = None,
-    review_comments: str | None = None,
+    pr_repo: str | None = None,
+    pr_number: int | None = None,
 ) -> str:
     await ensure_volume_ready(volume_id)
 
@@ -163,12 +171,13 @@ async def create_sandbox_for_run(
 
     callback_url = f"{config.BASE_URL}/api/internal/runs/{run_id}/metadata"
 
-    if kind == "review" and pr_url and review_comments:
+    if kind == "review" and pr_url and pr_repo and pr_number:
         prompt = _build_review_prompt(
             issue_title=issue_title,
             issue_url=issue_url,
             pr_url=pr_url,
-            comments_text=review_comments,
+            pr_repo=pr_repo,
+            pr_number=pr_number,
             callback_url=callback_url,
         )
     else:

@@ -66,19 +66,16 @@ async def _launch_pending_runs():
                 callback_token, run_id,
             )
 
-            review_comments = None
+            pr_repo = None
+            pr_number = None
             if run["kind"] == "review":
-                comments = await pool.fetch("""
-                    SELECT body, author, path, position, created_at
-                    FROM review_comments
-                    WHERE ticket_id = $1 AND addressed = false
-                    ORDER BY created_at ASC
-                """, ticket_id)
-                if comments:
-                    review_comments = "\n\n".join(
-                        f"**{c['author']}** on `{c['path']}`:\n{c['body']}"
-                        for c in comments
-                    )
+                ticket_info = await pool.fetchrow(
+                    "SELECT pr_repo, pr_number FROM tickets WHERE id = $1",
+                    ticket_id,
+                )
+                if ticket_info:
+                    pr_repo = ticket_info["pr_repo"]
+                    pr_number = ticket_info["pr_number"]
 
             sandbox_id = await create_sandbox_for_run(
                 run_id=run_id,
@@ -92,7 +89,8 @@ async def _launch_pending_runs():
                 github_installation_id=run["github_installation_id"],
                 linear_access_token=run["linear_access_token"],
                 pr_url=run["pr_url"],
-                review_comments=review_comments,
+                pr_repo=pr_repo,
+                pr_number=pr_number,
             )
 
             await pool.execute(
@@ -189,6 +187,10 @@ async def _sync_active_runs():
                     UPDATE review_comments SET addressed = true
                     WHERE ticket_id = $1 AND addressed = false
                 """, ticket_id)
+                await pool.execute(
+                    "UPDATE tickets SET debounce_until = NULL, updated_at = now() WHERE id = $1",
+                    ticket_id,
+                )
 
             logger.info("Ticket sync: run %s finished as %s", run_id, final_status)
 

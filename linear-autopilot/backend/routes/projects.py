@@ -179,7 +179,7 @@ async def get_ticket(request: Request, project_id: str, ticket_id: str):
 
     ticket = await pool.fetchrow("""
         SELECT id, linear_issue_id, linear_issue_title, linear_issue_url,
-               pr_repo, pr_number, pr_url, volume_id, status, created_at, updated_at
+               pr_repo, pr_number, pr_url, volume_id, status, debounce_until, created_at, updated_at
         FROM tickets WHERE id = $1 AND project_id = $2
     """, ticket_id, project_id)
     if not ticket:
@@ -189,6 +189,11 @@ async def get_ticket(request: Request, project_id: str, ticket_id: str):
         SELECT id, kind, sandbox_id, status, error, created_at, finished_at
         FROM runs WHERE ticket_id = $1
         ORDER BY created_at DESC
+    """, ticket_id)
+
+    pending_comments = await pool.fetchval("""
+        SELECT COUNT(*) FROM review_comments
+        WHERE ticket_id = $1 AND addressed = false
     """, ticket_id)
 
     return {
@@ -201,6 +206,8 @@ async def get_ticket(request: Request, project_id: str, ticket_id: str):
         "pr_url": ticket["pr_url"],
         "volume_id": ticket["volume_id"],
         "status": ticket["status"],
+        "debounce_until": ticket["debounce_until"].isoformat() if ticket["debounce_until"] else None,
+        "pending_comments": pending_comments,
         "created_at": ticket["created_at"].isoformat(),
         "updated_at": ticket["updated_at"].isoformat(),
         "runs": [
@@ -216,6 +223,47 @@ async def get_ticket(request: Request, project_id: str, ticket_id: str):
             for r in runs
         ],
     }
+
+
+@router.post("/projects/{project_id}/tickets/{ticket_id}/trigger-review")
+async def trigger_review(request: Request, project_id: str, ticket_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ticket = await pool.fetchrow(
+        "SELECT id, status, pr_url FROM tickets WHERE id = $1 AND project_id = $2",
+        ticket_id, project_id,
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket["status"] != "active":
+        raise HTTPException(status_code=400, detail="Ticket is not active")
+    if not ticket["pr_url"]:
+        raise HTTPException(status_code=400, detail="Ticket has no PR")
+
+    active = await pool.fetchval("""
+        SELECT COUNT(*) FROM runs
+        WHERE ticket_id = $1 AND status IN ('pending', 'launching', 'running')
+    """, ticket_id)
+    if active > 0:
+        raise HTTPException(status_code=409, detail="A run is already in progress")
+
+    await pool.execute("""
+        INSERT INTO runs (ticket_id, kind, status) VALUES ($1, 'review', 'pending')
+    """, ticket_id)
+    await pool.execute(
+        "UPDATE tickets SET debounce_until = NULL, updated_at = now() WHERE id = $1",
+        ticket_id,
+    )
+
+    logger.info("Manual review triggered for ticket %s", ticket_id)
+    return {"status": "triggered"}
 
 
 @router.delete("/projects/{project_id}/tickets/{ticket_id}")

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getTicket, getRunLogs } from '$lib/api';
+	import { getTicket, getRunLogs, triggerReviewNow } from '$lib/api';
 	import type { Run } from '$lib/api';
 
 	type LogEntry =
@@ -32,9 +32,29 @@
 	let showRaw = $state(false);
 	let expandedEntries = $state<Set<number>>(new Set());
 	let autoRefresh = $state<ReturnType<typeof setInterval> | null>(null);
+	let triggering = $state(false);
 
 	const projectId = page.params.id;
 	const ticketId = page.params.ticketId;
+
+	function debounceTimeLeft(debounceUntil: string | null): string | null {
+		if (!debounceUntil) return null;
+		const diff = new Date(debounceUntil).getTime() - Date.now();
+		if (diff <= 0) return 'shortly';
+		const mins = Math.ceil(diff / 60000);
+		return mins === 1 ? '~1 minute' : `~${mins} minutes`;
+	}
+
+	async function handleTriggerReview() {
+		triggering = true;
+		try {
+			await triggerReviewNow(projectId, ticketId);
+			ticket = await getTicket(projectId, ticketId);
+		} catch (e: any) {
+			alert(e.message);
+		}
+		triggering = false;
+	}
 
 	onMount(() => {
 		loadTicket();
@@ -235,6 +255,24 @@
 				<span>Volume: <span class="text-cream-dim font-mono">{ticket.volume_id.slice(0, 12)}</span></span>
 			{/if}
 		</div>
+
+		{#if ticket.pending_comments > 0 && ticket.status === 'active'}
+			<div class="border border-accent/30 bg-accent/5 px-5 py-3 mb-6 flex items-center justify-between">
+				<div class="text-sm">
+					<span class="text-cream">{ticket.pending_comments} unaddressed comment{ticket.pending_comments === 1 ? '' : 's'}</span>
+					{#if debounceTimeLeft(ticket.debounce_until)}
+						<span class="text-warm-500 ml-2">— review run in {debounceTimeLeft(ticket.debounce_until)}</span>
+					{/if}
+				</div>
+				<button
+					class="border border-accent/60 text-accent px-3 py-1.5 text-xs hover:bg-accent/10 transition-all duration-200 disabled:opacity-50"
+					onclick={handleTriggerReview}
+					disabled={triggering || ticket.runs.some((r: Run) => ['pending', 'launching', 'running'].includes(r.status))}
+				>
+					{triggering ? 'Triggering...' : 'Run now'}
+				</button>
+			</div>
+		{/if}
 
 		<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Runs ({ticket.runs.length})</h2>
 

@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# Trap SIGTERM/SIGINT: kill the entire process group so claude + MCP servers
+# shut down promptly when the sandbox is deleted or TTL expires.
+cleanup() {
+    echo "=== Received signal, shutting down ==="
+    kill -TERM -$$ 2>/dev/null
+    sleep 2
+    kill -KILL -$$ 2>/dev/null
+    exit 143
+}
+trap cleanup SIGTERM SIGINT
+
 echo "=== Worker entrypoint starting ==="
 echo "CLAUDE_CODE_OAUTH_TOKEN set: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo "yes (${#CLAUDE_CODE_OAUTH_TOKEN} chars, prefix=${CLAUDE_CODE_OAUTH_TOKEN:0:7}...)" || echo "NO")"
 echo "GITHUB_TOKEN set: $([ -n "$GITHUB_TOKEN" ] && echo "yes (${#GITHUB_TOKEN} chars)" || echo "NO")"
@@ -21,18 +32,22 @@ cd /workspace 2>/dev/null || true
 echo "=== Launching claude ==="
 echo "claude version: $(claude --version 2>&1 || echo 'unknown')"
 
-# Run claude without set -e so we always reach cleanup even on failure.
-# Claude's stream-json output goes to stdout and is captured by sandbox logs.
+# Run claude in the background so the trap can fire during execution.
 claude --mcp-config /tmp/mcp_config.json \
        --allowedTools "mcp__github__*,mcp__linear__get_issue,mcp__linear__get_issue_comments,Read,Write,Edit,Bash,Glob,Grep" \
        -p "$ISSUE_PROMPT" \
        --output-format stream-json \
-       --verbose 2>&1
+       --verbose 2>&1 &
+CLAUDE_PID=$!
+
+# Wait for claude; if a signal arrives the trap fires and kills the group.
+wait $CLAUDE_PID
 EXIT_CODE=$?
 
 echo "=== Claude exited with code $EXIT_CODE ==="
 
-# Kill the entire process tree. In a container, bash is PID 1 and orphaned
-# MCP server processes (npx -> node) prevent the container from exiting.
-kill -9 -1 2>/dev/null || true
+# Clean up orphaned MCP server processes (npx -> node).
+kill -TERM -$$ 2>/dev/null
+sleep 1
+kill -KILL -$$ 2>/dev/null
 exit $EXIT_CODE

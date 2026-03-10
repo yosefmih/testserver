@@ -98,10 +98,18 @@ export function getTicket(projectId: string, ticketId: string) {
 		pr_url: string | null;
 		volume_id: string | null;
 		status: string;
+		debounce_until: string | null;
+		pending_comments: number;
 		created_at: string;
 		updated_at: string;
 		runs: Run[];
 	}>(`/api/v1/projects/${projectId}/tickets/${ticketId}`);
+}
+
+export function triggerReviewNow(projectId: string, ticketId: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/tickets/${ticketId}/trigger-review`, {
+		method: 'POST',
+	});
 }
 
 export function closeTicket(projectId: string, ticketId: string) {

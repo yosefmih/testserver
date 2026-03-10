@@ -33,6 +33,43 @@ async def get_installation_token(installation_id: int) -> str:
         return resp.json()["token"]
 
 
+async def get_pr_comments(installation_id: int, repo: str, pr_number: int) -> list[dict]:
+    token = await get_installation_token(installation_id)
+    comments = []
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{GITHUB_API_BASE}/repos/{repo}/issues/{pr_number}/comments",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+            params={"per_page": 100},
+        )
+        if resp.status_code == 200:
+            for c in resp.json():
+                comments.append({
+                    "github_comment_id": c["id"],
+                    "author": c.get("user", {}).get("login", ""),
+                    "body": c.get("body", ""),
+                    "path": None,
+                    "position": None,
+                })
+
+        resp = await client.get(
+            f"{GITHUB_API_BASE}/repos/{repo}/pulls/{pr_number}/comments",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+            params={"per_page": 100},
+        )
+        if resp.status_code == 200:
+            for c in resp.json():
+                comments.append({
+                    "github_comment_id": c["id"],
+                    "author": c.get("user", {}).get("login", ""),
+                    "body": c.get("body", ""),
+                    "path": c.get("path"),
+                    "position": c.get("position"),
+                })
+
+    return comments
+
+
 async def get_installation_repos(installation_id: int) -> list[dict]:
     token = await get_installation_token(installation_id)
     async with httpx.AsyncClient() as client:
