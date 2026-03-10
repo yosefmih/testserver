@@ -73,6 +73,10 @@ export function updateProjectSettings(id: string, settings: { github_repo?: stri
 	});
 }
 
+export function deleteProject(id: string) {
+	return apiFetch(`/api/v1/projects/${id}`, { method: 'DELETE' });
+}
+
 export function listGithubRepos(projectId: string) {
 	return apiFetch<Array<{ full_name: string; private: boolean }>>(`/api/v1/projects/${projectId}/integrations/github/repos`);
 }
