@@ -87,18 +87,26 @@
 		<section class="mb-8">
 			<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Linear Integration</h2>
 			<div class="border border-warm-700/50 px-6 py-5">
-				{#if project.linear_has_token}
-					<div class="flex items-center gap-2">
-						<span class="w-2 h-2 rounded-full bg-success"></span>
-						<span class="text-success text-sm">Connected</span>
+				{#if project.linear_connected}
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-2">
+							<span class="w-2 h-2 rounded-full bg-success"></span>
+							<span class="text-success text-sm">Connected</span>
+						</div>
+						<a
+							href="/api/v1/projects/{projectId}/integrations/linear/connect"
+							class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
+						>
+							Reconnect
+						</a>
 					</div>
 				{:else}
-					<p class="text-warm-500 text-sm mb-4">Connect Linear to listen for issues.</p>
+					<p class="text-warm-500 text-sm mb-4">{project.linear_has_token ? 'Linear needs to be reconnected.' : 'Connect Linear to listen for issues.'}</p>
 					<a
 						href="/api/v1/projects/{projectId}/integrations/linear/connect"
 						class="inline-block bg-accent/10 border border-accent text-accent px-5 py-2.5 text-sm hover:bg-accent/20 transition-all duration-200 no-underline"
 					>
-						Connect Linear
+						{project.linear_has_token ? 'Reconnect Linear' : 'Connect Linear'}
 					</a>
 				{/if}
 			</div>
