@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 echo "=== Worker entrypoint starting ==="
 echo "ANTHROPIC_API_KEY set: $([ -n "$ANTHROPIC_API_KEY" ] && echo "yes (${#ANTHROPIC_API_KEY} chars, prefix=${ANTHROPIC_API_KEY:0:7}...)" || echo "NO")"
@@ -18,17 +17,18 @@ cat /tmp/mcp_config.json | sed 's/"GITHUB_PERSONAL_ACCESS_TOKEN": "[^"]*"/"GITHU
 echo "=== Launching claude ==="
 echo "claude version: $(claude --version 2>&1 || echo 'unknown')"
 
+# Run claude without set -e so we always reach cleanup even on failure.
+# Claude's stream-json output goes to stdout and is captured by sandbox logs.
 claude --mcp-config /tmp/mcp_config.json \
        --allowedTools "mcp__github__*,mcp__linear__*,Read,Write,Edit,Bash,Glob,Grep" \
        -p "$ISSUE_PROMPT" \
        --output-format stream-json \
-       --verbose
+       --verbose 2>&1
 EXIT_CODE=$?
 
 echo "=== Claude exited with code $EXIT_CODE ==="
 
 # Kill the entire process tree. In a container, bash is PID 1 and orphaned
 # MCP server processes (npx -> node) prevent the container from exiting.
-# SIGKILL the whole tree since these are disposable processes.
 kill -9 -1 2>/dev/null || true
 exit $EXIT_CODE
