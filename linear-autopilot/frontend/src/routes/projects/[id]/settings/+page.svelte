@@ -1,11 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getProject, updateProjectSettings, listLinearTeams, setLinearTeam, deleteProject } from '$lib/api';
+	import { getProject, updateProjectSettings, deleteProject } from '$lib/api';
 
 	let project = $state<any>(null);
-	let teams = $state<Array<any>>([]);
-	let selectedTeam = $state('');
 	let autopilotLabel = $state('');
 	let saving = $state(false);
 	let message = $state('');
@@ -16,11 +14,6 @@
 	onMount(async () => {
 		project = await getProject(projectId);
 		autopilotLabel = project.autopilot_label || 'autopilot';
-		selectedTeam = project.linear_team_id || '';
-
-		if (project.linear_has_token) {
-			try { teams = await listLinearTeams(projectId); } catch {}
-		}
 	});
 
 	async function handleDelete() {
@@ -39,9 +32,6 @@
 		saving = true;
 		message = '';
 		try {
-			if (selectedTeam && selectedTeam !== project.linear_team_id) {
-				await setLinearTeam(projectId, selectedTeam);
-			}
 			await updateProjectSettings(projectId, {
 				autopilot_label: autopilotLabel || undefined,
 			});
@@ -98,22 +88,10 @@
 			<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Linear Integration</h2>
 			<div class="border border-warm-700/50 px-6 py-5">
 				{#if project.linear_has_token}
-					<div class="flex items-center gap-2 mb-4">
+					<div class="flex items-center gap-2">
 						<span class="w-2 h-2 rounded-full bg-success"></span>
-						<span class="text-success text-sm">Connected{#if project.linear_connected} &middot; Team configured{/if}</span>
+						<span class="text-success text-sm">Connected</span>
 					</div>
-					{#if teams.length > 0}
-						<label class="text-warm-500 text-xs uppercase tracking-wider block mb-2">Linear Team</label>
-						<select
-							bind:value={selectedTeam}
-							class="w-full bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream focus:outline-none focus:border-accent transition-colors duration-200"
-						>
-							<option value="">Select a team</option>
-							{#each teams as team}
-								<option value={team.id}>{team.name} ({team.key})</option>
-							{/each}
-						</select>
-					{/if}
 				{:else}
 					<p class="text-warm-500 text-sm mb-4">Connect Linear to listen for issues.</p>
 					<a

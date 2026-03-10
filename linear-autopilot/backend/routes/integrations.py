@@ -1,9 +1,9 @@
+import logging
 import secrets
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
 
 from config import config
 from db import get_pool
@@ -12,6 +12,7 @@ from services import github_app, linear_oauth
 
 router = APIRouter()
 callbacks_router = APIRouter()
+logger = logging.getLogger(__name__)
 
 LINEAR_AUTH_URL = "https://linear.app/oauth/authorize"
 
@@ -77,6 +78,7 @@ async def linear_connect(request: Request, project_id: str):
         "response_type": "code",
         "scope": "read,write",
         "state": state,
+        "actor": "app",
         "prompt": "consent",
     })
 
@@ -108,54 +110,30 @@ async def linear_callback(request: Request, code: str, state: str):
 
     tokens = await linear_oauth.exchange_code(code)
 
+    org = await linear_oauth.get_organization(tokens["access_token"])
+    org_id = org["id"]
+
+    conflict = await pool.fetchrow(
+        "SELECT id, name FROM projects WHERE linear_organization_id = $1 AND id != $2",
+        org_id, project_id,
+    )
+    if conflict:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This Linear organization is already linked to project \"{conflict['name']}\"",
+        )
+
     await pool.execute("""
         UPDATE projects SET
             linear_access_token = $1,
             linear_refresh_token = $2,
+            linear_organization_id = $3,
             updated_at = now()
-        WHERE id = $3
-    """, tokens["access_token"], tokens.get("refresh_token"), project_id)
+        WHERE id = $4
+    """, tokens["access_token"], tokens.get("refresh_token"), org_id, project_id)
+
+    logger.info("Linear connected: project=%s org=%s (%s)", project_id, org_id, org["name"])
 
     response = RedirectResponse(url=f"/projects/{project_id}/settings", status_code=302)
     response.delete_cookie("linear_oauth_state")
     return response
-
-
-@router.get("/projects/{project_id}/integrations/linear/teams")
-async def list_linear_teams(request: Request, project_id: str):
-    user_id = get_current_user_id(request)
-    pool = await get_pool()
-
-    project = await pool.fetchrow(
-        "SELECT linear_access_token FROM projects WHERE id = $1 AND user_id = $2",
-        project_id, user_id,
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    if not project["linear_access_token"]:
-        raise HTTPException(status_code=400, detail="Linear not connected")
-
-    teams = await linear_oauth.get_teams(project["linear_access_token"])
-    return teams
-
-
-class SetLinearTeamRequest(BaseModel):
-    team_id: str
-
-
-@router.post("/projects/{project_id}/integrations/linear/team")
-async def set_linear_team(request: Request, project_id: str, body: SetLinearTeamRequest):
-    user_id = get_current_user_id(request)
-    pool = await get_pool()
-
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    await pool.execute(
-        "UPDATE projects SET linear_team_id = $1, updated_at = now() WHERE id = $2",
-        body.team_id, project_id,
-    )
-    return {"status": "updated"}

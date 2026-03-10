@@ -23,33 +23,6 @@ def _ignore(reason: str, **extra) -> dict:
     return {"status": "ignored", "reason": reason}
 
 
-async def _resolve_issue_from_label_event(payload: dict) -> dict | None:
-    data = payload.get("data", {})
-    issue_id = data.get("issueId")
-    if not issue_id:
-        logger.warning("IssueLabel event missing issueId, payload data keys: %s", list(data.keys()))
-        return None
-
-    team_id = data.get("issue", {}).get("teamId")
-    if not team_id:
-        team_id = payload.get("teamId")
-
-    pool = await get_pool()
-    project = await pool.fetchrow("""
-        SELECT linear_access_token FROM projects WHERE linear_team_id = $1
-    """, team_id) if team_id else None
-
-    if not project or not project["linear_access_token"]:
-        projects = await pool.fetch("SELECT linear_team_id, linear_access_token FROM projects WHERE linear_access_token IS NOT NULL")
-        for p in projects:
-            issue = await linear_oauth.get_issue(p["linear_access_token"], issue_id)
-            if issue:
-                return issue
-        return None
-
-    return await linear_oauth.get_issue(project["linear_access_token"], issue_id)
-
-
 @router.post("/linear")
 async def linear_webhook(request: Request):
     body = await request.body()
@@ -62,50 +35,57 @@ async def linear_webhook(request: Request):
     payload = await request.json()
     event_type = payload.get("type")
     action = payload.get("action")
+    organization_id = payload.get("organizationId")
 
-    logger.info("Webhook received: type=%s action=%s", event_type, action)
+    logger.info("Webhook received: type=%s action=%s org=%s", event_type, action, organization_id)
     logger.debug("Webhook payload: %s", json.dumps(payload, default=str)[:2000])
 
+    if not organization_id:
+        return _ignore("no organizationId in payload")
+
+    pool = await get_pool()
+    project = await pool.fetchrow("""
+        SELECT id, linear_access_token, autopilot_label, github_installation_id
+        FROM projects WHERE linear_organization_id = $1
+    """, organization_id)
+
+    if not project:
+        return _ignore("no project for this organization", org=organization_id)
+
     if event_type == "IssueLabel":
-        return await _handle_issue_label_event(payload, action)
+        return await _handle_issue_label_event(payload, action, project)
     elif event_type == "Issue":
-        return await _handle_issue_event(payload, action)
+        return await _handle_issue_event(payload, action, project)
     else:
         return _ignore("unhandled event type", type=event_type)
 
 
-async def _handle_issue_label_event(payload: dict, action: str):
+async def _handle_issue_label_event(payload: dict, action: str, project):
     data = payload.get("data", {})
     label_name = data.get("label", {}).get("name") or data.get("name", "")
     issue_id = data.get("issueId", "unknown")
 
-    logger.info("IssueLabel event: action=%s label=%r issueId=%s data_keys=%s",
-                action, label_name, issue_id, list(data.keys()))
+    logger.info("IssueLabel event: action=%s label=%r issueId=%s", action, label_name, issue_id)
 
     if action not in ("create",):
         return _ignore("IssueLabel action not relevant", action=action, label=label_name)
 
-    pool = await get_pool()
-    projects = await pool.fetch("SELECT autopilot_label FROM projects")
-    autopilot_labels = {p["autopilot_label"] for p in projects}
-
-    if label_name not in autopilot_labels:
-        return _ignore("label is not an autopilot trigger", label=label_name, known_labels=autopilot_labels)
+    if label_name != project["autopilot_label"]:
+        return _ignore("label is not autopilot trigger", label=label_name, expected=project["autopilot_label"])
 
     logger.info("Autopilot label %r detected on issue %s, fetching issue details", label_name, issue_id)
 
-    issue = await _resolve_issue_from_label_event(payload)
+    issue = await linear_oauth.get_issue(project["linear_access_token"], issue_id)
     if not issue:
         return _ignore("could not fetch issue details from Linear API", issue_id=issue_id)
 
-    logger.info("Fetched issue: id=%s title=%r team=%s labels=%s",
-                issue["id"], issue["title"], issue["teamId"],
-                [l["name"] for l in issue["labels"]])
+    logger.info("Fetched issue: id=%s title=%r labels=%s",
+                issue["id"], issue["title"], [l["name"] for l in issue["labels"]])
 
-    return await _process_issue(issue)
+    return await _process_issue(issue, project)
 
 
-async def _handle_issue_event(payload: dict, action: str):
+async def _handle_issue_event(payload: dict, action: str, project):
     issue_data = payload.get("data", {})
     issue_id = issue_data.get("id", "unknown")
     issue_title = issue_data.get("title", "")
@@ -119,10 +99,8 @@ async def _handle_issue_event(payload: dict, action: str):
         updated_from = payload.get("updatedFrom", {})
         old_label_ids = set(updated_from.get("labelIds", []))
         new_label_ids = set(issue_data.get("labelIds", []))
-        logger.info("Update event: updatedFrom_keys=%s old_labels=%s new_labels=%s",
-                     list(updated_from.keys()), old_label_ids, new_label_ids)
         if "labelIds" not in updated_from:
-            return _ignore("labels not changed in this update", issue_id=issue_id, updatedFrom_keys=list(updated_from.keys()))
+            return _ignore("labels not changed in this update", issue_id=issue_id)
         if old_label_ids == new_label_ids:
             return _ignore("label set unchanged", issue_id=issue_id)
 
@@ -131,44 +109,27 @@ async def _handle_issue_event(payload: dict, action: str):
         "title": issue_data.get("title", ""),
         "description": issue_data.get("description", ""),
         "url": issue_data.get("url", ""),
-        "teamId": issue_data.get("teamId") or payload.get("teamId"),
         "labels": issue_data.get("labels", []),
     }
 
-    return await _process_issue(issue)
+    return await _process_issue(issue, project)
 
 
-async def _process_issue(issue: dict):
-    team_id = issue.get("teamId")
+async def _process_issue(issue: dict, project):
     issue_id = issue["id"]
-
-    if not team_id:
-        return _ignore("no team on issue", issue_id=issue_id)
-
-    pool = await get_pool()
-    project = await pool.fetchrow("""
-        SELECT id, linear_access_token, autopilot_label,
-               github_installation_id
-        FROM projects WHERE linear_team_id = $1
-    """, team_id)
-
-    if not project:
-        return _ignore("no project for this team", team_id=team_id, issue_id=issue_id)
+    project_id = str(project["id"])
 
     labels = [l.get("name", "") for l in issue.get("labels", [])]
     logger.info("Issue labels: %s, autopilot_label=%r, project_id=%s",
-                labels, project["autopilot_label"], project["id"])
+                labels, project["autopilot_label"], project_id)
 
     if project["autopilot_label"] not in labels:
         return _ignore("autopilot label not present", labels=labels, expected=project["autopilot_label"], issue_id=issue_id)
 
     if not project["github_installation_id"]:
-        return _ignore("GitHub not configured",
-                        project_id=str(project["id"]),
-                        installation_id=project["github_installation_id"],
-                        issue_id=issue_id)
+        return _ignore("GitHub not configured", project_id=project_id, issue_id=issue_id)
 
-    project_id = str(project["id"])
+    pool = await get_pool()
 
     existing = await pool.fetchrow("""
         SELECT id FROM jobs

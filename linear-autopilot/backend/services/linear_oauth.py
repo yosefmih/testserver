@@ -28,15 +28,12 @@ async def exchange_code(code: str) -> dict:
         }
 
 
-async def get_teams(access_token: str) -> list[dict]:
+async def get_organization(access_token: str) -> dict:
     query = """
     query {
-        teams {
-            nodes {
-                id
-                name
-                key
-            }
+        organization {
+            id
+            name
         }
     }
     """
@@ -47,8 +44,8 @@ async def get_teams(access_token: str) -> list[dict]:
             headers={"Authorization": access_token},
         )
         resp.raise_for_status()
-        nodes = resp.json()["data"]["teams"]["nodes"]
-        return [{"id": n["id"], "name": n["name"], "key": n["key"]} for n in nodes]
+        org = resp.json()["data"]["organization"]
+        return {"id": org["id"], "name": org["name"]}
 
 
 async def get_issue(access_token: str, issue_id: str) -> dict | None:

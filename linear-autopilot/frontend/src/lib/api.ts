@@ -77,16 +77,6 @@ export function listGithubRepos(projectId: string) {
 	return apiFetch<Array<{ full_name: string; private: boolean }>>(`/api/v1/projects/${projectId}/integrations/github/repos`);
 }
 
-export function listLinearTeams(projectId: string) {
-	return apiFetch<Array<{ id: string; name: string; key: string }>>(`/api/v1/projects/${projectId}/integrations/linear/teams`);
-}
-
-export function setLinearTeam(projectId: string, teamId: string) {
-	return apiFetch(`/api/v1/projects/${projectId}/integrations/linear/team`, {
-		method: 'POST',
-		body: JSON.stringify({ team_id: teamId }),
-	});
-}
 
 export function getJob(projectId: string, jobId: string) {
 	return apiFetch<{

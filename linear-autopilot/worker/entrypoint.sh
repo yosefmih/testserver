@@ -19,7 +19,7 @@ echo "claude version: $(claude --version 2>&1 || echo 'unknown')"
 # Run claude without set -e so we always reach cleanup even on failure.
 # Claude's stream-json output goes to stdout and is captured by sandbox logs.
 claude --mcp-config /tmp/mcp_config.json \
-       --allowedTools "mcp__github__*,mcp__linear__*,Read,Write,Edit,Bash,Glob,Grep" \
+       --allowedTools "mcp__github__*,mcp__linear__get_issue,mcp__linear__get_issue_comments,mcp__linear__add_comment,Read,Write,Edit,Bash,Glob,Grep" \
        -p "$ISSUE_PROMPT" \
        --output-format stream-json \
        --verbose 2>&1
