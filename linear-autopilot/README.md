@@ -67,7 +67,10 @@ The server is a single Docker image: SvelteKit frontend compiled to static asset
 1. Go to [Linear Developer Settings](https://linear.app/settings/api/applications/new)
 2. Set:
    - **Redirect URI**: `http://localhost:8080/integrations/linear/callback` (or production URL)
-3. Note the **Client ID** and **Client Secret**
+   - **Webhook URL**: `https://your-production-url/webhooks/linear`
+   - **Webhook resource types**: `Issue`
+3. Note the **Client ID**, **Client Secret**, and **Webhook signing secret**
+4. The webhook is configured here in app settings (not created programmatically), so it uses `read,write` OAuth scope instead of `admin`
 
 ### 4. Set Up PostgreSQL
 
@@ -105,6 +108,7 @@ GITHUB_APP_SLUG=your-app-slug
 LINEAR_CLIENT_ID=your-linear-client-id
 LINEAR_CLIENT_SECRET=your-linear-client-secret
 LINEAR_REDIRECT_URL=http://localhost:8080/integrations/linear/callback
+LINEAR_WEBHOOK_SECRET=your-webhook-signing-secret
 
 ANTHROPIC_API_KEY=sk-ant-...
 WORKER_IMAGE=linear-autopilot-worker:latest
@@ -194,13 +198,13 @@ docker run -p 8080:8080 --env-file backend/.env linear-autopilot
 
 ### Exposing Webhooks Locally
 
-Linear needs to reach your server for webhooks. Use ngrok:
+Linear needs to reach your server for webhooks. Use ngrok or cloudflared:
 
 ```bash
 ngrok http 8080
 ```
 
-Set `BASE_URL` in your `.env` to the ngrok URL (e.g., `https://abc123.ngrok.io`). This URL is used when creating the Linear webhook, so connect Linear **after** setting this.
+Then update the **Webhook URL** in your Linear OAuth app settings to point to your tunnel URL (e.g., `https://abc123.ngrok.io/webhooks/linear`). The webhook is configured in Linear app settings, not created programmatically. Set the signing secret from Linear as `LINEAR_WEBHOOK_SECRET` in your `.env`.
 
 ## Usage
 
@@ -230,10 +234,10 @@ linear-autopilot/
       auth.py            # Google OAuth login/callback/logout, /auth/me
       projects.py        # Project CRUD and settings
       integrations.py    # GitHub App install + Linear OAuth flows
-      webhooks.py        # Linear webhook receiver, signature verification
+      webhooks.py        # Single Linear webhook endpoint, HMAC verification, team-based project matching
     services/
       github_app.py      # GitHub App JWT signing, installation token exchange
-      linear_oauth.py    # Linear OAuth, GraphQL client, webhook management
+      linear_oauth.py    # Linear OAuth token exchange, GraphQL client (teams, comments)
       sandbox_runner.py  # Porter SDK sandbox creation and monitoring
     middleware/
       auth.py            # JWT session cookie verification
@@ -276,4 +280,4 @@ linear-autopilot/
 | GET | `/integrations/linear/callback` | Yes | Linear OAuth callback |
 | GET | `/api/v1/projects/:id/integrations/linear/teams` | Yes | List Linear teams |
 | POST | `/api/v1/projects/:id/integrations/linear/team` | Yes | Set Linear team |
-| POST | `/webhooks/linear/:project_id` | HMAC | Linear webhook receiver |
+| POST | `/webhooks/linear` | HMAC | Linear webhook receiver (matches projects by team ID from payload) |
