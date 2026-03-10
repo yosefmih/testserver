@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listProjects, createProject, getMe, logout } from '$lib/api';
+	import { listProjects, createProject, deleteProject, getMe, logout } from '$lib/api';
 
 	let projects = $state<Array<any>>([]);
 	let user = $state<any>(null);
@@ -19,6 +19,13 @@
 		newName = '';
 		projects = await listProjects();
 		creating = false;
+	}
+
+	async function handleDelete(project: any, event: MouseEvent) {
+		event.preventDefault();
+		if (!confirm(`Delete project "${project.name}"? This cannot be undone.`)) return;
+		await deleteProject(project.id);
+		projects = await listProjects();
 	}
 
 	async function handleLogout() {
@@ -66,24 +73,33 @@
 
 		<div class="space-y-0">
 			{#each projects as project}
-				<a
-					href="/projects/{project.id}"
-					class="block border border-warm-700/50 px-6 py-5 hover:border-warm-600 hover:bg-surface-raised/50 transition-all duration-200 no-underline -mt-px first:mt-0"
-				>
-					<div class="flex items-center justify-between">
-						<span class="text-cream text-sm">{project.name}</span>
-						<div class="flex items-center gap-3">
-							<span class="flex items-center gap-1.5 text-xs {project.github_connected ? 'text-success' : 'text-warm-500'}">
-								<span class="w-1.5 h-1.5 rounded-full {project.github_connected ? 'bg-success' : 'bg-warm-600'}"></span>
-								GitHub
-							</span>
-							<span class="flex items-center gap-1.5 text-xs {project.linear_connected ? 'text-success' : 'text-warm-500'}">
-								<span class="w-1.5 h-1.5 rounded-full {project.linear_connected ? 'bg-success' : 'bg-warm-600'}"></span>
-								Linear
-							</span>
+				<div class="flex items-center border border-warm-700/50 -mt-px first:mt-0 hover:border-warm-600 hover:bg-surface-raised/50 transition-all duration-200">
+					<a
+						href="/projects/{project.id}"
+						class="flex-1 px-6 py-5 no-underline"
+					>
+						<div class="flex items-center justify-between">
+							<span class="text-cream text-sm">{project.name}</span>
+							<div class="flex items-center gap-3">
+								<span class="flex items-center gap-1.5 text-xs {project.github_connected ? 'text-success' : 'text-warm-500'}">
+									<span class="w-1.5 h-1.5 rounded-full {project.github_connected ? 'bg-success' : 'bg-warm-600'}"></span>
+									GitHub
+								</span>
+								<span class="flex items-center gap-1.5 text-xs {project.linear_connected ? 'text-success' : 'text-warm-500'}">
+									<span class="w-1.5 h-1.5 rounded-full {project.linear_connected ? 'bg-success' : 'bg-warm-600'}"></span>
+									Linear
+								</span>
+							</div>
 						</div>
-					</div>
 					</a>
+					<button
+						class="px-4 py-5 text-warm-500 hover:text-red-400 transition-colors duration-200 text-xs"
+						onclick={(e) => handleDelete(project, e)}
+						title="Delete project"
+					>
+						Delete
+					</button>
+				</div>
 			{/each}
 		</div>
 

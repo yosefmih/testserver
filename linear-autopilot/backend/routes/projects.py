@@ -146,6 +146,23 @@ async def update_project_settings(request: Request, project_id: str, body: Updat
     return {"status": "updated"}
 
 
+@router.delete("/projects/{project_id}")
+async def delete_project(request: Request, project_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    await pool.execute("DELETE FROM jobs WHERE project_id = $1", project_id)
+    await pool.execute("DELETE FROM projects WHERE id = $1", project_id)
+
+    return {"status": "deleted"}
+
+
 @router.get("/projects/{project_id}/jobs/{job_id}")
 async def get_job(request: Request, project_id: str, job_id: str):
     user_id = get_current_user_id(request)
