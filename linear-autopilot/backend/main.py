@@ -37,6 +37,9 @@ app.include_router(projects_router, prefix="/api/v1", tags=["projects"])
 app.include_router(integrations_router, prefix="/api/v1", tags=["integrations"])
 app.include_router(webhooks_router, prefix="/webhooks", tags=["webhooks"])
 
+from routes.integrations import callbacks_router
+app.include_router(callbacks_router, prefix="/integrations", tags=["oauth-callbacks"])
+
 
 @app.get("/health")
 async def health():

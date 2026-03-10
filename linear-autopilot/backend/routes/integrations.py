@@ -11,6 +11,7 @@ from middleware.auth import get_current_user_id
 from services import github_app, linear_oauth
 
 router = APIRouter()
+callbacks_router = APIRouter()
 
 LINEAR_AUTH_URL = "https://linear.app/oauth/authorize"
 
@@ -25,7 +26,7 @@ async def github_install(request: Request, project_id: str):
     return RedirectResponse(url=f"{install_url}?{params}")
 
 
-@router.get("/integrations/github/callback")
+@callbacks_router.get("/github/callback")
 async def github_callback(request: Request, installation_id: int, state: str):
     user_id = get_current_user_id(request)
     project_id = state
@@ -88,7 +89,7 @@ async def linear_connect(request: Request, project_id: str):
     return response
 
 
-@router.get("/integrations/linear/callback")
+@callbacks_router.get("/linear/callback")
 async def linear_callback(request: Request, code: str, state: str):
     stored_state = request.cookies.get("linear_oauth_state")
     if not stored_state or stored_state != state:
