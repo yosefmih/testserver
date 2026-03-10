@@ -88,6 +88,25 @@ export function setLinearTeam(projectId: string, teamId: string) {
 	});
 }
 
+export function getJob(projectId: string, jobId: string) {
+	return apiFetch<{
+		id: string;
+		linear_issue_id: string;
+		linear_issue_title: string;
+		linear_issue_url: string | null;
+		status: string;
+		pr_url: string | null;
+		error: string | null;
+		sandbox_id: string | null;
+		created_at: string;
+		finished_at: string | null;
+	}>(`/api/v1/projects/${projectId}/jobs/${jobId}`);
+}
+
+export function getJobLogs(projectId: string, jobId: string) {
+	return apiFetch<{ logs: string[]; error?: string }>(`/api/v1/projects/${projectId}/jobs/${jobId}/logs`);
+}
+
 export function logout() {
 	return apiFetch('/auth/logout', { method: 'POST' });
 }

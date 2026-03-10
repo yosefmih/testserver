@@ -18,6 +18,7 @@
 		project = await getProject(projectId);
 		selectedRepo = project.github_repo || '';
 		autopilotLabel = project.autopilot_label || 'autopilot';
+		selectedTeam = project.linear_team_id || '';
 
 		if (project.github_connected) {
 			try { repos = await listGithubRepos(projectId); } catch {}
@@ -31,22 +32,19 @@
 		saving = true;
 		message = '';
 		try {
+			if (selectedTeam && selectedTeam !== project.linear_team_id) {
+				await setLinearTeam(projectId, selectedTeam);
+			}
 			await updateProjectSettings(projectId, {
 				github_repo: selectedRepo || undefined,
 				autopilot_label: autopilotLabel || undefined,
 			});
+			project = await getProject(projectId);
 			message = 'Settings saved';
 		} catch (e: any) {
 			message = e.message;
 		}
 		saving = false;
-	}
-
-	async function handleSetTeam() {
-		if (!selectedTeam) return;
-		await setLinearTeam(projectId, selectedTeam);
-		project = await getProject(projectId);
-		message = 'Linear team set';
 	}
 </script>
 
@@ -115,23 +113,15 @@
 					</div>
 					{#if teams.length > 0}
 						<label class="text-warm-500 text-xs uppercase tracking-wider block mb-2">Linear Team</label>
-						<div class="flex gap-3">
-							<select
-								bind:value={selectedTeam}
-								class="flex-1 bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream focus:outline-none focus:border-accent transition-colors duration-200"
-							>
-								<option value="">Select a team</option>
-								{#each teams as team}
-									<option value={team.id}>{team.name} ({team.key})</option>
-								{/each}
-							</select>
-							<button
-								class="border border-warm-600 text-cream-dim px-4 py-2.5 text-sm hover:bg-surface-raised hover:border-warm-400 transition-all duration-200"
-								onclick={handleSetTeam}
-							>
-								Set
-							</button>
-						</div>
+						<select
+							bind:value={selectedTeam}
+							class="w-full bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream focus:outline-none focus:border-accent transition-colors duration-200"
+						>
+							<option value="">Select a team</option>
+							{#each teams as team}
+								<option value={team.id}>{team.name} ({team.key})</option>
+							{/each}
+						</select>
 					{/if}
 				{:else}
 					<p class="text-warm-500 text-sm mb-4">Connect Linear to listen for issues.</p>

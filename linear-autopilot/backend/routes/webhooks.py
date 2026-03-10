@@ -168,7 +168,11 @@ async def _process_issue(issue: dict, background_tasks: BackgroundTasks):
         return _ignore("autopilot label not present", labels=labels, expected=project["autopilot_label"], issue_id=issue_id)
 
     if not project["github_installation_id"] or not project["github_repo"]:
-        return _ignore("GitHub not configured", project_id=str(project["id"]), issue_id=issue_id)
+        return _ignore("GitHub not configured",
+                        project_id=str(project["id"]),
+                        installation_id=project["github_installation_id"],
+                        github_repo=project["github_repo"],
+                        issue_id=issue_id)
 
     project_id = str(project["id"])
     guard_key = f"{project_id}:{issue_id}"

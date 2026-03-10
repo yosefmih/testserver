@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
 
 from db import get_pool
 from middleware.auth import get_current_user_id
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -86,6 +90,7 @@ async def get_project(request: Request, project_id: str):
         "github_repo": project["github_repo"],
         "linear_connected": project["linear_team_id"] is not None,
         "linear_has_token": project["linear_access_token"] is not None,
+        "linear_team_id": project["linear_team_id"],
         "autopilot_label": project["autopilot_label"],
         "created_at": project["created_at"].isoformat(),
         "jobs": [
@@ -144,3 +149,68 @@ async def update_project_settings(request: Request, project_id: str, body: Updat
     await pool.execute(query, *params)
 
     return {"status": "updated"}
+
+
+@router.get("/projects/{project_id}/jobs/{job_id}")
+async def get_job(request: Request, project_id: str, job_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    job = await pool.fetchrow("""
+        SELECT id, linear_issue_id, linear_issue_title, linear_issue_url,
+               status, pr_url, error, sandbox_id, created_at, finished_at
+        FROM jobs WHERE id = $1 AND project_id = $2
+    """, job_id, project_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return {
+        "id": str(job["id"]),
+        "linear_issue_id": job["linear_issue_id"],
+        "linear_issue_title": job["linear_issue_title"],
+        "linear_issue_url": job["linear_issue_url"],
+        "status": job["status"],
+        "pr_url": job["pr_url"],
+        "error": job["error"],
+        "sandbox_id": job["sandbox_id"],
+        "created_at": job["created_at"].isoformat(),
+        "finished_at": job["finished_at"].isoformat() if job["finished_at"] else None,
+    }
+
+
+@router.get("/projects/{project_id}/jobs/{job_id}/logs")
+async def get_job_logs(request: Request, project_id: str, job_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    job = await pool.fetchrow(
+        "SELECT sandbox_id, status FROM jobs WHERE id = $1 AND project_id = $2", job_id, project_id
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if not job["sandbox_id"]:
+        return {"logs": [], "error": "No sandbox associated with this job"}
+
+    try:
+        from porter_sandbox_api_client.api.sandboxes import get_sandbox_logs
+        from services.sandbox_runner import sandbox_client
+
+        response = get_sandbox_logs.sync(id=job["sandbox_id"], client=sandbox_client)
+        lines = response.logs if hasattr(response, "logs") and response.logs else []
+        return {"logs": lines}
+    except Exception as e:
+        logger.warning("Failed to fetch sandbox logs for job %s: %s", job_id, e)
+        return {"logs": [], "error": f"Sandbox logs unavailable: {e}"}

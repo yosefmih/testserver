@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
-echo "$GITHUB_TOKEN" | gh auth login --with-token
+# gh CLI auto-detects GITHUB_TOKEN from the environment, no login needed.
+# Configure git to use the token for HTTPS cloning.
+git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 
 envsubst < /app/mcp_config.template.json > /tmp/mcp_config.json
 

@@ -74,12 +74,12 @@
 					<span>Created</span>
 				</div>
 				{#each project.jobs as job}
-					<div class="grid grid-cols-[1fr_auto_auto] gap-4 items-center px-6 py-4 border-t border-warm-700/30 first:border-t-0 hover:bg-surface-raised/50 transition-all duration-200">
+					<a href="/projects/{project.id}/jobs/{job.id}" class="grid grid-cols-[1fr_auto_auto] gap-4 items-center px-6 py-4 border-t border-warm-700/30 first:border-t-0 hover:bg-surface-raised/50 transition-all duration-200 no-underline block">
 						<div>
 							<span class="text-sm text-cream">{job.linear_issue_title}</span>
 							<span class="text-xs text-warm-500 ml-2 font-mono">{job.linear_issue_id}</span>
 							{#if job.pr_url}
-								<a href={job.pr_url} target="_blank" class="text-accent text-xs ml-2 hover:text-accent/80 no-underline">View PR &rarr;</a>
+								<span class="text-accent text-xs ml-2">PR &rarr;</span>
 							{/if}
 							{#if job.error}
 								<p class="text-danger text-xs mt-1 truncate max-w-lg">{job.error}</p>
@@ -90,7 +90,7 @@
 							<span class="text-xs">{job.status}</span>
 						</span>
 						<span class="text-xs text-warm-500 font-mono">{new Date(job.created_at).toLocaleDateString()}</span>
-					</div>
+					</a>
 				{/each}
 			</div>
 		{:else}

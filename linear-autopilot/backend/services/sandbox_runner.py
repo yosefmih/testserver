@@ -73,12 +73,19 @@ Steps:
 
         deadline = time.time() + config.SANDBOX_TTL
         phase = "pending"
+        exit_code = None
         while time.time() < deadline:
             status_response = get_sandbox.sync(id=sandbox_id, client=sandbox_client)
             if hasattr(status_response, "phase"):
                 phase = status_response.phase
-                if phase in ("succeeded", "failed"):
-                    break
+            if hasattr(status_response, "exit_code") and status_response.exit_code is not None:
+                exit_code = status_response.exit_code
+                logger.info("Sandbox %s exited with code %d (phase=%s)", sandbox_id, exit_code, phase)
+                if phase not in ("succeeded", "failed"):
+                    phase = "succeeded" if exit_code == 0 else "failed"
+                break
+            if phase in ("succeeded", "failed", "cancelled"):
+                break
             await asyncio.sleep(10)
 
         logs_response = get_sandbox_logs.sync(id=sandbox_id, client=sandbox_client)
