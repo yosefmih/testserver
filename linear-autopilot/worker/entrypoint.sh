@@ -23,6 +23,11 @@ echo "claude version: $(claude --version 2>&1 || echo 'unknown')"
 claude --mcp-config /tmp/mcp_config.json \
        --allowedTools "mcp__github__*,mcp__linear__*,Read,Write,Edit,Bash,Glob,Grep" \
        -p "$ISSUE_PROMPT" \
-       --output-format text
+       --output-format stream-json \
+       --verbose
+EXIT_CODE=$?
 
-echo "=== Claude exited with code $? ==="
+echo "=== Claude exited with code $EXIT_CODE ==="
+
+kill -- -$$ 2>/dev/null || true
+exit $EXIT_CODE
