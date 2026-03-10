@@ -80,9 +80,6 @@
 						<div>
 							<span class="text-sm text-cream">{job.linear_issue_title}</span>
 							<span class="text-xs text-warm-500 ml-2 font-mono">{job.linear_issue_id}</span>
-							{#if job.pr_url}
-								<span class="text-accent text-xs ml-2">PR &rarr;</span>
-							{/if}
 							{#if job.error}
 								<p class="text-danger text-xs mt-1 truncate max-w-lg">{job.error}</p>
 							{/if}

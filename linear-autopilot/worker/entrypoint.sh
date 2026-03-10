@@ -10,8 +10,8 @@ git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".ins
 echo "Git credential helper configured"
 
 envsubst < /app/mcp_config.template.json > /tmp/mcp_config.json
-echo "MCP config rendered:"
-cat /tmp/mcp_config.json | sed 's/"GITHUB_PERSONAL_ACCESS_TOKEN": "[^"]*"/"GITHUB_PERSONAL_ACCESS_TOKEN": "***"/g' | sed 's/"LINEAR_API_KEY": "[^"]*"/"LINEAR_API_KEY": "***"/g'
+echo "MCP config:"
+node -e 'const j=JSON.parse(require("fs").readFileSync("/tmp/mcp_config.json","utf8"));for(const s of Object.values(j.mcpServers||{})){for(const k of Object.keys(s.env||{}))s.env[k]="***";}console.log(JSON.stringify(j,null,2))'
 
 echo "=== Launching claude ==="
 echo "claude version: $(claude --version 2>&1 || echo 'unknown')"

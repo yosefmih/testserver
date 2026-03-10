@@ -89,7 +89,11 @@ async def get_issue(access_token: str, issue_id: str) -> dict | None:
 async def post_issue_comment(access_token: str, issue_id: str, body: str):
     mutation = """
     mutation($issueId: String!, $body: String!) {
-        commentCreate(input: { issueId: $issueId, body: $body }) {
+        commentCreate(input: {
+            issueId: $issueId,
+            body: $body,
+            createAsUser: "Autopilot"
+        }) {
             success
         }
     }

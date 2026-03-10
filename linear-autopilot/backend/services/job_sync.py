@@ -4,6 +4,7 @@ import logging
 from porter_sandbox_api_client.api.sandboxes import get_sandbox, get_sandbox_logs, delete_sandbox
 from porter_sandbox_api_client.types import Unset
 
+from config import config
 from db import get_pool
 from services.sandbox_runner import sandbox_client, create_sandbox_for_job
 from services.linear_oauth import post_issue_comment
@@ -43,8 +44,9 @@ async def _launch_pending_jobs():
     pool = await get_pool()
 
     jobs = await pool.fetch("""
-        SELECT j.id, j.linear_issue_id, j.linear_issue_title, j.linear_issue_description,
-               j.linear_issue_url, p.github_installation_id, p.linear_access_token
+        SELECT j.id, j.project_id, j.linear_issue_id, j.linear_issue_title,
+               j.linear_issue_description, j.linear_issue_url,
+               p.github_installation_id, p.linear_access_token
         FROM jobs j
         JOIN projects p ON p.id = j.project_id
         WHERE j.status = 'pending'
@@ -75,6 +77,17 @@ async def _launch_pending_jobs():
             )
             logger.info("Job sync: job %s launched sandbox %s", job_id, sandbox_id)
 
+            if job["linear_access_token"]:
+                try:
+                    job_url = f"{config.BASE_URL}/projects/{job['project_id']}/jobs/{job_id}"
+                    await post_issue_comment(
+                        job["linear_access_token"],
+                        job["linear_issue_id"],
+                        f"Autopilot is working on this issue. [View job]({job_url})",
+                    )
+                except Exception:
+                    logger.warning("Job sync: failed to post launch comment for job %s", job_id)
+
         except Exception as e:
             logger.exception("Job sync: failed to launch sandbox for job %s", job_id)
             await pool.execute(
@@ -87,10 +100,8 @@ async def _sync_active_jobs():
     pool = await get_pool()
 
     jobs = await pool.fetch("""
-        SELECT j.id, j.sandbox_id, j.linear_issue_id, j.project_id,
-               p.linear_access_token
+        SELECT j.id, j.sandbox_id, j.linear_issue_id
         FROM jobs j
-        JOIN projects p ON p.id = j.project_id
         WHERE j.status = 'running'
           AND j.sandbox_id IS NOT NULL
     """)
@@ -103,8 +114,6 @@ async def _sync_active_jobs():
     for job in jobs:
         job_id = str(job["id"])
         sandbox_id = job["sandbox_id"]
-        issue_id = job["linear_issue_id"]
-        linear_access_token = job["linear_access_token"]
 
         try:
             status_response = get_sandbox.sync(id=sandbox_id, client=sandbox_client)
@@ -140,27 +149,9 @@ async def _sync_active_jobs():
                 UPDATE jobs SET status = $1, pr_url = $2, finished_at = now() WHERE id = $3 AND status = 'running'
             """, final_status, pr_url, job_id)
 
-            if final_status == "success" and pr_url and linear_access_token:
-                try:
-                    await post_issue_comment(
-                        linear_access_token, issue_id,
-                        f"Autopilot created a PR: {pr_url}"
-                    )
-                except Exception:
-                    logger.warning("Job sync: failed to post success comment for job %s", job_id)
-
             if final_status == "failed":
                 error_text = log_text[-2000:] if log_text else f"Sandbox exited: phase={phase} exit_code={exit_code}"
                 await pool.execute("UPDATE jobs SET error = $1 WHERE id = $2", error_text, job_id)
-
-                if linear_access_token:
-                    try:
-                        await post_issue_comment(
-                            linear_access_token, issue_id,
-                            "Autopilot failed to create a fix. Check the dashboard for details."
-                        )
-                    except Exception:
-                        logger.warning("Job sync: failed to post failure comment for job %s", job_id)
 
             logger.info("Job sync: marked job %s as %s (phase=%s exit_code=%s pr=%s)", job_id, final_status, phase, exit_code, pr_url)
 

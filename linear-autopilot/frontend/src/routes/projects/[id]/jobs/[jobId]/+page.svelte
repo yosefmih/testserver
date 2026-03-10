@@ -5,12 +5,15 @@
 
 	type LogEntry =
 		| { kind: 'text'; text: string }
+		| { kind: 'bash'; command: string; description: string }
 		| { kind: 'tool_use'; tool: string; input: string }
 		| { kind: 'tool_result'; content: string }
 		| { kind: 'system'; text: string }
-		| { kind: 'result'; cost: string; duration: string; error: boolean; message: string }
+		| { kind: 'result'; cost: string; duration: string; turns: number; error: boolean; message: string }
 		| { kind: 'error'; text: string; code: string }
 		| { kind: 'raw'; text: string };
+
+	const NOISE_TOOLS = new Set(['TodoWrite', 'TodoRead']);
 
 	let job = $state<any>(null);
 	let logs = $state<string[]>([]);
@@ -20,6 +23,7 @@
 	let autoRefresh = $state<ReturnType<typeof setInterval> | null>(null);
 	let deleting = $state(false);
 	let showRaw = $state(false);
+	let expandedEntries = $state<Set<number>>(new Set());
 
 	const projectId = page.params.id;
 	const jobId = page.params.jobId;
@@ -58,8 +62,31 @@
 		loadingLogs = false;
 	}
 
+	function toggleExpand(idx: number) {
+		const next = new Set(expandedEntries);
+		if (next.has(idx)) next.delete(idx);
+		else next.add(idx);
+		expandedEntries = next;
+	}
+
+	function parseToolUse(block: any): LogEntry | null {
+		const name = block.name || block.tool?.name;
+		const rawInput = block.input || block.tool?.input;
+		if (!name || NOISE_TOOLS.has(name)) return null;
+
+		if (name === 'Bash') {
+			const input = typeof rawInput === 'string' ? JSON.parse(rawInput || '{}') : rawInput || {};
+			return { kind: 'bash', command: input.command || '', description: input.description || '' };
+		}
+
+		const input = typeof rawInput === 'string' ? rawInput : JSON.stringify(rawInput, null, 2);
+		return { kind: 'tool_use', tool: name, input };
+	}
+
 	function parseLogs(lines: string[]): LogEntry[] {
 		const result: LogEntry[] = [];
+		const seenToolIds = new Set<string>();
+
 		for (const line of lines) {
 			const trimmed = line.trim();
 			if (!trimmed) continue;
@@ -76,50 +103,55 @@
 				if (parsed.error) {
 					const text = parsed.message?.content?.[0]?.text || parsed.error;
 					result.push({ kind: 'error', text, code: parsed.error });
-				} else {
-					const content = parsed.message?.content;
-					if (Array.isArray(content)) {
-						for (const block of content) {
-							if (block.type === 'text' && block.text) {
-								result.push({ kind: 'text', text: block.text });
-							} else if (block.type === 'tool_use') {
-								const input = typeof block.input === 'string'
-									? block.input
-									: JSON.stringify(block.input, null, 2);
-								result.push({ kind: 'tool_use', tool: block.name, input });
-							}
-						}
+					continue;
+				}
+
+				const content = parsed.message?.content;
+				if (!Array.isArray(content)) continue;
+
+				for (const block of content) {
+					if (block.type === 'text' && block.text) {
+						result.push({ kind: 'text', text: block.text });
+					} else if (block.type === 'tool_use') {
+						if (block.id) seenToolIds.add(block.id);
+						const entry = parseToolUse(block);
+						if (entry) result.push(entry);
 					}
 				}
+			} else if (parsed.type === 'user') {
+				// Tool result echoes — skip entirely. The tool_use already shows what happened.
+				continue;
 			} else if (parsed.type === 'tool_use' || parsed.type === 'content_block_start') {
 				const tool = parsed.tool || parsed.content_block;
+				if (tool?.id && seenToolIds.has(tool.id)) continue;
+				if (tool?.id) seenToolIds.add(tool.id);
 				if (tool?.type === 'tool_use') {
-					const input = typeof tool.input === 'string'
-						? tool.input
-						: JSON.stringify(tool.input, null, 2);
-					result.push({ kind: 'tool_use', tool: tool.name, input });
+					const entry = parseToolUse(tool);
+					if (entry) result.push(entry);
 				}
 			} else if (parsed.type === 'tool_result') {
-				const content = typeof parsed.tool_result?.content === 'string'
-					? parsed.tool_result.content
-					: JSON.stringify(parsed.tool_result?.content, null, 2);
+				// Skip noisy tool results
+				const toolName = parsed.tool_name || '';
+				if (NOISE_TOOLS.has(toolName)) continue;
+
+				const raw = parsed.tool_result?.content;
+				const content = typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2);
 				if (content && content !== '{}' && content !== 'null') {
 					result.push({ kind: 'tool_result', content });
 				}
 			} else if (parsed.type === 'system' || parsed.type === 'init') {
-				const text = parsed.message || parsed.session_id
-					? `Session: ${parsed.session_id || 'unknown'}`
-					: JSON.stringify(parsed);
-				result.push({ kind: 'system', text });
+				if (parsed.session_id) {
+					result.push({ kind: 'system', text: `Session ${parsed.session_id.slice(0, 8)}` });
+				}
 			} else if (parsed.type === 'result') {
 				const cost = parsed.total_cost_usd != null ? `$${parsed.total_cost_usd.toFixed(4)}` : '';
 				const duration = parsed.duration_ms != null ? `${(parsed.duration_ms / 1000).toFixed(1)}s` : '';
+				const turns = parsed.num_turns ?? 0;
 				const isError = parsed.is_error === true;
 				const message = parsed.result || '';
-				result.push({ kind: 'result', cost, duration, error: isError, message });
-			} else {
-				result.push({ kind: 'raw', text: trimmed });
+				result.push({ kind: 'result', cost, duration, turns, error: isError, message });
 			}
+			// Drop anything else (content_block_delta, content_block_stop, etc.)
 		}
 		return result;
 	}
@@ -188,9 +220,6 @@
 				{#if job.linear_issue_url}
 					<a href={job.linear_issue_url} target="_blank" class="border border-warm-600 text-cream-dim px-4 py-2 text-sm hover:bg-surface-raised hover:border-warm-400 transition-all duration-200 no-underline">Linear Issue &rarr;</a>
 				{/if}
-				{#if job.pr_url}
-					<a href={job.pr_url} target="_blank" class="bg-accent/10 border border-accent text-accent px-4 py-2 text-sm hover:bg-accent/20 transition-all duration-200 no-underline">View PR &rarr;</a>
-				{/if}
 				{#if ACTIVE_STATUSES.includes(job.status)}
 					<button
 						onclick={forceClose}
@@ -256,42 +285,74 @@
 						</div>
 					{:else}
 						<div class="max-h-[70vh] overflow-y-auto divide-y divide-warm-700/30">
-							{#each entries as entry}
+							{#each entries as entry, idx}
 								{#if entry.kind === 'text'}
 									<div class="px-5 py-3">
 										<pre class="text-sm text-cream whitespace-pre-wrap font-sans leading-relaxed">{entry.text}</pre>
 									</div>
+
+								{:else if entry.kind === 'bash'}
+									<div class="px-5 py-3 bg-warm-900/30">
+										{#if entry.description}
+											<span class="text-[10px] font-mono uppercase tracking-wider text-warm-500 mb-1 block">{entry.description}</span>
+										{/if}
+										<div class="flex items-start gap-2">
+											<span class="text-accent/60 font-mono text-xs select-none shrink-0">$</span>
+											<pre class="text-xs font-mono text-cream-dim whitespace-pre-wrap">{entry.command}</pre>
+										</div>
+									</div>
+
 								{:else if entry.kind === 'tool_use'}
 									<div class="px-5 py-3 bg-warm-900/20">
-										<div class="flex items-center gap-2 mb-1.5">
-											<span class="text-[10px] font-mono uppercase tracking-wider text-accent/80 bg-accent/10 px-1.5 py-0.5">tool</span>
-											<span class="text-xs font-mono text-accent">{entry.tool}</span>
-										</div>
-										{#if entry.input && entry.input !== '{}'}
-											<pre class="text-xs font-mono text-warm-400 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">{entry.input}</pre>
+										<button
+											class="flex items-center gap-2 w-full text-left"
+											onclick={() => toggleExpand(idx)}
+										>
+											<span class="text-[10px] font-mono uppercase tracking-wider text-accent/80 bg-accent/10 px-1.5 py-0.5">{entry.tool}</span>
+											{#if entry.input && entry.input !== '{}'}
+												<span class="text-[10px] text-warm-500">{expandedEntries.has(idx) ? '▾' : '▸'}</span>
+											{/if}
+										</button>
+										{#if entry.input && entry.input !== '{}' && expandedEntries.has(idx)}
+											<pre class="text-xs font-mono text-warm-400 whitespace-pre-wrap overflow-x-auto max-h-64 overflow-y-auto mt-2">{entry.input}</pre>
 										{/if}
 									</div>
+
 								{:else if entry.kind === 'tool_result'}
-									<div class="px-5 py-3 bg-warm-900/10">
-										<span class="text-[10px] font-mono uppercase tracking-wider text-warm-500 mb-1.5 block">result</span>
-										<pre class="text-xs font-mono text-warm-400 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">{entry.content}</pre>
+									<div class="px-5 py-2 bg-warm-900/10">
+										<button
+											class="flex items-center gap-2 w-full text-left"
+											onclick={() => toggleExpand(idx)}
+										>
+											<span class="text-[10px] font-mono uppercase tracking-wider text-warm-600">output</span>
+											<span class="text-[10px] text-warm-500">{expandedEntries.has(idx) ? '▾' : '▸'}</span>
+										</button>
+										{#if expandedEntries.has(idx)}
+											<pre class="text-xs font-mono text-warm-400 whitespace-pre-wrap overflow-x-auto max-h-64 overflow-y-auto mt-1.5">{entry.content}</pre>
+										{/if}
 									</div>
+
 								{:else if entry.kind === 'system'}
-									<div class="px-5 py-2">
-										<span class="text-xs font-mono text-warm-600">{entry.text}</span>
+									<div class="px-5 py-1.5">
+										<span class="text-[10px] font-mono text-warm-600">{entry.text}</span>
 									</div>
+
 								{:else if entry.kind === 'error'}
-									<div class="px-5 py-3 bg-danger/10 border-t border-danger/30">
+									<div class="px-5 py-3 bg-danger/10">
 										<div class="flex items-center gap-2 mb-1.5">
 											<span class="text-[10px] font-mono uppercase tracking-wider text-danger/80 bg-danger/10 px-1.5 py-0.5">error</span>
 											<span class="text-xs font-mono text-danger/70">{entry.code}</span>
 										</div>
 										<pre class="text-sm font-mono text-danger whitespace-pre-wrap">{entry.text}</pre>
 									</div>
+
 								{:else if entry.kind === 'result'}
-									<div class="px-5 py-3 {entry.error ? 'bg-danger/5 border-t border-danger/20' : 'bg-success/5 border-t border-success/20'}">
+									<div class="px-5 py-3 {entry.error ? 'bg-danger/5' : 'bg-success/5'}">
 										<div class="flex items-center gap-4 text-xs">
 											<span class="text-[10px] font-mono uppercase tracking-wider {entry.error ? 'text-danger/80' : 'text-success/80'}">{entry.error ? 'failed' : 'completed'}</span>
+											{#if entry.turns}
+												<span class="font-mono text-warm-400">{entry.turns} turn{entry.turns === 1 ? '' : 's'}</span>
+											{/if}
 											{#if entry.duration}
 												<span class="font-mono text-warm-400">{entry.duration}</span>
 											{/if}
@@ -303,6 +364,7 @@
 											<pre class="text-xs font-mono {entry.error ? 'text-danger' : 'text-warm-400'} whitespace-pre-wrap mt-1.5">{entry.message}</pre>
 										{/if}
 									</div>
+
 								{:else}
 									<div class="px-5 py-2">
 										<pre class="text-xs font-mono text-warm-500 whitespace-pre-wrap">{entry.text}</pre>
