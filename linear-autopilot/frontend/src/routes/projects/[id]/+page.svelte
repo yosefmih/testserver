@@ -51,7 +51,7 @@
 			<div class="flex items-center gap-2 text-sm">
 				<span class="w-2 h-2 rounded-full {project.github_connected ? 'bg-success' : 'bg-warm-600'}"></span>
 				<span class="text-warm-500">GitHub:</span>
-				<span class="font-mono text-xs text-cream-dim">{project.github_repo || 'Not configured'}</span>
+				<span class="text-cream-dim">{project.github_connected ? 'Connected' : 'Not configured'}</span>
 			</div>
 			<div class="flex items-center gap-2 text-sm">
 				<span class="w-2 h-2 rounded-full {project.linear_has_token ? 'bg-success' : 'bg-warm-600'}"></span>

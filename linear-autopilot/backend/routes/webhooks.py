@@ -153,7 +153,7 @@ async def _process_issue(issue: dict, background_tasks: BackgroundTasks):
     pool = await get_pool()
     project = await pool.fetchrow("""
         SELECT id, linear_access_token, autopilot_label,
-               github_installation_id, github_repo
+               github_installation_id
         FROM projects WHERE linear_team_id = $1
     """, team_id)
 
@@ -167,11 +167,10 @@ async def _process_issue(issue: dict, background_tasks: BackgroundTasks):
     if project["autopilot_label"] not in labels:
         return _ignore("autopilot label not present", labels=labels, expected=project["autopilot_label"], issue_id=issue_id)
 
-    if not project["github_installation_id"] or not project["github_repo"]:
+    if not project["github_installation_id"]:
         return _ignore("GitHub not configured",
                         project_id=str(project["id"]),
                         installation_id=project["github_installation_id"],
-                        github_repo=project["github_repo"],
                         issue_id=issue_id)
 
     project_id = str(project["id"])
@@ -198,7 +197,6 @@ async def _process_issue(issue: dict, background_tasks: BackgroundTasks):
         issue_description=issue.get("description", ""),
         issue_url=issue.get("url", ""),
         github_installation_id=project["github_installation_id"],
-        github_repo=project["github_repo"],
         linear_access_token=project["linear_access_token"],
         guard_key=guard_key,
     )
@@ -215,7 +213,6 @@ async def _run_autopilot(
     issue_description: str,
     issue_url: str,
     github_installation_id: int,
-    github_repo: str,
     linear_access_token: str,
     guard_key: str,
 ):
@@ -227,7 +224,6 @@ async def _run_autopilot(
             issue_description=issue_description,
             issue_url=issue_url,
             github_installation_id=github_installation_id,
-            github_repo=github_repo,
             linear_access_token=linear_access_token,
         )
     except Exception as e:

@@ -66,7 +66,7 @@ export function getProject(id: string) {
 	}>(`/api/v1/projects/${id}`);
 }
 
-export function updateProjectSettings(id: string, settings: { github_repo?: string; autopilot_label?: string }) {
+export function updateProjectSettings(id: string, settings: { autopilot_label?: string }) {
 	return apiFetch(`/api/v1/projects/${id}/settings`, {
 		method: 'PATCH',
 		body: JSON.stringify(settings),

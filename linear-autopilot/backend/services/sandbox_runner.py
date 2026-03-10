@@ -9,7 +9,7 @@ from porter_sandbox_api_client.types import Unset
 
 from config import config
 from db import get_pool
-from services.github_app import get_installation_token
+from services.github_app import get_installation_token, get_installation_repos
 from services.linear_oauth import post_issue_comment
 
 logger = logging.getLogger(__name__)
@@ -26,27 +26,31 @@ async def launch_autopilot(
     issue_description: str,
     issue_url: str,
     github_installation_id: int,
-    github_repo: str,
     linear_access_token: str,
 ):
     pool = await get_pool()
 
     github_token = await get_installation_token(github_installation_id)
+    repos = await get_installation_repos(github_installation_id)
+    repo_list = "\n".join(f"- {r['full_name']}" for r in repos)
 
     prompt = f"""Fix this Linear issue and create a GitHub PR.
 
-Repo: {github_repo}
 Issue Title: {issue_title}
 Issue Description: {issue_description}
 Linear URL: {issue_url}
 
+You have access to the following GitHub repos:
+{repo_list}
+
 Steps:
-1. Clone the repo {github_repo}
-2. Create a branch named autopilot/{issue_id}
-3. Understand and fix the issue
-4. Commit your changes with a descriptive message
-5. Push the branch and create a PR linking to {issue_url}
-6. Comment on the Linear issue with the PR URL"""
+1. Determine which repo is relevant based on the issue context
+2. Clone that repo
+3. Create a branch named autopilot/{issue_id}
+4. Understand and fix the issue
+5. Commit your changes with a descriptive message
+6. Push the branch and create a PR linking to {issue_url}
+7. Comment on the Linear issue with the PR URL"""
 
     spec = SandboxSpec(
         image=config.WORKER_IMAGE,

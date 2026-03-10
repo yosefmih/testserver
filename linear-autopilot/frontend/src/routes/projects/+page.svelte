@@ -83,10 +83,7 @@
 							</span>
 						</div>
 					</div>
-					{#if project.github_repo}
-						<p class="text-warm-500 text-xs font-mono mt-1">{project.github_repo}</p>
-					{/if}
-				</a>
+					</a>
 			{/each}
 		</div>
 

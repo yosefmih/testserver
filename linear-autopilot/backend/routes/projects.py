@@ -1,4 +1,5 @@
 import logging
+import re
 
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
@@ -110,7 +111,6 @@ async def get_project(request: Request, project_id: str):
 
 
 class UpdateProjectSettingsRequest(BaseModel):
-    github_repo: str | None = None
     autopilot_label: str | None = None
 
 
@@ -128,11 +128,6 @@ async def update_project_settings(request: Request, project_id: str, body: Updat
     updates = []
     params = []
     param_idx = 1
-
-    if body.github_repo is not None:
-        updates.append(f"github_repo = ${param_idx}")
-        params.append(body.github_repo)
-        param_idx += 1
 
     if body.autopilot_label is not None:
         updates.append(f"autopilot_label = ${param_idx}")
@@ -248,8 +243,16 @@ async def get_job_logs(request: Request, project_id: str, job_id: str):
         from services.sandbox_runner import sandbox_client
 
         response = get_sandbox_logs.sync(id=job["sandbox_id"], client=sandbox_client)
-        lines = response.logs if hasattr(response, "logs") and response.logs else []
+        raw_lines = response.logs if hasattr(response, "logs") and response.logs else []
+        lines = [_clean_log_line(line) for line in raw_lines]
         return {"logs": lines}
     except Exception as e:
         logger.warning("Failed to fetch sandbox logs for job %s: %s", job_id, e)
         return {"logs": [], "error": f"Sandbox logs unavailable: {e}"}
+
+
+_LOG_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+(stdout|stderr)\s+F\s+")
+
+
+def _clean_log_line(line: str) -> str:
+    return _LOG_PREFIX_RE.sub("", line)

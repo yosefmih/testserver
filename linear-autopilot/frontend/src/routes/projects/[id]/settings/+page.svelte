@@ -1,12 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getProject, updateProjectSettings, listGithubRepos, listLinearTeams, setLinearTeam } from '$lib/api';
+	import { getProject, updateProjectSettings, listLinearTeams, setLinearTeam } from '$lib/api';
 
 	let project = $state<any>(null);
-	let repos = $state<Array<any>>([]);
 	let teams = $state<Array<any>>([]);
-	let selectedRepo = $state('');
 	let selectedTeam = $state('');
 	let autopilotLabel = $state('');
 	let saving = $state(false);
@@ -16,13 +14,9 @@
 
 	onMount(async () => {
 		project = await getProject(projectId);
-		selectedRepo = project.github_repo || '';
 		autopilotLabel = project.autopilot_label || 'autopilot';
 		selectedTeam = project.linear_team_id || '';
 
-		if (project.github_connected) {
-			try { repos = await listGithubRepos(projectId); } catch {}
-		}
 		if (project.linear_has_token) {
 			try { teams = await listLinearTeams(projectId); } catch {}
 		}
@@ -36,7 +30,6 @@
 				await setLinearTeam(projectId, selectedTeam);
 			}
 			await updateProjectSettings(projectId, {
-				github_repo: selectedRepo || undefined,
 				autopilot_label: autopilotLabel || undefined,
 			});
 			project = await getProject(projectId);
@@ -68,28 +61,13 @@
 			<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">GitHub Integration</h2>
 			<div class="border border-warm-700/50 px-6 py-5">
 				{#if project.github_connected}
-					<div class="flex items-center gap-2 mb-4">
+					<div class="flex items-center gap-2">
 						<span class="w-2 h-2 rounded-full bg-success"></span>
 						<span class="text-success text-sm">Connected</span>
 					</div>
-					<label class="text-warm-500 text-xs uppercase tracking-wider block mb-2">Target Repository</label>
-					{#if repos.length > 0}
-						<select
-							bind:value={selectedRepo}
-							class="w-full bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream focus:outline-none focus:border-accent transition-colors duration-200"
-						>
-							<option value="">Select a repo</option>
-							{#each repos as repo}
-								<option value={repo.full_name}>{repo.full_name}</option>
-							{/each}
-						</select>
-					{:else}
-						<input
-							bind:value={selectedRepo}
-							placeholder="org/repo"
-							class="w-full bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream font-mono focus:outline-none focus:border-accent transition-colors duration-200"
-						/>
-					{/if}
+					<p class="text-warm-500 text-xs mt-2">
+						Autopilot automatically detects the relevant repo from the issue context.
+					</p>
 				{:else}
 					<p class="text-warm-500 text-sm mb-4">Connect your GitHub account to enable auto-PRs.</p>
 					<a
