@@ -8,7 +8,8 @@
 		| { kind: 'tool_use'; tool: string; input: string }
 		| { kind: 'tool_result'; content: string }
 		| { kind: 'system'; text: string }
-		| { kind: 'result'; cost: string; duration: string }
+		| { kind: 'result'; cost: string; duration: string; error: boolean; message: string }
+		| { kind: 'error'; text: string; code: string }
 		| { kind: 'raw'; text: string };
 
 	let job = $state<any>(null);
@@ -72,16 +73,21 @@
 			}
 
 			if (parsed.type === 'assistant') {
-				const content = parsed.message?.content;
-				if (Array.isArray(content)) {
-					for (const block of content) {
-						if (block.type === 'text' && block.text) {
-							result.push({ kind: 'text', text: block.text });
-						} else if (block.type === 'tool_use') {
-							const input = typeof block.input === 'string'
-								? block.input
-								: JSON.stringify(block.input, null, 2);
-							result.push({ kind: 'tool_use', tool: block.name, input });
+				if (parsed.error) {
+					const text = parsed.message?.content?.[0]?.text || parsed.error;
+					result.push({ kind: 'error', text, code: parsed.error });
+				} else {
+					const content = parsed.message?.content;
+					if (Array.isArray(content)) {
+						for (const block of content) {
+							if (block.type === 'text' && block.text) {
+								result.push({ kind: 'text', text: block.text });
+							} else if (block.type === 'tool_use') {
+								const input = typeof block.input === 'string'
+									? block.input
+									: JSON.stringify(block.input, null, 2);
+								result.push({ kind: 'tool_use', tool: block.name, input });
+							}
 						}
 					}
 				}
@@ -106,9 +112,11 @@
 					: JSON.stringify(parsed);
 				result.push({ kind: 'system', text });
 			} else if (parsed.type === 'result') {
-				const cost = parsed.cost_usd != null ? `$${parsed.cost_usd.toFixed(4)}` : '';
+				const cost = parsed.total_cost_usd != null ? `$${parsed.total_cost_usd.toFixed(4)}` : '';
 				const duration = parsed.duration_ms != null ? `${(parsed.duration_ms / 1000).toFixed(1)}s` : '';
-				result.push({ kind: 'result', cost, duration });
+				const isError = parsed.is_error === true;
+				const message = parsed.result || '';
+				result.push({ kind: 'result', cost, duration, error: isError, message });
 			} else {
 				result.push({ kind: 'raw', text: trimmed });
 			}
@@ -272,10 +280,18 @@
 									<div class="px-5 py-2">
 										<span class="text-xs font-mono text-warm-600">{entry.text}</span>
 									</div>
+								{:else if entry.kind === 'error'}
+									<div class="px-5 py-3 bg-danger/10 border-t border-danger/30">
+										<div class="flex items-center gap-2 mb-1.5">
+											<span class="text-[10px] font-mono uppercase tracking-wider text-danger/80 bg-danger/10 px-1.5 py-0.5">error</span>
+											<span class="text-xs font-mono text-danger/70">{entry.code}</span>
+										</div>
+										<pre class="text-sm font-mono text-danger whitespace-pre-wrap">{entry.text}</pre>
+									</div>
 								{:else if entry.kind === 'result'}
-									<div class="px-5 py-3 bg-success/5 border-t border-success/20">
+									<div class="px-5 py-3 {entry.error ? 'bg-danger/5 border-t border-danger/20' : 'bg-success/5 border-t border-success/20'}">
 										<div class="flex items-center gap-4 text-xs">
-											<span class="text-[10px] font-mono uppercase tracking-wider text-success/80">completed</span>
+											<span class="text-[10px] font-mono uppercase tracking-wider {entry.error ? 'text-danger/80' : 'text-success/80'}">{entry.error ? 'failed' : 'completed'}</span>
 											{#if entry.duration}
 												<span class="font-mono text-warm-400">{entry.duration}</span>
 											{/if}
@@ -283,6 +299,9 @@
 												<span class="font-mono text-warm-400">{entry.cost}</span>
 											{/if}
 										</div>
+										{#if entry.message}
+											<pre class="text-xs font-mono {entry.error ? 'text-danger' : 'text-warm-400'} whitespace-pre-wrap mt-1.5">{entry.message}</pre>
+										{/if}
 									</div>
 								{:else}
 									<div class="px-5 py-2">

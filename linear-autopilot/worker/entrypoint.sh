@@ -1,7 +1,6 @@
 #!/bin/bash
 
 echo "=== Worker entrypoint starting ==="
-echo "ANTHROPIC_API_KEY set: $([ -n "$ANTHROPIC_API_KEY" ] && echo "yes (${#ANTHROPIC_API_KEY} chars, prefix=${ANTHROPIC_API_KEY:0:7}...)" || echo "NO")"
 echo "CLAUDE_CODE_OAUTH_TOKEN set: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo "yes (${#CLAUDE_CODE_OAUTH_TOKEN} chars, prefix=${CLAUDE_CODE_OAUTH_TOKEN:0:7}...)" || echo "NO")"
 echo "GITHUB_TOKEN set: $([ -n "$GITHUB_TOKEN" ] && echo "yes (${#GITHUB_TOKEN} chars)" || echo "NO")"
 echo "LINEAR_API_KEY set: $([ -n "$LINEAR_API_KEY" ] && echo "yes (${#LINEAR_API_KEY} chars)" || echo "NO")"

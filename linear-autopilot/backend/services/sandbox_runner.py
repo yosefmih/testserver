@@ -49,7 +49,6 @@ Steps:
         command=["bash", "/app/entrypoint.sh"],
         ttl_seconds=config.SANDBOX_TTL,
         env=SandboxSpecEnv.from_dict({
-            "ANTHROPIC_API_KEY": config.ANTHROPIC_API_KEY,
             "CLAUDE_CODE_OAUTH_TOKEN": config.ANTHROPIC_API_KEY,
             "GITHUB_TOKEN": github_token,
             "LINEAR_API_KEY": linear_access_token,
