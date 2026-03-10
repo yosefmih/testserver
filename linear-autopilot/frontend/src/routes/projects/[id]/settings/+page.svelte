@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getProject, updateProjectSettings, listLinearTeams, setLinearTeam } from '$lib/api';
+	import { getProject, updateProjectSettings, listLinearTeams, setLinearTeam, deleteProject } from '$lib/api';
 
 	let project = $state<any>(null);
 	let teams = $state<Array<any>>([]);
@@ -9,6 +9,7 @@
 	let autopilotLabel = $state('');
 	let saving = $state(false);
 	let message = $state('');
+	let deleting = $state(false);
 
 	const projectId = page.params.id;
 
@@ -21,6 +22,18 @@
 			try { teams = await listLinearTeams(projectId); } catch {}
 		}
 	});
+
+	async function handleDelete() {
+		if (!confirm(`Delete project "${project.name}"? All jobs will be permanently removed. This cannot be undone.`)) return;
+		deleting = true;
+		try {
+			await deleteProject(projectId);
+			window.location.href = '/projects';
+		} catch (e: any) {
+			message = e.message;
+			deleting = false;
+		}
+	}
 
 	async function saveSettings() {
 		saving = true;
@@ -141,6 +154,26 @@
 				<span class="text-success text-sm">{message}</span>
 			{/if}
 		</div>
+
+		<!-- Danger Zone -->
+		<section class="mt-16">
+			<h2 class="text-xs text-red-400 uppercase tracking-wider mb-4">Danger Zone</h2>
+			<div class="border border-red-900/50 px-6 py-5">
+				<div class="flex items-center justify-between">
+					<div>
+						<p class="text-cream text-sm">Delete this project</p>
+						<p class="text-warm-500 text-xs mt-1">Permanently remove this project and all its jobs. This cannot be undone.</p>
+					</div>
+					<button
+						class="border border-red-700 text-red-400 px-5 py-2.5 text-sm hover:bg-red-900/20 transition-all duration-200 disabled:opacity-50"
+						onclick={handleDelete}
+						disabled={deleting}
+					>
+						{deleting ? 'Deleting...' : 'Delete Project'}
+					</button>
+				</div>
+			</div>
+		</section>
 	</main>
 </div>
 {/if}
