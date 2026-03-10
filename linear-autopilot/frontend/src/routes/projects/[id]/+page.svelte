@@ -56,9 +56,9 @@
 				<span class="text-cream-dim">{project.github_connected ? 'Connected' : 'Not configured'}</span>
 			</div>
 			<div class="flex items-center gap-2 text-sm">
-				<span class="w-2 h-2 rounded-full {project.linear_has_token ? 'bg-success' : 'bg-warm-600'}"></span>
+				<span class="w-2 h-2 rounded-full {project.linear_connected ? 'bg-success' : 'bg-warm-600'}"></span>
 				<span class="text-warm-500">Linear:</span>
-				<span class="text-cream-dim">{project.linear_connected ? 'Connected' : project.linear_has_token ? 'Token only — select team' : 'Not connected'}</span>
+				<span class="text-cream-dim">{project.linear_connected ? 'Connected' : 'Not connected'}</span>
 			</div>
 			<div class="flex items-center gap-2 text-sm">
 				<span class="text-warm-500">Label:</span>
