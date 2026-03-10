@@ -19,27 +19,41 @@ def _verify_signature(body: bytes, secret: str, signature: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
+def _ignore(reason: str, **extra) -> dict:
+    logger.info("Webhook ignored: %s %s", reason, " ".join(f"{k}={v}" for k, v in extra.items()) if extra else "")
+    return {"status": "ignored", "reason": reason}
+
+
 @router.post("/linear")
 async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
     body = await request.body()
     signature = request.headers.get("Linear-Signature", "")
 
     if not _verify_signature(body, config.LINEAR_WEBHOOK_SECRET, signature):
+        logger.warning("Webhook signature verification failed")
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     payload = await request.json()
-
-    if payload.get("type") != "Issue":
-        return {"status": "ignored", "reason": "not an issue event"}
-
+    event_type = payload.get("type")
     action = payload.get("action")
-    if action not in ("create", "update"):
-        return {"status": "ignored", "reason": f"action {action} not handled"}
-
     issue_data = payload.get("data", {})
+    issue_id = issue_data.get("id", "unknown")
+    issue_title = issue_data.get("title", "")
+
+    logger.info(
+        "Webhook received: type=%s action=%s issue_id=%s title=%r",
+        event_type, action, issue_id, issue_title[:80] if issue_title else "",
+    )
+
+    if event_type != "Issue":
+        return _ignore("not an issue event", type=event_type)
+
+    if action not in ("create", "update"):
+        return _ignore(f"action not handled", action=action, issue_id=issue_id)
+
     team_id = issue_data.get("teamId") or payload.get("teamId")
     if not team_id:
-        return {"status": "ignored", "reason": "no team in payload"}
+        return _ignore("no team in payload", issue_id=issue_id)
 
     pool = await get_pool()
     project = await pool.fetchrow("""
@@ -49,21 +63,36 @@ async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
     """, team_id)
 
     if not project:
-        return {"status": "ignored", "reason": "no project for this team"}
+        return _ignore("no project for this team", team_id=team_id, issue_id=issue_id)
 
     labels = [l.get("name", "") for l in issue_data.get("labels", [])]
+    logger.info(
+        "Issue labels: %s, autopilot_label=%r, project_id=%s",
+        labels, project["autopilot_label"], project["id"],
+    )
     if project["autopilot_label"] not in labels:
-        return {"status": "ignored", "reason": "autopilot label not present"}
+        return _ignore("autopilot label not present", labels=labels, expected=project["autopilot_label"], issue_id=issue_id)
+
+    if action == "update":
+        updated_from = payload.get("updatedFrom", {})
+        old_label_ids = set(updated_from.get("labelIds", []))
+        new_label_ids = set(issue_data.get("labelIds", []))
+        logger.info(
+            "Update event label check: old_label_ids=%s new_label_ids=%s updatedFrom_keys=%s",
+            old_label_ids, new_label_ids, list(updated_from.keys()),
+        )
+        if not old_label_ids or old_label_ids == new_label_ids:
+            return _ignore("labels not changed in this update", issue_id=issue_id, updatedFrom_keys=list(updated_from.keys()))
 
     if not project["github_installation_id"] or not project["github_repo"]:
-        logger.warning("Project %s missing GitHub config, skipping", project["id"])
-        return {"status": "ignored", "reason": "GitHub not configured"}
+        return _ignore("GitHub not configured", project_id=str(project["id"]), issue_id=issue_id)
 
-    issue_id = issue_data.get("id", "")
     project_id = str(project["id"])
     guard_key = f"{project_id}:{issue_id}"
     if guard_key in in_progress_issues:
-        return {"status": "ignored", "reason": "already processing this issue"}
+        return _ignore("already processing this issue", issue_id=issue_id, project_id=project_id)
+
+    logger.info("Launching autopilot for issue %s (title=%r) in project %s", issue_id, issue_title, project_id)
 
     job = await pool.fetchrow("""
         INSERT INTO jobs (project_id, linear_issue_id, linear_issue_title, linear_issue_url, status)
@@ -89,6 +118,7 @@ async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
         guard_key=guard_key,
     )
 
+    logger.info("Job %s created for issue %s", job["id"], issue_id)
     return {"status": "accepted", "job_id": str(job["id"])}
 
 
