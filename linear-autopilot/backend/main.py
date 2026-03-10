@@ -13,7 +13,8 @@ from routes.auth import router as auth_router
 from routes.projects import router as projects_router
 from routes.integrations import router as integrations_router
 from routes.webhooks import router as webhooks_router
-from services.job_sync import job_sync_loop
+from routes.internal import router as internal_router
+from services.ticket_sync import ticket_sync_loop
 
 logging.basicConfig(level=getattr(logging, config.LOG_LEVEL.upper(), logging.DEBUG), format="%(asctime)s %(levelname)s %(name)s %(message)s")
 # Enable httpx request/response logging so sandbox API interactions are visible
@@ -30,7 +31,7 @@ async def lifespan(app: FastAPI):
     await init_pool(config.DB_URL)
     await run_migrations()
     logger.info("Database ready, migrations applied")
-    sync_task = asyncio.create_task(job_sync_loop())
+    sync_task = asyncio.create_task(ticket_sync_loop())
     yield
     sync_task.cancel()
     try:
@@ -47,6 +48,7 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(projects_router, prefix="/api/v1", tags=["projects"])
 app.include_router(integrations_router, prefix="/api/v1", tags=["integrations"])
 app.include_router(webhooks_router, prefix="/webhooks", tags=["webhooks"])
+app.include_router(internal_router, prefix="/api/internal", tags=["internal"])
 
 from routes.integrations import callbacks_router
 app.include_router(callbacks_router, prefix="/integrations", tags=["oauth-callbacks"])

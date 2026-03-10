@@ -17,7 +17,7 @@
 	});
 
 	async function handleDelete() {
-		if (!confirm(`Delete project "${project.name}"? All jobs will be permanently removed. This cannot be undone.`)) return;
+		if (!confirm(`Delete project "${project.name}"? All tickets and runs will be permanently removed. This cannot be undone.`)) return;
 		deleting = true;
 		try {
 			await deleteProject(projectId);
@@ -148,7 +148,7 @@
 				<div class="flex items-center justify-between">
 					<div>
 						<p class="text-cream text-sm">Delete this project</p>
-						<p class="text-warm-500 text-xs mt-1">Permanently remove this project and all its jobs. This cannot be undone.</p>
+						<p class="text-warm-500 text-xs mt-1">Permanently remove this project and all its tickets. This cannot be undone.</p>
 					</div>
 					<button
 						class="border border-red-700 text-red-400 px-5 py-2.5 text-sm hover:bg-red-900/20 transition-all duration-200 disabled:opacity-50"

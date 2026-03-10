@@ -10,18 +10,16 @@
 	});
 
 	function statusColor(status: string) {
-		if (status === 'success') return 'text-success';
-		if (status === 'running') return 'text-accent';
-		if (status === 'launching') return 'text-accent';
-		if (status === 'pending') return 'text-warm-500';
+		if (status === 'active') return 'text-accent';
+		if (status === 'merged') return 'text-success';
+		if (status === 'closed') return 'text-warm-500';
 		return 'text-danger';
 	}
 
 	function dotColor(status: string) {
-		if (status === 'success') return 'bg-success';
-		if (status === 'running') return 'bg-accent';
-		if (status === 'launching') return 'bg-accent';
-		if (status === 'pending') return 'bg-warm-500';
+		if (status === 'active') return 'bg-accent';
+		if (status === 'merged') return 'bg-success';
+		if (status === 'closed') return 'bg-warm-500';
 		return 'bg-danger';
 	}
 </script>
@@ -66,35 +64,40 @@
 			</div>
 		</div>
 
-		<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Recent Jobs</h2>
+		<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Tickets</h2>
 
-		{#if project.jobs.length > 0}
+		{#if project.tickets.length > 0}
 			<div class="border border-warm-700/50">
-				<div class="grid grid-cols-[1fr_auto_auto] gap-4 px-6 py-3 text-xs text-warm-500 uppercase tracking-wider border-b border-warm-700/30">
+				<div class="grid grid-cols-[1fr_auto_auto_auto] gap-4 px-6 py-3 text-xs text-warm-500 uppercase tracking-wider border-b border-warm-700/30">
 					<span>Issue</span>
+					<span>PR</span>
 					<span>Status</span>
 					<span>Created</span>
 				</div>
-				{#each project.jobs as job}
-					<a href="/projects/{project.id}/jobs/{job.id}" class="grid grid-cols-[1fr_auto_auto] gap-4 items-center px-6 py-4 border-t border-warm-700/30 first:border-t-0 hover:bg-surface-raised/50 transition-all duration-200 no-underline block">
+				{#each project.tickets as ticket}
+					<a href="/projects/{project.id}/tickets/{ticket.id}" class="grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center px-6 py-4 border-t border-warm-700/30 first:border-t-0 hover:bg-surface-raised/50 transition-all duration-200 no-underline block">
 						<div>
-							<span class="text-sm text-cream">{job.linear_issue_title}</span>
-							<span class="text-xs text-warm-500 ml-2 font-mono">{job.linear_issue_id}</span>
-							{#if job.error}
-								<p class="text-danger text-xs mt-1 truncate max-w-lg">{job.error}</p>
-							{/if}
+							<span class="text-sm text-cream">{ticket.linear_issue_title}</span>
+							<span class="text-xs text-warm-500 ml-2 font-mono">{ticket.linear_issue_id}</span>
 						</div>
-						<span class="flex items-center gap-1.5 {statusColor(job.status)}">
-							<span class="w-1.5 h-1.5 rounded-full {dotColor(job.status)}"></span>
-							<span class="text-xs">{job.status}</span>
+						<span class="text-xs">
+							{#if ticket.pr_url}
+								<span class="text-accent font-mono">PR</span>
+							{:else}
+								<span class="text-warm-600">&mdash;</span>
+							{/if}
 						</span>
-						<span class="text-xs text-warm-500 font-mono">{new Date(job.created_at).toLocaleDateString()}</span>
+						<span class="flex items-center gap-1.5 {statusColor(ticket.status)}">
+							<span class="w-1.5 h-1.5 rounded-full {dotColor(ticket.status)}"></span>
+							<span class="text-xs">{ticket.status}</span>
+						</span>
+						<span class="text-xs text-warm-500 font-mono">{new Date(ticket.created_at).toLocaleDateString()}</span>
 					</a>
 				{/each}
 			</div>
 		{:else}
 			<div class="border border-warm-700/50 px-6 py-12 text-center">
-				<p class="text-warm-500 text-sm">No jobs yet. Tag a Linear issue with "{project.autopilot_label}" to get started.</p>
+				<p class="text-warm-500 text-sm">No tickets yet. Tag a Linear issue with "{project.autopilot_label}" to get started.</p>
 			</div>
 		{/if}
 	</main>

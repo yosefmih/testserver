@@ -30,7 +30,6 @@ export function listProjects() {
 		id: string;
 		name: string;
 		github_connected: boolean;
-		github_repo: string | null;
 		linear_connected: boolean;
 		autopilot_label: string;
 		created_at: string;
@@ -44,25 +43,36 @@ export function createProject(name: string) {
 	});
 }
 
+export type Ticket = {
+	id: string;
+	linear_issue_id: string;
+	linear_issue_title: string;
+	linear_issue_url: string | null;
+	pr_url: string | null;
+	status: string;
+	created_at: string;
+	updated_at: string;
+};
+
+export type Run = {
+	id: string;
+	kind: string;
+	sandbox_id: string | null;
+	status: string;
+	error: string | null;
+	created_at: string;
+	finished_at: string | null;
+};
+
 export function getProject(id: string) {
 	return apiFetch<{
 		id: string;
 		name: string;
 		github_connected: boolean;
-		github_repo: string | null;
 		linear_connected: boolean;
 		autopilot_label: string;
 		created_at: string;
-		jobs: Array<{
-			id: string;
-			linear_issue_id: string;
-			linear_issue_title: string;
-			status: string;
-			pr_url: string | null;
-			error: string | null;
-			created_at: string;
-			finished_at: string | null;
-		}>;
+		tickets: Ticket[];
 	}>(`/api/v1/projects/${id}`);
 }
 
@@ -77,34 +87,35 @@ export function listGithubRepos(projectId: string) {
 	return apiFetch<Array<{ full_name: string; private: boolean }>>(`/api/v1/projects/${projectId}/integrations/github/repos`);
 }
 
-
-export function getJob(projectId: string, jobId: string) {
+export function getTicket(projectId: string, ticketId: string) {
 	return apiFetch<{
 		id: string;
 		linear_issue_id: string;
 		linear_issue_title: string;
 		linear_issue_url: string | null;
-		status: string;
+		pr_repo: string | null;
+		pr_number: number | null;
 		pr_url: string | null;
-		error: string | null;
-		sandbox_id: string | null;
+		volume_id: string | null;
+		status: string;
 		created_at: string;
-		finished_at: string | null;
-	}>(`/api/v1/projects/${projectId}/jobs/${jobId}`);
+		updated_at: string;
+		runs: Run[];
+	}>(`/api/v1/projects/${projectId}/tickets/${ticketId}`);
 }
 
-export function getJobLogs(projectId: string, jobId: string) {
-	return apiFetch<{ logs: string[]; error?: string }>(`/api/v1/projects/${projectId}/jobs/${jobId}/logs`);
-}
-
-export function deleteProject(id: string) {
-	return apiFetch<{ status: string }>(`/api/v1/projects/${id}`, {
+export function closeTicket(projectId: string, ticketId: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/tickets/${ticketId}`, {
 		method: 'DELETE',
 	});
 }
 
-export function deleteJob(projectId: string, jobId: string) {
-	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/jobs/${jobId}`, {
+export function getRunLogs(projectId: string, ticketId: string, runId: string) {
+	return apiFetch<{ logs: string[]; error?: string }>(`/api/v1/projects/${projectId}/tickets/${ticketId}/runs/${runId}/logs`);
+}
+
+export function deleteProject(id: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${id}`, {
 		method: 'DELETE',
 	});
 }

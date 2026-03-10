@@ -28,6 +28,10 @@ class Config:
     ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]
     WORKER_IMAGE: str = os.environ["WORKER_IMAGE"]
     SANDBOX_TTL: int = int(os.getenv("SANDBOX_TTL", "900"))
+    VOLUME_TTL: int = int(os.getenv("VOLUME_TTL", "86400"))
+    REVIEW_DEBOUNCE_SECONDS: int = int(os.getenv("REVIEW_DEBOUNCE_SECONDS", "600"))
+
+    GITHUB_APP_WEBHOOK_SECRET: str = os.getenv("GITHUB_APP_WEBHOOK_SECRET", "")
 
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "DEBUG")
     AUTOPILOT_LABEL_DEFAULT: str = os.getenv("AUTOPILOT_LABEL_DEFAULT", "autopilot")

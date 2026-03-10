@@ -5,6 +5,8 @@ echo "CLAUDE_CODE_OAUTH_TOKEN set: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo "
 echo "GITHUB_TOKEN set: $([ -n "$GITHUB_TOKEN" ] && echo "yes (${#GITHUB_TOKEN} chars)" || echo "NO")"
 echo "LINEAR_API_KEY set: $([ -n "$LINEAR_API_KEY" ] && echo "yes (${#LINEAR_API_KEY} chars)" || echo "NO")"
 echo "ISSUE_PROMPT set: $([ -n "$ISSUE_PROMPT" ] && echo "yes (${#ISSUE_PROMPT} chars)" || echo "NO")"
+echo "CALLBACK_URL set: $([ -n "$CALLBACK_URL" ] && echo "yes" || echo "NO")"
+echo "CALLBACK_TOKEN set: $([ -n "$CALLBACK_TOKEN" ] && echo "yes (${#CALLBACK_TOKEN} chars)" || echo "NO")"
 
 git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 echo "Git credential helper configured"
@@ -12,6 +14,9 @@ echo "Git credential helper configured"
 envsubst < /app/mcp_config.template.json > /tmp/mcp_config.json
 echo "MCP config:"
 node -e 'const j=JSON.parse(require("fs").readFileSync("/tmp/mcp_config.json","utf8"));for(const s of Object.values(j.mcpServers||{})){for(const k of Object.keys(s.env||{}))s.env[k]="***";}console.log(JSON.stringify(j,null,2))'
+
+# Start in the persistent workspace volume
+cd /workspace 2>/dev/null || true
 
 echo "=== Launching claude ==="
 echo "claude version: $(claude --version 2>&1 || echo 'unknown')"
