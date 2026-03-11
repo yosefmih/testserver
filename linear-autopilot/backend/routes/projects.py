@@ -304,6 +304,60 @@ async def close_ticket(request: Request, project_id: str, ticket_id: str):
     return {"status": "closed"}
 
 
+@router.post("/projects/{project_id}/tickets/{ticket_id}/cancel")
+async def cancel_ticket(request: Request, project_id: str, ticket_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ticket = await pool.fetchrow(
+        "SELECT id, status, volume_id FROM tickets WHERE id = $1 AND project_id = $2",
+        ticket_id, project_id,
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    active_runs = await pool.fetch("""
+        SELECT id, sandbox_id FROM runs
+        WHERE ticket_id = $1 AND status IN ('pending', 'launching', 'running')
+    """, ticket_id)
+
+    for run in active_runs:
+        if run["sandbox_id"]:
+            try:
+                from porter_sandbox_api_client.api.sandboxes import delete_sandbox
+                from services.sandbox_runner import sandbox_client
+                delete_sandbox.sync(id=run["sandbox_id"], client=sandbox_client)
+            except Exception as e:
+                logger.warning("Failed to delete sandbox %s: %s", run["sandbox_id"], e)
+
+        await pool.execute(
+            "UPDATE runs SET status = 'cancelled', finished_at = now() WHERE id = $1",
+            str(run["id"]),
+        )
+
+    if ticket["volume_id"]:
+        try:
+            from porter_sandbox_api_client.api.volumes import delete_volume
+            from services.sandbox_runner import sandbox_client
+            delete_volume.sync(id=ticket["volume_id"], client=sandbox_client)
+            logger.info("Deleted volume %s for ticket %s", ticket["volume_id"], ticket_id)
+        except Exception as e:
+            logger.warning("Failed to delete volume %s: %s", ticket["volume_id"], e)
+
+    await pool.execute(
+        "UPDATE tickets SET status = 'cancelled', debounce_until = NULL, updated_at = now() WHERE id = $1",
+        ticket_id,
+    )
+
+    return {"status": "cancelled"}
+
+
 @router.get("/projects/{project_id}/tickets/{ticket_id}/runs/{run_id}/logs")
 async def get_run_logs(request: Request, project_id: str, ticket_id: str, run_id: str):
     user_id = get_current_user_id(request)

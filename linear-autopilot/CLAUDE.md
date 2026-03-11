@@ -77,6 +77,43 @@ Migrations live in `backend/migrations/` and are numbered sequentially (`001_ini
 - Reconnect: same connect URL (uses `prompt=consent`).
 - Disconnect: `DELETE /api/v1/projects/{id}/integrations/linear` clears all Linear token fields.
 
+## Ticket Lifecycle
+
+Tickets have the following statuses:
+- `active` — being processed, may have running sandboxes and an associated volume
+- `merged` — PR was merged, terminal state
+- `closed` — ticket was closed (no volume cleanup), terminal state
+- `cancelled` — ticket was cancelled via the UI; sandboxes and volume have been deleted, terminal state
+- `failed` — processing failed, terminal state
+
+Runs have statuses: `pending` → `launching` → `running` → `success` / `failed` / `cancelled`
+
+### Cancellation
+
+`POST /api/v1/projects/{project_id}/tickets/{ticket_id}/cancel`:
+1. Deletes all active sandbox runs via `porter_sandbox_api_client.api.sandboxes.delete_sandbox`
+2. Marks those runs as `cancelled`
+3. Deletes the ticket's associated volume via `porter_sandbox_api_client.api.volumes.delete_volume`
+4. Sets ticket status to `cancelled`
+
+The Cancel button in the UI is shown for any non-terminal ticket status (not `cancelled` or `merged`).
+
+## Porter Sandbox API Client
+
+Installed from: `porter-sandbox-api-client` wheel (see `backend/requirements.txt`).
+
+Available resource operations:
+- `porter_sandbox_api_client.api.sandboxes`: `create_sandbox`, `get_sandbox`, `get_sandbox_logs`, `delete_sandbox`
+- `porter_sandbox_api_client.api.volumes`: `create_volume`, `get_volume`, `delete_volume`, `list_volumes`
+
+The sandbox API URL is `http://sandbox-central.kube-system.svc.cluster.local` (cluster-internal).
+The `sandbox_client` singleton is defined in `backend/services/sandbox_runner.py`.
+
+Important `tickets` columns:
+- `volume_id` — the EFS volume provisioned for this ticket's workspace (nullable, deleted on cancel)
+- `pr_repo`, `pr_number`, `pr_url` — populated after the initial run creates a PR
+- `debounce_until` — used to prevent duplicate runs from rapid webhook events
+
 ## Development Notes
 
 - **Major branch is `dev`** — not `main`. Always branch from and PR against `dev`.
@@ -84,3 +121,4 @@ Migrations live in `backend/migrations/` and are numbered sequentially (`001_ini
 - The backend is uvicorn/FastAPI; run with `uvicorn main:app --reload` inside `backend/`.
 - Auth is session-cookie based (Google OAuth). Middleware in `backend/middleware/auth.py`.
 - The frontend makes all API calls through `/api/v1/...` — proxied by Vite in dev and served directly in production.
+- The ticket detail page (`/projects/[id]/tickets/[ticketId]`) auto-refreshes every 5s when a run is active.

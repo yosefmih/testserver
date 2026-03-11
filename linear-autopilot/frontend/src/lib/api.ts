@@ -116,6 +116,12 @@ export function closeTicket(projectId: string, ticketId: string) {
 	});
 }
 
+export function cancelTicket(projectId: string, ticketId: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/tickets/${ticketId}/cancel`, {
+		method: 'POST',
+	});
+}
+
 export function getRunLogs(projectId: string, ticketId: string, runId: string) {
 	return apiFetch<{ logs: string[]; error?: string }>(`/api/v1/projects/${projectId}/tickets/${ticketId}/runs/${runId}/logs`);
 }
