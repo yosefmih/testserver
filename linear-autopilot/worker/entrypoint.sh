@@ -3,10 +3,11 @@
 # Trap SIGTERM/SIGINT: kill the entire process group so claude + MCP servers
 # shut down promptly when the sandbox is deleted or TTL expires.
 cleanup() {
+    trap - SIGTERM SIGINT
     echo "=== Received signal, shutting down ==="
-    kill -TERM -$$ 2>/dev/null
+    kill -TERM "$CLAUDE_PID" 2>/dev/null
     sleep 2
-    kill -KILL -$$ 2>/dev/null
+    kill -KILL "$CLAUDE_PID" 2>/dev/null
     exit 143
 }
 trap cleanup SIGTERM SIGINT
@@ -47,7 +48,8 @@ EXIT_CODE=$?
 echo "=== Claude exited with code $EXIT_CODE ==="
 
 # Clean up orphaned MCP server processes (npx -> node).
-kill -TERM -$$ 2>/dev/null
+trap - SIGTERM SIGINT
+kill -TERM "$CLAUDE_PID" 2>/dev/null
 sleep 1
-kill -KILL -$$ 2>/dev/null
+kill -9 "$CLAUDE_PID" 2>/dev/null
 exit $EXIT_CODE
