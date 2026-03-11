@@ -11,6 +11,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Ticket status constants
+TICKET_STATUS_ACTIVE = "active"
+TICKET_STATUS_CANCELLED = "cancelled"
+TICKET_STATUS_CLOSED = "closed"
+TICKET_STATUS_FAILED = "failed"
+TICKET_STATUS_MERGED = "merged"
+
+# Run status constants
+RUN_STATUS_PENDING = "pending"
+RUN_STATUS_LAUNCHING = "launching"
+RUN_STATUS_RUNNING = "running"
+RUN_STATUS_CANCELLED = "cancelled"
+
+ACTIVE_RUN_STATUSES = (RUN_STATUS_PENDING, RUN_STATUS_LAUNCHING, RUN_STATUS_RUNNING)
+
 
 class CreateProjectRequest(BaseModel):
     name: str
@@ -235,14 +250,14 @@ async def trigger_review(request: Request, project_id: str, ticket_id: str):
     )
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if ticket["status"] != "active":
+    if ticket["status"] != TICKET_STATUS_ACTIVE:
         raise HTTPException(status_code=400, detail="Ticket is not active")
     if not ticket["pr_url"]:
         raise HTTPException(status_code=400, detail="Ticket has no PR")
 
-    active = await pool.fetchval("""
+    active = await pool.fetchval(f"""
         SELECT COUNT(*) FROM runs
-        WHERE ticket_id = $1 AND status IN ('pending', 'launching', 'running')
+        WHERE ticket_id = $1 AND status IN ('{RUN_STATUS_PENDING}', '{RUN_STATUS_LAUNCHING}', '{RUN_STATUS_RUNNING}')
     """, ticket_id)
     if active > 0:
         raise HTTPException(status_code=409, detail="A run is already in progress")
@@ -260,51 +275,6 @@ async def trigger_review(request: Request, project_id: str, ticket_id: str):
 
 
 @router.delete("/projects/{project_id}/tickets/{ticket_id}")
-async def close_ticket(request: Request, project_id: str, ticket_id: str):
-    user_id = get_current_user_id(request)
-    pool = await get_pool()
-
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    ticket = await pool.fetchrow(
-        "SELECT id, status FROM tickets WHERE id = $1 AND project_id = $2",
-        ticket_id, project_id,
-    )
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-
-    active_runs = await pool.fetch("""
-        SELECT id, sandbox_id FROM runs
-        WHERE ticket_id = $1 AND status IN ('pending', 'launching', 'running')
-    """, ticket_id)
-
-    for run in active_runs:
-        if run["sandbox_id"]:
-            try:
-                from porter_sandbox_api_client.api.sandboxes import delete_sandbox
-                from services.sandbox_runner import sandbox_client
-                delete_sandbox.sync(id=run["sandbox_id"], client=sandbox_client)
-            except Exception as e:
-                logger.warning("Failed to delete sandbox %s: %s", run["sandbox_id"], e)
-
-        await pool.execute(
-            "UPDATE runs SET status = 'cancelled', finished_at = now() WHERE id = $1",
-            str(run["id"]),
-        )
-
-    await pool.execute(
-        "UPDATE tickets SET status = 'closed', debounce_until = NULL, updated_at = now() WHERE id = $1",
-        ticket_id,
-    )
-
-    return {"status": "closed"}
-
-
-@router.post("/projects/{project_id}/tickets/{ticket_id}/cancel")
 async def cancel_ticket(request: Request, project_id: str, ticket_id: str):
     user_id = get_current_user_id(request)
     pool = await get_pool()
@@ -322,9 +292,9 @@ async def cancel_ticket(request: Request, project_id: str, ticket_id: str):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    active_runs = await pool.fetch("""
+    active_runs = await pool.fetch(f"""
         SELECT id, sandbox_id FROM runs
-        WHERE ticket_id = $1 AND status IN ('pending', 'launching', 'running')
+        WHERE ticket_id = $1 AND status IN ('{RUN_STATUS_PENDING}', '{RUN_STATUS_LAUNCHING}', '{RUN_STATUS_RUNNING}')
     """, ticket_id)
 
     for run in active_runs:
@@ -337,7 +307,7 @@ async def cancel_ticket(request: Request, project_id: str, ticket_id: str):
                 logger.warning("Failed to delete sandbox %s: %s", run["sandbox_id"], e)
 
         await pool.execute(
-            "UPDATE runs SET status = 'cancelled', finished_at = now() WHERE id = $1",
+            f"UPDATE runs SET status = '{RUN_STATUS_CANCELLED}', finished_at = now() WHERE id = $1",
             str(run["id"]),
         )
 
@@ -351,11 +321,11 @@ async def cancel_ticket(request: Request, project_id: str, ticket_id: str):
             logger.warning("Failed to delete volume %s: %s", ticket["volume_id"], e)
 
     await pool.execute(
-        "UPDATE tickets SET status = 'cancelled', debounce_until = NULL, updated_at = now() WHERE id = $1",
+        f"UPDATE tickets SET status = '{TICKET_STATUS_CANCELLED}', debounce_until = NULL, updated_at = now() WHERE id = $1",
         ticket_id,
     )
 
-    return {"status": "cancelled"}
+    return {"status": TICKET_STATUS_CANCELLED}
 
 
 @router.get("/projects/{project_id}/tickets/{ticket_id}/runs/{run_id}/logs")
