@@ -27,9 +27,6 @@ class Config:
     LINEAR_WEBHOOK_SECRET: str = os.environ["LINEAR_WEBHOOK_SECRET"]
     WORKER_IMAGE: str = os.environ["WORKER_IMAGE"]
 
-    CLAUDE_CLIENT_ID: str = os.getenv("CLAUDE_CLIENT_ID", "")
-    CLAUDE_CLIENT_SECRET: str = os.getenv("CLAUDE_CLIENT_SECRET", "")
-    CLAUDE_REDIRECT_URL: str = os.getenv("CLAUDE_REDIRECT_URL", "")
     SANDBOX_TTL: int = int(os.getenv("SANDBOX_TTL", "900"))
     VOLUME_TTL: int = int(os.getenv("VOLUME_TTL", "86400"))
     REVIEW_DEBOUNCE_SECONDS: int = int(os.getenv("REVIEW_DEBOUNCE_SECONDS", "600"))

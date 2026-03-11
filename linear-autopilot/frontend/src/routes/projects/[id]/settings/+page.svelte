@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getProject, updateProjectSettings, deleteProject, disconnectGithub, disconnectLinear, disconnectClaude } from '$lib/api';
+	import { getProject, updateProjectSettings, deleteProject, disconnectGithub, disconnectLinear } from '$lib/api';
 
 	let project = $state<any>(null);
 	let autopilotLabel = $state('');
 	let customTools = $state('');
 	let systemPrompt = $state('');
+	let anthropicApiKey = $state('');
 	let saving = $state(false);
 	let message = $state('');
 	let deleting = $state(false);
@@ -40,16 +41,6 @@
 		}
 	}
 
-	async function handleDisconnectClaude() {
-		if (!confirm('Disconnect Claude? Autopilot will not be able to run without a Claude connection.')) return;
-		try {
-			await disconnectClaude(projectId);
-			project = await getProject(projectId);
-		} catch (e: any) {
-			message = e.message;
-		}
-	}
-
 	async function handleDelete() {
 		if (!confirm(`Delete project "${project.name}"? All tickets and runs will be permanently removed. This cannot be undone.`)) return;
 		deleting = true;
@@ -70,6 +61,7 @@
 				autopilot_label: autopilotLabel || undefined,
 				custom_tools: customTools,
 				system_prompt: systemPrompt,
+				anthropic_api_key: anthropicApiKey || undefined,
 			});
 			project = await getProject(projectId);
 			message = 'Settings saved';
@@ -95,43 +87,28 @@
 
 		<h1 class="font-serif text-3xl tracking-tight mb-12">{project.name} <span class="text-warm-500">&mdash;</span> Settings</h1>
 
-		<!-- Claude Integration -->
+		<!-- Anthropic API Key -->
 		<section class="mb-8">
-			<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Claude Integration</h2>
+			<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Anthropic API Key</h2>
 			<div class="border border-warm-700/50 px-6 py-5">
-				{#if project.claude_connected}
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-2">
-							<span class="w-2 h-2 rounded-full bg-success"></span>
-							<span class="text-success text-sm">Connected</span>
-						</div>
-						<div class="flex items-center gap-4">
-							<a
-								href="/api/v1/projects/{projectId}/integrations/claude/connect"
-								class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
-							>
-								Reconnect
-							</a>
-							<button
-								class="text-warm-500 text-xs hover:text-red-400 transition-colors duration-200"
-								onclick={handleDisconnectClaude}
-							>
-								Disconnect
-							</button>
-						</div>
-					</div>
-					<p class="text-warm-500 text-xs mt-2">
-						Claude Code is authorized to run on this project.
-					</p>
-				{:else}
-					<p class="text-warm-500 text-sm mb-4">Connect a Claude account to power autopilot runs. Requires an active Claude Code plan.</p>
-					<a
-						href="/api/v1/projects/{projectId}/integrations/claude/connect"
-						class="inline-block bg-accent/10 border border-accent text-accent px-5 py-2.5 text-sm hover:bg-accent/20 transition-all duration-200 no-underline"
-					>
-						Connect Claude
-					</a>
-				{/if}
+				<div class="flex items-center gap-2 mb-3">
+					{#if project.claude_connected}
+						<span class="w-2 h-2 rounded-full bg-success"></span>
+						<span class="text-success text-xs">Key configured</span>
+					{:else}
+						<span class="w-2 h-2 rounded-full bg-red-400"></span>
+						<span class="text-red-400 text-xs">No key configured — runs will fail</span>
+					{/if}
+				</div>
+				<input
+					type="password"
+					bind:value={anthropicApiKey}
+					placeholder={project.claude_connected ? '••••••••••••••••••••' : 'sk-ant-...'}
+					class="w-full bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream focus:outline-none focus:border-accent transition-colors duration-200 font-mono"
+				/>
+				<p class="text-warm-500 text-xs mt-2">
+					Your Anthropic API key. Required for autopilot to run Claude Code. Saved with the settings below.
+				</p>
 			</div>
 		</section>
 

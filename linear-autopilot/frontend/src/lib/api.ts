@@ -83,6 +83,7 @@ export function updateProjectSettings(id: string, settings: {
 	autopilot_label?: string;
 	custom_tools?: string;
 	system_prompt?: string;
+	anthropic_api_key?: string;
 }) {
 	return apiFetch(`/api/v1/projects/${id}/settings`, {
 		method: 'PATCH',
@@ -141,12 +142,6 @@ export function disconnectGithub(projectId: string) {
 
 export function disconnectLinear(projectId: string) {
 	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/integrations/linear`, {
-		method: 'DELETE',
-	});
-}
-
-export function disconnectClaude(projectId: string) {
-	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/integrations/claude`, {
 		method: 'DELETE',
 	});
 }

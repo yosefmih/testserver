@@ -134,6 +134,7 @@ class UpdateProjectSettingsRequest(BaseModel):
     autopilot_label: str | None = None
     custom_tools: str | None = None
     system_prompt: str | None = None
+    anthropic_api_key: str | None = None
 
 
 @router.patch("/projects/{project_id}/settings")
@@ -151,6 +152,7 @@ async def update_project_settings(request: Request, project_id: str, body: Updat
         "autopilot_label": body.autopilot_label,
         "custom_tools": body.custom_tools,
         "system_prompt": body.system_prompt,
+        "anthropic_api_key": body.anthropic_api_key,
     }
 
     updates = []
