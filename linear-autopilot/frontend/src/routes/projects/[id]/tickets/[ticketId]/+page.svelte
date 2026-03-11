@@ -33,6 +33,7 @@
 	let expandedEntries = $state<Set<number>>(new Set());
 	let autoRefresh = $state<ReturnType<typeof setInterval> | null>(null);
 	let triggering = $state(false);
+	let hasActiveRun = $derived(ticket?.runs?.some((r: Run) => ACTIVE_STATUSES.includes(r.status)) ?? false);
 
 	const projectId = page.params.id;
 	const ticketId = page.params.ticketId;
@@ -220,7 +221,6 @@
 			<a href="/projects/{projectId}" class="text-warm-500 text-sm hover:text-cream transition-colors duration-200 no-underline">&larr; Back to project</a>
 		</div>
 
-		{@const hasActiveRun = ticket.runs.some((r: Run) => ['pending', 'launching', 'running'].includes(r.status))}
 		<div class="flex items-start justify-between mb-8">
 			<div>
 				<h1 class="font-serif text-2xl tracking-tight mb-2">{ticket.linear_issue_title}</h1>
