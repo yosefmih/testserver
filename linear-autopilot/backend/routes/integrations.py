@@ -23,6 +23,10 @@ LINEAR_PROMPT = "consent"
 
 GITHUB_INSTALL_BASE_URL = "https://github.com/apps"
 
+CLAUDE_AUTH_URL = "https://claude.ai/oauth/authorize"
+CLAUDE_TOKEN_URL = "https://claude.ai/oauth/token"
+CLAUDE_OAUTH_STATE_COOKIE = "claude_oauth_state"
+
 STATUS_DISCONNECTED = "disconnected"
 
 
@@ -186,3 +190,95 @@ async def linear_callback(request: Request, code: str, state: str):
     response = RedirectResponse(url=f"/projects/{project_id}/settings", status_code=302)
     response.delete_cookie(LINEAR_OAUTH_STATE_COOKIE)
     return response
+
+
+# --- Claude OAuth ---
+
+@router.get("/projects/{project_id}/integrations/claude/connect")
+async def claude_connect(request: Request, project_id: str):
+    get_current_user_id(request)
+
+    if not config.CLAUDE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Claude OAuth is not configured on this server")
+
+    state = f"{project_id}:{secrets.token_hex(16)}"
+    params = urlencode({
+        "client_id": config.CLAUDE_CLIENT_ID,
+        "redirect_uri": config.CLAUDE_REDIRECT_URL,
+        "response_type": "code",
+        "scope": "claude-code",
+        "state": state,
+    })
+
+    response = RedirectResponse(url=f"{CLAUDE_AUTH_URL}?{params}")
+    response.set_cookie(
+        CLAUDE_OAUTH_STATE_COOKIE, state,
+        httponly=True, samesite="lax", max_age=300,
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+@callbacks_router.get("/claude/callback")
+async def claude_callback(request: Request, code: str, state: str):
+    stored_state = request.cookies.get(CLAUDE_OAUTH_STATE_COOKIE)
+    if not stored_state or stored_state != state:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state")
+
+    project_id = state.split(":")[0]
+    user_id = get_current_user_id(request)
+
+    pool = await get_pool()
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2",
+        project_id, user_id,
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    import httpx
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(CLAUDE_TOKEN_URL, data={
+            "code": code,
+            "client_id": config.CLAUDE_CLIENT_ID,
+            "client_secret": config.CLAUDE_CLIENT_SECRET,
+            "redirect_uri": config.CLAUDE_REDIRECT_URL,
+            "grant_type": "authorization_code",
+        })
+        if resp.status_code != 200:
+            logger.error("Claude token exchange failed: %s %s", resp.status_code, resp.text)
+            raise HTTPException(status_code=400, detail="Failed to exchange Claude authorization code. Ensure this account has an active Claude Code plan.")
+        tokens = resp.json()
+
+    access_token = tokens.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="No access token returned from Claude OAuth")
+
+    await pool.execute(
+        "UPDATE projects SET anthropic_api_key = $1, updated_at = now() WHERE id = $2",
+        access_token, project_id,
+    )
+
+    logger.info("Claude connected: project=%s", project_id)
+
+    response = RedirectResponse(url=f"/projects/{project_id}/settings", status_code=302)
+    response.delete_cookie(CLAUDE_OAUTH_STATE_COOKIE)
+    return response
+
+
+@router.delete("/projects/{project_id}/integrations/claude")
+async def claude_disconnect(request: Request, project_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    await pool.execute(
+        "UPDATE projects SET anthropic_api_key = NULL, updated_at = now() WHERE id = $1",
+        project_id,
+    )
+    return {"status": STATUS_DISCONNECTED}

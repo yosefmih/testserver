@@ -23,7 +23,8 @@ async def _launch_pending_runs():
         SELECT r.id, r.ticket_id, r.kind,
                t.linear_issue_id, t.linear_issue_title, t.linear_issue_description,
                t.linear_issue_url, t.volume_id, t.pr_url, t.project_id,
-               p.github_installation_id, p.linear_access_token
+               p.github_installation_id, p.linear_access_token,
+               p.anthropic_api_key, p.custom_tools, p.system_prompt
         FROM runs r
         JOIN tickets t ON t.id = r.ticket_id
         JOIN projects p ON p.id = t.project_id
@@ -49,6 +50,9 @@ async def _launch_pending_runs():
             continue
 
         try:
+            if not run["anthropic_api_key"]:
+                raise Exception("No Claude/Anthropic API key configured for this project. Connect Claude in project settings.")
+
             await pool.execute("UPDATE runs SET status = 'launching' WHERE id = $1", run_id)
 
             volume_id = run["volume_id"]
@@ -87,6 +91,9 @@ async def _launch_pending_runs():
                 issue_url=run["linear_issue_url"] or "",
                 github_installation_id=run["github_installation_id"],
                 linear_access_token=run["linear_access_token"],
+                anthropic_api_key=run["anthropic_api_key"],
+                custom_tools=run["custom_tools"],
+                system_prompt=run["system_prompt"],
                 pr_url=run["pr_url"],
                 pr_repo=pr_repo,
                 pr_number=pr_number,

@@ -25,6 +25,8 @@ VOLUME_READY_TIMEOUT = 60
 SANDBOX_CREATE_RETRIES = 3
 SANDBOX_CREATE_RETRY_DELAY = 5
 
+DEFAULT_ALLOWED_TOOLS = "mcp__github__*,mcp__linear__get_issue,mcp__linear__get_issue_comments,Read,Write,Edit,Bash,Glob,Grep"
+
 
 def generate_callback_token() -> str:
     return secrets.token_urlsafe(48)
@@ -159,6 +161,9 @@ async def create_sandbox_for_run(
     issue_url: str,
     github_installation_id: int,
     linear_access_token: str,
+    anthropic_api_key: str,
+    custom_tools: str | None = None,
+    system_prompt: str | None = None,
     pr_url: str | None = None,
     pr_repo: str | None = None,
     pr_number: int | None = None,
@@ -190,18 +195,26 @@ async def create_sandbox_for_run(
             callback_url=callback_url,
         )
 
+    if system_prompt:
+        prompt = f"{prompt}\n\n--- Organization Instructions ---\n{system_prompt}"
+
+    allowed_tools = DEFAULT_ALLOWED_TOOLS
+    if custom_tools:
+        allowed_tools = f"{allowed_tools},{custom_tools}"
+
     spec = SandboxSpec(
         image=config.WORKER_IMAGE,
         command=["bash", "/app/entrypoint.sh"],
         ttl_seconds=config.SANDBOX_TTL,
         env=SandboxSpecEnv.from_dict({
-            "CLAUDE_CODE_OAUTH_TOKEN": config.ANTHROPIC_API_KEY,
+            "CLAUDE_CODE_OAUTH_TOKEN": anthropic_api_key,
             "GITHUB_TOKEN": github_token,
             "LINEAR_API_KEY": linear_access_token,
             "ISSUE_PROMPT": prompt,
             "CALLBACK_TOKEN": callback_token,
             "CALLBACK_URL": callback_url,
             "RUN_KIND": kind,
+            "ALLOWED_TOOLS": allowed_tools,
         }),
         mounts=[
             Mount(

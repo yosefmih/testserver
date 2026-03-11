@@ -38,7 +38,8 @@ async def list_projects(request: Request):
 
     rows = await pool.fetch("""
         SELECT id, name, github_installation_id,
-               linear_access_token, linear_organization_id, autopilot_label, created_at
+               linear_access_token, linear_organization_id, anthropic_api_key,
+               autopilot_label, created_at
         FROM projects
         WHERE user_id = $1
         ORDER BY created_at DESC
@@ -51,6 +52,7 @@ async def list_projects(request: Request):
             "github_connected": r["github_installation_id"] is not None,
             "linear_connected": r["linear_organization_id"] is not None,
             "linear_has_token": r["linear_access_token"] is not None,
+            "claude_connected": r["anthropic_api_key"] is not None,
             "autopilot_label": r["autopilot_label"],
             "created_at": r["created_at"].isoformat(),
         }
@@ -82,7 +84,8 @@ async def get_project(request: Request, project_id: str):
 
     project = await pool.fetchrow("""
         SELECT id, name, github_installation_id,
-               linear_access_token, linear_organization_id, autopilot_label, created_at
+               linear_access_token, linear_organization_id, anthropic_api_key,
+               custom_tools, system_prompt, autopilot_label, created_at
         FROM projects
         WHERE id = $1 AND user_id = $2
     """, project_id, user_id)
@@ -105,8 +108,11 @@ async def get_project(request: Request, project_id: str):
         "github_connected": project["github_installation_id"] is not None,
         "linear_connected": project["linear_organization_id"] is not None,
         "linear_has_token": project["linear_access_token"] is not None,
+        "claude_connected": project["anthropic_api_key"] is not None,
         "linear_organization_id": project["linear_organization_id"],
         "autopilot_label": project["autopilot_label"],
+        "custom_tools": project["custom_tools"] or "",
+        "system_prompt": project["system_prompt"] or "",
         "created_at": project["created_at"].isoformat(),
         "tickets": [
             {
@@ -126,6 +132,8 @@ async def get_project(request: Request, project_id: str):
 
 class UpdateProjectSettingsRequest(BaseModel):
     autopilot_label: str | None = None
+    custom_tools: str | None = None
+    system_prompt: str | None = None
 
 
 @router.patch("/projects/{project_id}/settings")
@@ -139,19 +147,26 @@ async def update_project_settings(request: Request, project_id: str, body: Updat
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    field_map = {
+        "autopilot_label": body.autopilot_label,
+        "custom_tools": body.custom_tools,
+        "system_prompt": body.system_prompt,
+    }
+
     updates = []
     params = []
     param_idx = 1
 
-    if body.autopilot_label is not None:
-        updates.append(f"autopilot_label = ${param_idx}")
-        params.append(body.autopilot_label)
-        param_idx += 1
+    for col, val in field_map.items():
+        if val is not None:
+            updates.append(f"{col} = ${param_idx}")
+            params.append(val)
+            param_idx += 1
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    updates.append(f"updated_at = now()")
+    updates.append("updated_at = now()")
     params.append(project_id)
 
     query = f"UPDATE projects SET {', '.join(updates)} WHERE id = ${param_idx}"

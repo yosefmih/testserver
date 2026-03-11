@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getProject, updateProjectSettings, deleteProject, disconnectGithub, disconnectLinear } from '$lib/api';
+	import { getProject, updateProjectSettings, deleteProject, disconnectGithub, disconnectLinear, disconnectClaude } from '$lib/api';
 
 	let project = $state<any>(null);
 	let autopilotLabel = $state('');
+	let customTools = $state('');
+	let systemPrompt = $state('');
 	let saving = $state(false);
 	let message = $state('');
 	let deleting = $state(false);
@@ -14,6 +16,8 @@
 	onMount(async () => {
 		project = await getProject(projectId);
 		autopilotLabel = project.autopilot_label || 'autopilot';
+		customTools = project.custom_tools || '';
+		systemPrompt = project.system_prompt || '';
 	});
 
 	async function handleDisconnectGithub() {
@@ -30,6 +34,16 @@
 		if (!confirm('Disconnect Linear integration? This will stop autopilot from receiving issues.')) return;
 		try {
 			await disconnectLinear(projectId);
+			project = await getProject(projectId);
+		} catch (e: any) {
+			message = e.message;
+		}
+	}
+
+	async function handleDisconnectClaude() {
+		if (!confirm('Disconnect Claude? Autopilot will not be able to run without a Claude connection.')) return;
+		try {
+			await disconnectClaude(projectId);
 			project = await getProject(projectId);
 		} catch (e: any) {
 			message = e.message;
@@ -54,6 +68,8 @@
 		try {
 			await updateProjectSettings(projectId, {
 				autopilot_label: autopilotLabel || undefined,
+				custom_tools: customTools,
+				system_prompt: systemPrompt,
 			});
 			project = await getProject(projectId);
 			message = 'Settings saved';
@@ -78,6 +94,46 @@
 		</div>
 
 		<h1 class="font-serif text-3xl tracking-tight mb-12">{project.name} <span class="text-warm-500">&mdash;</span> Settings</h1>
+
+		<!-- Claude Integration -->
+		<section class="mb-8">
+			<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Claude Integration</h2>
+			<div class="border border-warm-700/50 px-6 py-5">
+				{#if project.claude_connected}
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-2">
+							<span class="w-2 h-2 rounded-full bg-success"></span>
+							<span class="text-success text-sm">Connected</span>
+						</div>
+						<div class="flex items-center gap-4">
+							<a
+								href="/api/v1/projects/{projectId}/integrations/claude/connect"
+								class="text-warm-500 text-xs hover:text-cream transition-colors duration-200 no-underline"
+							>
+								Reconnect
+							</a>
+							<button
+								class="text-warm-500 text-xs hover:text-red-400 transition-colors duration-200"
+								onclick={handleDisconnectClaude}
+							>
+								Disconnect
+							</button>
+						</div>
+					</div>
+					<p class="text-warm-500 text-xs mt-2">
+						Claude Code is authorized to run on this project.
+					</p>
+				{:else}
+					<p class="text-warm-500 text-sm mb-4">Connect a Claude account to power autopilot runs. Requires an active Claude Code plan.</p>
+					<a
+						href="/api/v1/projects/{projectId}/integrations/claude/connect"
+						class="inline-block bg-accent/10 border border-accent text-accent px-5 py-2.5 text-sm hover:bg-accent/20 transition-all duration-200 no-underline"
+					>
+						Connect Claude
+					</a>
+				{/if}
+			</div>
+		</section>
 
 		<!-- GitHub Integration -->
 		<section class="mb-8">
@@ -159,16 +215,43 @@
 		<!-- Autopilot Settings -->
 		<section class="mb-8">
 			<h2 class="text-xs text-warm-500 uppercase tracking-wider mb-4">Autopilot Settings</h2>
-			<div class="border border-warm-700/50 px-6 py-5">
-				<label class="text-warm-500 text-xs uppercase tracking-wider block mb-2">Trigger Label</label>
-				<input
-					bind:value={autopilotLabel}
-					placeholder="autopilot"
-					class="w-full bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream focus:outline-none focus:border-accent transition-colors duration-200"
-				/>
-				<p class="text-warm-500 text-xs mt-2">
-					Issues with this label will trigger Claude Code to create a fix PR.
-				</p>
+			<div class="border border-warm-700/50 px-6 py-5 space-y-6">
+				<div>
+					<label class="text-warm-500 text-xs uppercase tracking-wider block mb-2">Trigger Label</label>
+					<input
+						bind:value={autopilotLabel}
+						placeholder="autopilot"
+						class="w-full bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream focus:outline-none focus:border-accent transition-colors duration-200"
+					/>
+					<p class="text-warm-500 text-xs mt-2">
+						Issues with this label will trigger Claude Code to create a fix PR.
+					</p>
+				</div>
+
+				<div>
+					<label class="text-warm-500 text-xs uppercase tracking-wider block mb-2">System Prompt</label>
+					<textarea
+						bind:value={systemPrompt}
+						placeholder="Additional instructions for Claude Code (e.g. repo setup steps, coding conventions, build commands)..."
+						rows="6"
+						class="w-full bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream focus:outline-none focus:border-accent transition-colors duration-200 font-mono resize-y"
+					></textarea>
+					<p class="text-warm-500 text-xs mt-2">
+						Appended to every prompt. Use this for org-wide instructions like build setup, coding style, or repo-specific context.
+					</p>
+				</div>
+
+				<div>
+					<label class="text-warm-500 text-xs uppercase tracking-wider block mb-2">Additional Tools</label>
+					<input
+						bind:value={customTools}
+						placeholder="e.g. mcp__custom__*,WebSearch"
+						class="w-full bg-transparent border border-warm-600 px-4 py-2.5 text-sm text-cream focus:outline-none focus:border-accent transition-colors duration-200 font-mono"
+					/>
+					<p class="text-warm-500 text-xs mt-2">
+						Comma-separated list of additional tool patterns to allow, added to the defaults (GitHub MCP, Linear MCP, Read, Write, Edit, Bash, Glob, Grep).
+					</p>
+				</div>
 			</div>
 		</section>
 

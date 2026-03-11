@@ -35,7 +35,7 @@ echo "claude version: $(claude --version 2>&1 || echo 'unknown')"
 
 CLAUDE_ARGS=(
     --mcp-config /tmp/mcp_config.json
-    --allowedTools "mcp__github__*,mcp__linear__get_issue,mcp__linear__get_issue_comments,Read,Write,Edit,Bash,Glob,Grep"
+    --allowedTools "${ALLOWED_TOOLS:-mcp__github__*,mcp__linear__get_issue,mcp__linear__get_issue_comments,Read,Write,Edit,Bash,Glob,Grep}"
     --output-format stream-json
     --verbose
 )

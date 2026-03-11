@@ -70,13 +70,20 @@ export function getProject(id: string) {
 		name: string;
 		github_connected: boolean;
 		linear_connected: boolean;
+		claude_connected: boolean;
 		autopilot_label: string;
+		custom_tools: string;
+		system_prompt: string;
 		created_at: string;
 		tickets: Ticket[];
 	}>(`/api/v1/projects/${id}`);
 }
 
-export function updateProjectSettings(id: string, settings: { autopilot_label?: string }) {
+export function updateProjectSettings(id: string, settings: {
+	autopilot_label?: string;
+	custom_tools?: string;
+	system_prompt?: string;
+}) {
 	return apiFetch(`/api/v1/projects/${id}/settings`, {
 		method: 'PATCH',
 		body: JSON.stringify(settings),
@@ -134,6 +141,12 @@ export function disconnectGithub(projectId: string) {
 
 export function disconnectLinear(projectId: string) {
 	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/integrations/linear`, {
+		method: 'DELETE',
+	});
+}
+
+export function disconnectClaude(projectId: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/integrations/claude`, {
 		method: 'DELETE',
 	});
 }
