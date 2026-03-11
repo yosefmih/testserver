@@ -88,6 +88,7 @@ async def get_project(request: Request, project_id: str):
         "id": str(project["id"]),
         "name": project["name"],
         "github_connected": project["github_installation_id"] is not None,
+        "github_installation_id": project["github_installation_id"],
         "linear_connected": project["linear_organization_id"] is not None,
         "linear_has_token": project["linear_access_token"] is not None,
         "linear_organization_id": project["linear_organization_id"],

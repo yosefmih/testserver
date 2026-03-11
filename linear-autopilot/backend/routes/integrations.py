@@ -1,5 +1,6 @@
 import logging
 import secrets
+from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, HTTPException
@@ -30,21 +31,56 @@ STATUS_DISCONNECTED = "disconnected"
 
 @router.get("/projects/{project_id}/integrations/github/install")
 async def github_install(request: Request, project_id: str):
-    get_current_user_id(request)
-    install_url = f"{GITHUB_INSTALL_BASE_URL}/{config.GITHUB_APP_SLUG}/installations/new"
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    project = await pool.fetchrow(
+        "SELECT github_installation_id FROM projects WHERE id = $1 AND user_id = $2",
+        project_id, user_id,
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
     params = urlencode({"state": project_id})
+
+    if project["github_installation_id"]:
+        # Update existing installation: redirect to the GitHub App's update URL so the
+        # user can change repo access without creating a duplicate installation.
+        install_url = (
+            f"{GITHUB_INSTALL_BASE_URL}/{config.GITHUB_APP_SLUG}"
+            f"/installations/{project['github_installation_id']}/permissions/update"
+        )
+    else:
+        install_url = f"{GITHUB_INSTALL_BASE_URL}/{config.GITHUB_APP_SLUG}/installations/new"
+
     return RedirectResponse(url=f"{install_url}?{params}")
 
 
 @callbacks_router.get("/github/callback")
-async def github_callback(request: Request, installation_id: int, state: str):
+async def github_callback(
+    request: Request,
+    installation_id: int,
+    state: Optional[str] = None,
+    setup_action: Optional[str] = None,
+):
     user_id = get_current_user_id(request)
-    project_id = state
-
     pool = await get_pool()
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
+
+    if state:
+        project_id = state
+        project = await pool.fetchrow(
+            "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
+        )
+    else:
+        # GitHub does not always forward the `state` parameter when an installation is
+        # updated directly from GitHub's own settings UI.  Fall back to looking up the
+        # project by the existing installation_id so updates still land correctly.
+        project = await pool.fetchrow(
+            "SELECT id FROM projects WHERE github_installation_id = $1 AND user_id = $2",
+            installation_id, user_id,
+        )
+        project_id = str(project["id"]) if project else None
+
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -167,10 +203,16 @@ async def linear_callback(request: Request, code: str, state: str):
         org_id, project_id,
     )
     if conflict:
-        raise HTTPException(
-            status_code=409,
-            detail=f"This Linear organization is already linked to project \"{conflict['name']}\"",
+        # Redirect back to settings with a human-readable error rather than returning a
+        # raw JSON 409, so the user sees a clear message in the UI.
+        from urllib.parse import quote
+        error_msg = f"This Linear organization is already linked to project \"{conflict['name']}\""
+        response = RedirectResponse(
+            url=f"/projects/{project_id}/settings?error={quote(error_msg)}",
+            status_code=302,
         )
+        response.delete_cookie(LINEAR_OAUTH_STATE_COOKIE)
+        return response
 
     await pool.execute("""
         UPDATE projects SET
