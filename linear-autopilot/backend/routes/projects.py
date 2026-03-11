@@ -260,7 +260,7 @@ async def trigger_review(request: Request, project_id: str, ticket_id: str):
 
 
 @router.delete("/projects/{project_id}/tickets/{ticket_id}")
-async def close_ticket(request: Request, project_id: str, ticket_id: str):
+async def cancel_ticket(request: Request, project_id: str, ticket_id: str):
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
@@ -271,11 +271,14 @@ async def close_ticket(request: Request, project_id: str, ticket_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
 
     ticket = await pool.fetchrow(
-        "SELECT id, status FROM tickets WHERE id = $1 AND project_id = $2",
+        "SELECT id, status, volume_id FROM tickets WHERE id = $1 AND project_id = $2",
         ticket_id, project_id,
     )
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+
+    from porter_sandbox_api_client.api.sandboxes import delete_sandbox
+    from services.sandbox_runner import sandbox_client
 
     active_runs = await pool.fetch("""
         SELECT id, sandbox_id FROM runs
@@ -285,9 +288,8 @@ async def close_ticket(request: Request, project_id: str, ticket_id: str):
     for run in active_runs:
         if run["sandbox_id"]:
             try:
-                from porter_sandbox_api_client.api.sandboxes import delete_sandbox
-                from services.sandbox_runner import sandbox_client
                 delete_sandbox.sync(id=run["sandbox_id"], client=sandbox_client)
+                logger.info("Deleted sandbox %s for cancelled ticket %s", run["sandbox_id"], ticket_id)
             except Exception as e:
                 logger.warning("Failed to delete sandbox %s: %s", run["sandbox_id"], e)
 
@@ -296,12 +298,21 @@ async def close_ticket(request: Request, project_id: str, ticket_id: str):
             str(run["id"]),
         )
 
+    # Delete the EFS volume associated with this ticket to free cluster resources
+    if ticket["volume_id"]:
+        try:
+            from porter_sandbox_api_client.api.volumes import delete_volume
+            delete_volume.sync(id=ticket["volume_id"], client=sandbox_client)
+            logger.info("Deleted volume %s for cancelled ticket %s", ticket["volume_id"], ticket_id)
+        except Exception as e:
+            logger.warning("Failed to delete volume %s: %s", ticket["volume_id"], e)
+
     await pool.execute(
-        "UPDATE tickets SET status = 'closed', debounce_until = NULL, updated_at = now() WHERE id = $1",
+        "UPDATE tickets SET status = 'cancelled', debounce_until = NULL, updated_at = now() WHERE id = $1",
         ticket_id,
     )
 
-    return {"status": "closed"}
+    return {"status": "cancelled"}
 
 
 @router.get("/projects/{project_id}/tickets/{ticket_id}/runs/{run_id}/logs")

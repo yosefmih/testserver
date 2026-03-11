@@ -77,6 +77,52 @@ Migrations live in `backend/migrations/` and are numbered sequentially (`001_ini
 - Reconnect: same connect URL (uses `prompt=consent`).
 - Disconnect: `DELETE /api/v1/projects/{id}/integrations/linear` clears all Linear token fields.
 
+## Ticket Lifecycle
+
+Ticket statuses and their meanings:
+
+| Status | Trigger |
+|--------|---------|
+| `active` | Linear webhook fires, issue labelled with autopilot label |
+| `merged` | GitHub webhook: PR was merged |
+| `closed` | GitHub webhook: PR was closed without merging |
+| `cancelled` | User manually cancels via UI — deletes sandboxes + volume |
+| `failed` | All runs failed with no pending runs remaining |
+
+When a ticket is cancelled (`DELETE /api/v1/projects/{id}/tickets/{tid}`):
+1. All active runs (pending/launching/running) have their sandboxes deleted via Porter API.
+2. All active runs are set to `cancelled`.
+3. The ticket's EFS volume is deleted via Porter API (best-effort; errors are logged, not raised).
+4. Ticket status is set to `cancelled`.
+
+## Porter Sandbox API Client
+
+Installed from a private wheel: `porter-sandbox-api-client @ https://...`. Key modules:
+
+- `porter_sandbox_api_client.api.sandboxes` — `create_sandbox`, `get_sandbox`, `get_sandbox_logs`, `delete_sandbox`
+- `porter_sandbox_api_client.api.volumes` — `create_volume`, `get_volume`, `delete_volume`
+
+The `sandbox_client` is a module-level singleton in `services/sandbox_runner.py`.
+
+## Key API Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `DELETE` | `/api/v1/projects/{id}/tickets/{tid}` | Cancel ticket, delete sandboxes + volume |
+| `POST` | `/api/v1/projects/{id}/tickets/{tid}/trigger-review` | Queue a manual review run |
+| `GET` | `/api/v1/projects/{id}/tickets/{tid}` | Ticket detail + runs |
+| `GET` | `/api/v1/projects/{id}/tickets/{tid}/runs/{rid}/logs` | Stream sandbox logs |
+| `POST` | `/api/internal/runs/{rid}/metadata` | Sandbox callback to report PR metadata |
+
+## Frontend Notes
+
+The ticket detail page (`frontend/src/routes/projects/[id]/tickets/[ticketId]/+page.svelte`) has:
+- A **"Cancel ticket"** button (red, visible only for `active` tickets) that calls `closeTicket()` from `api.ts`.
+- A **"Run review"** button (visible for active tickets with a PR) to manually queue a review run.
+- Auto-refresh every 5s while any run is in an active state.
+
+`frontend/src/lib/api.ts` contains `closeTicket(projectId, ticketId)` which calls `DELETE /api/v1/projects/{id}/tickets/{tid}`.
+
 ## Development Notes
 
 - **Major branch is `dev`** — not `main`. Always branch from and PR against `dev`.

@@ -13,6 +13,7 @@
 		if (status === 'active') return 'text-accent';
 		if (status === 'merged') return 'text-success';
 		if (status === 'closed') return 'text-warm-500';
+		if (status === 'cancelled') return 'text-warm-500';
 		if (status === 'failed') return 'text-danger';
 		return 'text-warm-500';
 	}
@@ -21,6 +22,7 @@
 		if (status === 'active') return 'bg-accent';
 		if (status === 'merged') return 'bg-success';
 		if (status === 'closed') return 'bg-warm-500';
+		if (status === 'cancelled') return 'bg-warm-500';
 		if (status === 'failed') return 'bg-danger';
 		return 'bg-warm-500';
 	}
