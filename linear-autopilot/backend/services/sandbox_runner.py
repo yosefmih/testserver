@@ -92,21 +92,21 @@ You have access to the following GitHub repos:
 {repo_list}
 
 Steps:
-1. Determine which repo is relevant based on the issue context
-2. Clone that repo into /workspace/repo
-3. Create a branch named autopilot/{issue_id}
+1. Determine which repos are relevant based on the issue context
+2. Clone them under /workspace/ (e.g. /workspace/repo-name). Clone as many repos as you need.
+3. Create a branch named autopilot/{issue_id} in the primary repo you are changing
 4. Understand and fix the issue
 5. Commit your changes with a descriptive message
 6. Push the branch and create a PR linking to {issue_url}
 
 Do NOT comment on the Linear issue — the server handles that automatically.
 
-IMPORTANT: After creating the PR, you MUST report the metadata by running:
+IMPORTANT: After creating the PR, you MUST report metadata and a summary by running:
 curl -s -X POST "{callback_url}?token=$CALLBACK_TOKEN" \\
   -H "Content-Type: application/json" \\
-  -d '{{"pr_url": "<THE_PR_URL>", "pr_repo": "<owner/repo>", "pr_number": <PR_NUMBER>}}'
+  -d '{{"pr_url": "<THE_PR_URL>", "pr_repo": "<owner/repo>", "pr_number": <PR_NUMBER>, "summary": "<2-3 sentence summary of what you did and why>"}}'
 
-Work inside /workspace/repo for your cloned code. Any state you want preserved across runs should be in /workspace."""
+The summary should be concise and explain what changes you made and the reasoning behind them. This gets posted to the Linear issue for the team."""
 
 
 def _build_review_prompt(
@@ -125,30 +125,27 @@ PR: {pr_url}
 Repo: {pr_repo}
 PR Number: {pr_number}
 
-The repo is already cloned at /workspace/repo. Your previous work is preserved there.
+This is a continuation of your previous session — you have full context of what you did before.
 
 Steps:
-1. cd /workspace/repo and pull latest changes
+1. Pull latest changes in the repo you were working in
 2. Use the GitHub MCP server to fetch ALL comments on PR #{pr_number} in {pr_repo}:
    - Use mcp__github__pull_request_read to get PR details and all review comments
-   - This returns both inline review comments and conversation comments
-3. Read /workspace/.addressed_comments.json if it exists — this tracks comment IDs you have already addressed in previous runs. If the file does not exist, treat all comments as new.
-4. Identify which comments are NEW (not in the addressed list) and not authored by you (skip bot/automation comments)
-5. Address each new comment by making the requested code changes
-6. Commit and push to the existing branch
-7. Reply to EACH comment individually on GitHub:
-   - For inline review comments: use mcp__github__add_reply_to_pull_request_comment to reply directly on the comment thread so the reviewer sees the response in context
-   - For general PR conversation comments: use mcp__github__add_issue_comment to respond
+3. Identify which comments are NEW (ones you haven't addressed yet) and not authored by you
+4. Address each new comment by making the requested code changes
+5. Commit and push to the existing branch
+6. Reply to EACH comment individually on GitHub:
+   - For inline review comments: use mcp__github__add_reply_to_pull_request_comment
+   - For general PR conversation comments: use mcp__github__add_issue_comment
    - Keep replies concise — briefly describe what you changed
-8. Update /workspace/.addressed_comments.json — append the IDs of all comments you addressed in this run
-9. Report completion
+7. Report completion
 
 IMPORTANT: After pushing, report completion by running:
 curl -s -X POST "{callback_url}?token=$CALLBACK_TOKEN" \\
   -H "Content-Type: application/json" \\
-  -d '{{"status": "addressed"}}'
+  -d '{{"status": "addressed", "summary": "<2-3 sentence summary of what review comments you addressed and what changes you made>"}}'
 
-Work inside /workspace/repo."""
+The summary gets posted to the Linear issue for the team."""
 
 
 async def create_sandbox_for_run(
@@ -204,6 +201,7 @@ async def create_sandbox_for_run(
             "ISSUE_PROMPT": prompt,
             "CALLBACK_TOKEN": callback_token,
             "CALLBACK_URL": callback_url,
+            "RUN_KIND": kind,
         }),
         mounts=[
             Mount(

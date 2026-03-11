@@ -18,7 +18,9 @@ __pycache__/
 
 .env 
 
+.env.it
 .env.local
+
 
 .next/
 

@@ -183,6 +183,28 @@ async def _sync_active_runs():
 
             logger.info("Ticket sync: run %s finished as %s", run_id, final_status)
 
+            try:
+                ticket_info = await pool.fetchrow("""
+                    SELECT t.linear_issue_id, r.summary, p.linear_access_token
+                    FROM tickets t
+                    JOIN runs r ON r.ticket_id = t.id
+                    JOIN projects p ON p.id = t.project_id
+                    WHERE r.id = $1
+                """, run_id)
+                if ticket_info and ticket_info["linear_access_token"]:
+                    if final_status == "failed" and not ticket_info["summary"]:
+                        fail_msg = "**Autopilot run failed.**"
+                        if error_text:
+                            truncated = error_text[-500:]
+                            fail_msg += f"\n```\n{truncated}\n```"
+                        await post_issue_comment(
+                            ticket_info["linear_access_token"],
+                            ticket_info["linear_issue_id"],
+                            fail_msg,
+                        )
+            except Exception:
+                logger.warning("Ticket sync: failed to post completion comment for run %s", run_id)
+
             if final_status == "failed":
                 remaining = await pool.fetchval("""
                     SELECT COUNT(*) FROM runs

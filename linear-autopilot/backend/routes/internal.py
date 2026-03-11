@@ -15,6 +15,7 @@ class RunMetadata(BaseModel):
     pr_repo: str | None = None
     pr_number: int | None = None
     status: str | None = None
+    summary: str | None = None
 
 
 @router.post("/runs/{run_id}/metadata")
@@ -80,6 +81,27 @@ async def report_run_metadata(request: Request, run_id: str, body: RunMetadata):
                     )
             except Exception:
                 logger.warning("Failed to post PR comment to Linear for ticket %s", ticket_id)
+
+    if body.summary:
+        await pool.execute(
+            "UPDATE runs SET summary = $1 WHERE id = $2",
+            body.summary, run_id,
+        )
+        try:
+            ticket = await pool.fetchrow("""
+                SELECT t.linear_issue_id, p.linear_access_token
+                FROM tickets t
+                JOIN projects p ON p.id = t.project_id
+                WHERE t.id = $1
+            """, ticket_id)
+            if ticket and ticket["linear_access_token"]:
+                await post_issue_comment(
+                    ticket["linear_access_token"],
+                    ticket["linear_issue_id"],
+                    f"**Autopilot summary:**\n{body.summary}",
+                )
+        except Exception:
+            logger.warning("Failed to post summary to Linear for run %s", run_id)
 
     await pool.execute(
         "UPDATE runs SET callback_token = NULL WHERE id = $1",
