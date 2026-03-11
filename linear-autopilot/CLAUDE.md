@@ -68,14 +68,25 @@ Migrations live in `backend/migrations/` and are numbered sequentially (`001_ini
 ### GitHub
 
 - Connection: user visits `/api/v1/projects/{id}/integrations/github/install` → GitHub App install flow → callback saves `github_installation_id`.
-- Update: same install URL allows changing/updating the installation.
+- Update: the same install route now checks whether the project already has a `github_installation_id`. If it does, it redirects to `https://github.com/apps/{slug}/installations/{id}/permissions/update` so the user updates the *existing* installation (change repo access etc.) rather than creating a duplicate one. If not connected, it redirects to `/installations/new` as before.
+- GitHub callback (`GET /integrations/github/callback`): `state` is now **optional**. When GitHub omits `state` (e.g. updates triggered from GitHub's own settings UI), the callback falls back to looking up the project by `installation_id`. `setup_action` is accepted but ignored.
 - Disconnect: `DELETE /api/v1/projects/{id}/integrations/github` clears `github_installation_id`.
+- The project API (`GET /api/v1/projects/{id}`) now returns `github_installation_id` so the frontend can display it and construct management links if needed.
 
 ### Linear
 
-- Connection: user visits `/api/v1/projects/{id}/integrations/linear/connect` → Linear OAuth → callback exchanges code for tokens, saves `linear_access_token`, `linear_refresh_token`, `linear_organization_id`.
-- Reconnect: same connect URL (uses `prompt=consent`).
+- Connection: user visits `/api/v1/projects/{id}/integrations/linear/connect` → Linear OAuth (with `prompt=consent` to force re-auth) → callback exchanges code for tokens, saves `linear_access_token`, `linear_refresh_token`, `linear_organization_id`.
+- Update / Reconnect: same connect URL. The callback does an `UPDATE` (not `INSERT`) so revisiting the connect URL is idempotent — it simply refreshes the stored tokens. Connecting to a different org overwrites the old credentials.
+- Conflict handling: if the target org is already linked to *another* project, the callback now redirects back to the settings page with a `?error=...` query param instead of returning a raw JSON 409, so the user sees a clear error message in the UI.
 - Disconnect: `DELETE /api/v1/projects/{id}/integrations/linear` clears all Linear token fields.
+- The project API returns `linear_organization_id` so the settings UI can display which org is currently connected.
+
+### Frontend (`settings/+page.svelte`)
+
+- On mount, reads any `?error=` query param left by an OAuth callback redirect and displays it in the message area (then removes it from the URL).
+- Message colour is now context-aware: green for "Settings saved", red for error messages.
+- GitHub section shows the installation ID when connected.
+- Linear section shows the connected organization ID when connected.
 
 ## Development Notes
 

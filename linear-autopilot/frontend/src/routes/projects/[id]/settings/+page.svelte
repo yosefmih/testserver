@@ -14,6 +14,14 @@
 	onMount(async () => {
 		project = await getProject(projectId);
 		autopilotLabel = project.autopilot_label || 'autopilot';
+
+		// Show any error passed back from OAuth callbacks (e.g. Linear org conflict).
+		const urlError = new URLSearchParams(window.location.search).get('error');
+		if (urlError) {
+			message = urlError;
+			// Clean the query param from the address bar without a page reload.
+			window.history.replaceState({}, '', window.location.pathname);
+		}
 	});
 
 	async function handleDisconnectGithub() {
@@ -106,6 +114,9 @@
 					</div>
 					<p class="text-warm-500 text-xs mt-2">
 						Autopilot automatically detects the relevant repo from the issue context.
+						{#if project.github_installation_id}
+							<span class="text-warm-600">Installation&nbsp;#{project.github_installation_id}</span>
+						{/if}
 					</p>
 				{:else}
 					<p class="text-warm-500 text-sm mb-4">Connect your GitHub account to enable auto-PRs.</p>
@@ -144,6 +155,9 @@
 							</button>
 						</div>
 					</div>
+					{#if project.linear_organization_id}
+						<p class="text-warm-500 text-xs mt-2">Organization: {project.linear_organization_id}</p>
+					{/if}
 				{:else}
 					<p class="text-warm-500 text-sm mb-4">{project.linear_has_token ? 'Linear needs to be reconnected.' : 'Connect Linear to listen for issues.'}</p>
 					<a
@@ -181,7 +195,7 @@
 				{saving ? 'Saving...' : 'Save Settings'}
 			</button>
 			{#if message}
-				<span class="text-success text-sm">{message}</span>
+				<span class="{message === 'Settings saved' ? 'text-success' : 'text-red-400'} text-sm">{message}</span>
 			{/if}
 		</div>
 

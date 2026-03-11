@@ -69,7 +69,10 @@ export function getProject(id: string) {
 		id: string;
 		name: string;
 		github_connected: boolean;
+		github_installation_id: number | null;
 		linear_connected: boolean;
+		linear_has_token: boolean;
+		linear_organization_id: string | null;
 		autopilot_label: string;
 		created_at: string;
 		tickets: Ticket[];
