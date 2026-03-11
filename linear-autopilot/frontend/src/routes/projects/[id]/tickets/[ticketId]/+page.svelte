@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getTicket, getRunLogs, triggerReviewNow } from '$lib/api';
+	import { getTicket, getRunLogs, triggerReviewNow, closeTicket } from '$lib/api';
 	import type { Run } from '$lib/api';
 
 	type LogEntry =
@@ -33,6 +33,7 @@
 	let expandedEntries = $state<Set<number>>(new Set());
 	let autoRefresh = $state<ReturnType<typeof setInterval> | null>(null);
 	let triggering = $state(false);
+	let cancelling = $state(false);
 	let hasActiveRun = $derived(ticket?.runs?.some((r: Run) => ACTIVE_STATUSES.includes(r.status)) ?? false);
 
 	const projectId = page.params.id;
@@ -47,6 +48,22 @@
 			alert(e.message);
 		}
 		triggering = false;
+	}
+
+	async function handleCancelTicket() {
+		if (!confirm('Cancel this ticket? This will delete the associated sandbox and volume, and cannot be undone.')) return;
+		cancelling = true;
+		try {
+			await closeTicket(projectId, ticketId);
+			ticket = await getTicket(projectId, ticketId);
+			if (autoRefresh) {
+				clearInterval(autoRefresh);
+				autoRefresh = null;
+			}
+		} catch (e: any) {
+			alert(e.message);
+		}
+		cancelling = false;
 	}
 
 	onMount(() => {
@@ -123,6 +140,7 @@
 		if (status === 'active') return 'text-accent';
 		if (status === 'merged') return 'text-success';
 		if (status === 'failed') return 'text-danger';
+		if (status === 'cancelled') return 'text-warm-500';
 		return 'text-warm-500';
 	}
 
@@ -237,6 +255,15 @@
 						disabled={triggering || hasActiveRun}
 					>
 						{triggering ? 'Triggering...' : 'Run review'}
+					</button>
+				{/if}
+				{#if ticket.status === 'active'}
+					<button
+						class="border border-danger/50 text-danger/80 px-4 py-2 text-sm hover:bg-danger/10 hover:border-danger transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+						onclick={handleCancelTicket}
+						disabled={cancelling}
+					>
+						{cancelling ? 'Cancelling...' : 'Cancel ticket'}
 					</button>
 				{/if}
 				{#if ticket.linear_issue_url}
