@@ -14,6 +14,7 @@
 		if (status === 'merged') return 'text-success';
 		if (status === 'closed') return 'text-warm-500';
 		if (status === 'failed') return 'text-danger';
+		if (status === 'cancelled') return 'text-danger';
 		return 'text-warm-500';
 	}
 
@@ -22,6 +23,7 @@
 		if (status === 'merged') return 'bg-success';
 		if (status === 'closed') return 'bg-warm-500';
 		if (status === 'failed') return 'bg-danger';
+		if (status === 'cancelled') return 'bg-danger';
 		return 'bg-warm-500';
 	}
 </script>

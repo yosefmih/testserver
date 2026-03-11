@@ -110,7 +110,7 @@ export function triggerReviewNow(projectId: string, ticketId: string) {
 	});
 }
 
-export function closeTicket(projectId: string, ticketId: string) {
+export function cancelTicket(projectId: string, ticketId: string) {
 	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/tickets/${ticketId}`, {
 		method: 'DELETE',
 	});
