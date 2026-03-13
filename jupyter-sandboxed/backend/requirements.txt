@@ -1,3 +1,3 @@
 fastapi
 uvicorn[standard]
-porter-sandbox-api-client @ https://github.com/porter-dev/experimental-releases/releases/download/sandbox-api-client-v0.0.3-rc2/porter_sandbox_api_client-1.0.0-py3-none-any.whl
+porter-sandbox-api-client @ https://github.com/porter-dev/experimental-releases/releases/download/sandbox-api-client-v0.0.3-rc4/porter_sandbox_api_client-1.0.0-py3-none-any.whl
