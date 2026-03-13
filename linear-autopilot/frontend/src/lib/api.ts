@@ -9,7 +9,9 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 	});
 
 	if (res.status === 401) {
-		window.location.href = '/';
+		if (window.location.pathname !== '/') {
+			window.location.href = '/';
+		}
 		throw new Error('Unauthorized');
 	}
 
