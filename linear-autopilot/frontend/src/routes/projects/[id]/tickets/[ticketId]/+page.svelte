@@ -283,11 +283,21 @@
 		try { return JSON.parse(s); } catch { return {}; }
 	}
 
-	function formatOutput(content: string): string {
-		if (!content) return '';
-		const trimmed = content.trim();
-		if (trimmed.length > 200) return trimmed.slice(0, 200) + '...';
-		return trimmed;
+	function cleanToolResult(raw: any, toolName: string): string {
+		if (!raw) return '';
+		if (typeof raw === 'string') {
+			if (raw.length > 3000) return raw.slice(0, 3000) + '\n... (truncated)';
+			return raw;
+		}
+		if (typeof raw === 'object') {
+			const cleaned = { ...raw };
+			delete cleaned.originalFile;
+			delete cleaned.structuredPatch;
+			const s = JSON.stringify(cleaned, null, 2);
+			if (s.length > 3000) return s.slice(0, 3000) + '\n... (truncated)';
+			return s;
+		}
+		return String(raw);
 	}
 
 	// --- Log parsing ---
@@ -305,8 +315,8 @@
 			try {
 				parsed = JSON.parse(trimmed);
 			} catch {
-				if (trimmed.length > 5 && !trimmed.startsWith('{')) {
-					result.push({ kind: 'raw', text: trimmed });
+				if (trimmed.length > 5 && !trimmed.startsWith('{') && !trimmed.startsWith('"')) {
+					result.push({ kind: 'raw', text: truncate(trimmed, 500) });
 				}
 				continue;
 			}
@@ -348,8 +358,7 @@
 				const toolName = parsed.tool_name || '';
 				if (NOISE_TOOLS.has(toolName)) continue;
 				const toolId = parsed.tool_use_id || '';
-				const raw = parsed.tool_result?.content;
-				const content = typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2);
+				const content = cleanToolResult(parsed.tool_result?.content, toolName);
 
 				if (toolId && pendingActions.has(toolId)) {
 					const action = pendingActions.get(toolId)!;

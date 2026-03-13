@@ -158,20 +158,33 @@ async def _sync_active_runs():
 
         try:
             status_response = get_sandbox.sync(id=sandbox_id, client=sandbox_client)
-            phase = parse_sandbox_phase(status_response)
-            exit_code = parse_sandbox_exit_code(status_response)
 
-            logger.info("Ticket sync: run=%s sandbox=%s phase=%s exit_code=%r", run_id, sandbox_id, phase, exit_code)
-
-            terminal = False
-            final_status = None
-
-            if exit_code is not None:
+            sandbox_gone = status_response is None or not hasattr(status_response, "phase")
+            if sandbox_gone:
+                error_msg = getattr(status_response, "error", "") if status_response else "sandbox not found"
+                logger.warning("Ticket sync: run=%s sandbox=%s gone (%s)", run_id, sandbox_id, error_msg)
+                has_summary = await pool.fetchval(
+                    "SELECT summary IS NOT NULL FROM runs WHERE id = $1", run_id
+                )
+                phase = "gone"
+                exit_code = None
                 terminal = True
-                final_status = "success" if exit_code == 0 else "failed"
-            elif phase in ("succeeded", "failed", "cancelled"):
-                terminal = True
-                final_status = "success" if phase == "succeeded" else "failed"
+                final_status = "success" if has_summary else "failed"
+            else:
+                phase = parse_sandbox_phase(status_response)
+                exit_code = parse_sandbox_exit_code(status_response)
+
+                terminal = False
+                final_status = None
+
+                if exit_code is not None:
+                    terminal = True
+                    final_status = "success" if exit_code == 0 else "failed"
+                elif phase in ("succeeded", "failed", "cancelled"):
+                    terminal = True
+                    final_status = "success" if phase == "succeeded" else "failed"
+
+            logger.info("Ticket sync: run=%s sandbox=%s phase=%s exit_code=%r terminal=%s", run_id, sandbox_id, phase, exit_code, terminal)
 
             if not terminal:
                 continue

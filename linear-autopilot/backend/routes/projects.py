@@ -377,18 +377,38 @@ async def get_run_logs(request: Request, project_id: str, ticket_id: str, run_id
 
         response = get_sandbox_logs.sync(id=run["sandbox_id"], client=sandbox_client)
         raw_lines = response.logs if hasattr(response, "logs") and response.logs else []
-        lines = [_clean_log_line(line) for line in raw_lines]
+        lines = _reassemble_lines(raw_lines)
         return {"logs": lines}
     except Exception as e:
         logger.warning("Failed to fetch sandbox logs for run %s: %s", run_id, e)
         return {"logs": [], "error": f"Sandbox logs unavailable: {e}"}
 
 
-_LOG_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+(stdout|stderr)\s+F\s+")
+_LOG_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+(stdout|stderr)\s+([FP])\s+")
+
+
+def _is_partial(line: str) -> bool:
+    m = _LOG_PREFIX_RE.match(line)
+    return m is not None and m.group(2) == "P"
 
 
 def _clean_log_line(line: str) -> str:
     return _LOG_PREFIX_RE.sub("", line)
+
+
+def _reassemble_lines(raw_lines: list[str]) -> list[str]:
+    result = []
+    buf = ""
+    for line in raw_lines:
+        partial = _is_partial(line)
+        cleaned = _clean_log_line(line)
+        buf += cleaned
+        if not partial:
+            result.append(buf)
+            buf = ""
+    if buf:
+        result.append(buf)
+    return result
 
 
 @router.websocket('/projects/{project_id}/tickets/{ticket_id}/runs/{run_id}/logs/stream')
@@ -412,14 +432,19 @@ async def stream_run_logs(ws: WebSocket, project_id: str, ticket_id: str, run_id
     upstream_url = f'{central_ws_url}/v1/sandbox/{run["sandbox_id"]}/logs/stream'
 
     try:
+        partial_buf = ""
         async with websockets.connect(upstream_url) as upstream:
             async for raw_msg in upstream:
                 try:
                     msg = json.loads(raw_msg)
                     for stream in msg.get('streams', []):
                         for _ts, line in stream.get('values', []):
+                            partial = _is_partial(line)
                             cleaned = _clean_log_line(line)
-                            await ws.send_text(cleaned)
+                            partial_buf += cleaned
+                            if not partial:
+                                await ws.send_text(partial_buf)
+                                partial_buf = ""
                 except json.JSONDecodeError:
                     pass
     except WebSocketDisconnect:
