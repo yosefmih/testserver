@@ -1,20 +1,18 @@
-import asyncio
 import os
+import re
 import time
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
-import httpx
-import websockets
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from porter_sandbox_api_client import Client
-from porter_sandbox_api_client.api.sandboxes import create_sandbox, get_sandbox, delete_sandbox
+from porter_sandbox_api_client.api.sandboxes import create_sandbox, get_sandbox, delete_sandbox, get_sandbox_logs
 from porter_sandbox_api_client.models import SandboxSpec, SandboxSpecEnv, NetworkingConfig
 
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "DEBUG").upper()
@@ -49,15 +47,12 @@ sessions: Dict[str, dict] = {}
 
 sandbox_client = Client(base_url=SANDBOX_API_URL)
 
-proxy_http_client = httpx.AsyncClient(timeout=30.0)
-
-
-def sandbox_internal_url(sandbox_id: str) -> str:
-    return f"http://sandbox-{sandbox_id}-svc.{SANDBOX_NAMESPACE}.svc.cluster.local:8888"
+LOG_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+\w+\s+\w+\s+")
 
 
 class CreateSessionRequest(BaseModel):
     iam_role_arn: Optional[str] = None
+    domain: Optional[str] = None
 
 
 class SessionResponse(BaseModel):
@@ -76,10 +71,20 @@ class DeleteResponse(BaseModel):
     success: bool
 
 
+class LogsResponse(BaseModel):
+    logs: List[str]
+
+
 @app.post("/api/sessions", response_model=SessionResponse)
 async def create_session(body: Optional[CreateSessionRequest] = None):
     iam_role_arn = (body.iam_role_arn if body and body.iam_role_arn else DEFAULT_IAM_ROLE_ARN) or None
-    logger.debug("Creating session with iam_role_arn=%s, image=%s, namespace=%s", iam_role_arn, JUPYTER_IMAGE, SANDBOX_NAMESPACE)
+    domain = (body.domain if body and body.domain else None)
+    logger.debug("Creating session with iam_role_arn=%s, domain=%s, image=%s, namespace=%s", iam_role_arn, domain, JUPYTER_IMAGE, SANDBOX_NAMESPACE)
+
+    networking = NetworkingConfig(port=8888)
+    if domain:
+        networking = NetworkingConfig(port=8888, domains=[domain])
+        logger.debug("Using domain: %s", domain)
 
     spec = SandboxSpec(
         image=JUPYTER_IMAGE,
@@ -89,7 +94,7 @@ async def create_session(body: Optional[CreateSessionRequest] = None):
             "--NotebookApp.password=''",
             "--NotebookApp.allow_origin='*'",
         ],
-        networking=NetworkingConfig(port=8888),
+        networking=networking,
         ttl_seconds=TTL_SECONDS,
         env=SandboxSpecEnv.from_dict({"JUPYTER_ENABLE_LAB": "yes"}),
         iam_role_arn=iam_role_arn,
@@ -119,8 +124,12 @@ async def create_session(body: Optional[CreateSessionRequest] = None):
                 raise HTTPException(status_code=500, detail=f"Sandbox failed to start: {status}")
         time.sleep(1)
 
-    jupyter_url = f"/sandbox/{sandbox_id}/lab"
-    logger.info("Session ready: sandbox_id=%s, jupyter_url=%s, internal_url=%s", sandbox_id, jupyter_url, sandbox_internal_url(sandbox_id))
+    if domain:
+        jupyter_url = f"https://{domain}/lab"
+    else:
+        jupyter_url = f"http://sandbox-{sandbox_id}-svc.{SANDBOX_NAMESPACE}.svc.cluster.local:8888/lab"
+
+    logger.info("Session ready: sandbox_id=%s, jupyter_url=%s", sandbox_id, jupyter_url)
     created_at = datetime.utcnow().isoformat() + "Z"
 
     sessions[sandbox_id] = {
@@ -178,99 +187,19 @@ async def terminate_session(session_id: str):
     return DeleteResponse(success=True)
 
 
-@app.api_route(
-    "/sandbox/{sandbox_id}/{path:path}",
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
-)
-async def proxy_to_sandbox(sandbox_id: str, path: str, request: Request):
-    logger.debug("HTTP proxy request: method=%s sandbox_id=%s path=%s query=%s", request.method, sandbox_id, path, request.url.query)
-    logger.debug("Known sessions: %s", list(sessions.keys()))
-
-    if sandbox_id not in sessions:
-        logger.warning("Session not found for sandbox_id=%s", sandbox_id)
+@app.get("/api/sessions/{session_id}/logs", response_model=LogsResponse)
+async def get_session_logs(session_id: str):
+    if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    target_url = f"{sandbox_internal_url(sandbox_id)}/{path}"
-    if request.url.query:
-        target_url += f"?{request.url.query}"
-
-    logger.debug("Proxying to target_url=%s", target_url)
-
-    body = await request.body()
-
-    headers = dict(request.headers)
-    headers.pop("host", None)
-
     try:
-        resp = await proxy_http_client.request(
-            method=request.method,
-            url=target_url,
-            content=body,
-            headers=headers,
-        )
-        logger.debug("Upstream response: status=%d content_length=%d", resp.status_code, len(resp.content))
-    except httpx.ConnectError as e:
-        logger.error("Failed to connect to sandbox %s at %s: %s", sandbox_id, target_url, e)
-        raise HTTPException(status_code=502, detail="Sandbox not reachable")
-
-    response_headers = dict(resp.headers)
-    response_headers.pop("transfer-encoding", None)
-    response_headers.pop("content-encoding", None)
-    response_headers.pop("content-length", None)
-
-    return Response(
-        content=resp.content,
-        status_code=resp.status_code,
-        headers=response_headers,
-    )
-
-
-@app.websocket("/sandbox/{sandbox_id}/{path:path}")
-async def proxy_websocket(websocket: WebSocket, sandbox_id: str, path: str):
-    logger.debug("WebSocket proxy request: sandbox_id=%s path=%s query=%s", sandbox_id, path, websocket.url.query)
-
-    if sandbox_id not in sessions:
-        logger.warning("WebSocket: session not found for sandbox_id=%s", sandbox_id)
-        await websocket.close(code=4004)
-        return
-
-    await websocket.accept()
-
-    ws_target = sandbox_internal_url(sandbox_id).replace("http://", "ws://")
-    ws_url = f"{ws_target}/{path}"
-    if websocket.url.query:
-        ws_url += f"?{websocket.url.query}"
-
-    logger.debug("WebSocket proxying to %s", ws_url)
-
-    try:
-        async with websockets.connect(ws_url) as upstream:
-
-            async def client_to_upstream():
-                try:
-                    while True:
-                        data = await websocket.receive_bytes()
-                        await upstream.send(data)
-                except WebSocketDisconnect:
-                    await upstream.close()
-
-            async def upstream_to_client():
-                try:
-                    async for message in upstream:
-                        if isinstance(message, bytes):
-                            await websocket.send_bytes(message)
-                        else:
-                            await websocket.send_text(message)
-                except Exception:
-                    await websocket.close()
-
-            await asyncio.gather(client_to_upstream(), upstream_to_client())
+        response = get_sandbox_logs.sync(id=session_id, client=sandbox_client)
+        raw_lines = response.logs if hasattr(response, "logs") and response.logs else []
+        cleaned = [LOG_PREFIX_RE.sub("", line) for line in raw_lines]
+        return LogsResponse(logs=cleaned)
     except Exception as e:
-        logger.error("WebSocket proxy error for sandbox %s: %s", sandbox_id, e)
-        try:
-            await websocket.close()
-        except Exception:
-            pass
+        logger.error("Failed to fetch logs for session %s: %s", session_id, e)
+        return LogsResponse(logs=[f"Error fetching logs: {e}"])
 
 
 @app.get("/health")
