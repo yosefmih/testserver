@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 interface Session {
   session_id: string
@@ -16,6 +16,7 @@ function App() {
   const [domain, setDomain] = useState('')
   const [expandedLogs, setExpandedLogs] = useState<Record<string, string[]>>({})
   const logRefs = useRef<Record<string, HTMLPreElement | null>>({})
+  const wsRefs = useRef<Record<string, WebSocket>>({})
 
   const fetchSessions = async () => {
     try {
@@ -27,31 +28,11 @@ function App() {
     }
   }
 
-  const fetchLogs = async (sessionId: string) => {
-    try {
-      const response = await fetch(`/api/sessions/${sessionId}/logs`)
-      const data = await response.json()
-      setExpandedLogs((prev) => ({ ...prev, [sessionId]: data.logs }))
-    } catch (err) {
-      console.error('Failed to fetch logs:', err)
-    }
-  }
-
   useEffect(() => {
     fetchSessions()
     const interval = setInterval(fetchSessions, 5000)
     return () => clearInterval(interval)
   }, [])
-
-  useEffect(() => {
-    const activeLogSessions = Object.keys(expandedLogs)
-    if (activeLogSessions.length === 0) return
-
-    const interval = setInterval(() => {
-      activeLogSessions.forEach((id) => fetchLogs(id))
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [Object.keys(expandedLogs).join(',')])
 
   useEffect(() => {
     Object.entries(logRefs.current).forEach(([id, el]) => {
@@ -61,15 +42,47 @@ function App() {
     })
   }, [expandedLogs])
 
+  const startLogStream = useCallback((sessionId: string) => {
+    fetch(`/api/sessions/${sessionId}/logs`)
+      .then((r) => r.json())
+      .then((data) => {
+        setExpandedLogs((prev) => ({ ...prev, [sessionId]: data.logs || [] }))
+      })
+      .catch((err) => console.error('Failed to fetch initial logs:', err))
+
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(`${proto}//${window.location.host}/api/sessions/${sessionId}/logs/stream`)
+
+    ws.onmessage = (event) => {
+      setExpandedLogs((prev) => {
+        const existing = prev[sessionId]
+        if (!existing) return prev
+        return { ...prev, [sessionId]: [...existing, event.data] }
+      })
+    }
+
+    ws.onerror = () => console.error('Log stream error for', sessionId)
+    wsRefs.current[sessionId] = ws
+  }, [])
+
+  const stopLogStream = useCallback((sessionId: string) => {
+    const ws = wsRefs.current[sessionId]
+    if (ws) {
+      ws.close()
+      delete wsRefs.current[sessionId]
+    }
+    setExpandedLogs((prev) => {
+      const next = { ...prev }
+      delete next[sessionId]
+      return next
+    })
+  }, [])
+
   const toggleLogs = (sessionId: string) => {
     if (expandedLogs[sessionId]) {
-      setExpandedLogs((prev) => {
-        const next = { ...prev }
-        delete next[sessionId]
-        return next
-      })
+      stopLogStream(sessionId)
     } else {
-      fetchLogs(sessionId)
+      startLogStream(sessionId)
     }
   }
 
@@ -103,12 +116,8 @@ function App() {
 
   const terminateSession = async (sessionId: string) => {
     try {
+      stopLogStream(sessionId)
       await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' })
-      setExpandedLogs((prev) => {
-        const next = { ...prev }
-        delete next[sessionId]
-        return next
-      })
       await fetchSessions()
     } catch (err) {
       console.error('Failed to terminate session:', err)

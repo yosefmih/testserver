@@ -1,3 +1,5 @@
+import asyncio
+import json
 import os
 import re
 import time
@@ -5,11 +7,12 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+import websockets
 
 from porter_sandbox_api_client import Client
 from porter_sandbox_api_client.api.sandboxes import create_sandbox, get_sandbox, delete_sandbox, get_sandbox_logs
@@ -200,6 +203,34 @@ async def get_session_logs(session_id: str):
     except Exception as e:
         logger.error("Failed to fetch logs for session %s: %s", session_id, e)
         return LogsResponse(logs=[f"Error fetching logs: {e}"])
+
+
+@app.websocket("/api/sessions/{session_id}/logs/stream")
+async def stream_session_logs(ws: WebSocket, session_id: str):
+    if session_id not in sessions:
+        await ws.close(code=4004, reason="Session not found")
+        return
+
+    await ws.accept()
+
+    central_ws_url = SANDBOX_API_URL.replace("http://", "ws://").replace("https://", "wss://")
+    upstream_url = f"{central_ws_url}/v1/sandbox/{session_id}/logs/stream"
+
+    try:
+        async with websockets.connect(upstream_url) as upstream:
+            async for raw_msg in upstream:
+                try:
+                    msg = json.loads(raw_msg)
+                    for stream in msg.get("streams", []):
+                        for _ts, line in stream.get("values", []):
+                            cleaned = LOG_PREFIX_RE.sub("", line)
+                            await ws.send_text(cleaned)
+                except json.JSONDecodeError:
+                    pass
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error("Log stream error for session %s: %s", session_id, e)
 
 
 @app.get("/health")
