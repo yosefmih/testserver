@@ -105,13 +105,17 @@ async def _launch_pending_runs():
             )
             logger.info("Ticket sync: run %s launched sandbox %s", run_id, sandbox_id)
 
-            if run["kind"] == "initial" and run["linear_access_token"]:
+            if run["linear_access_token"]:
                 try:
                     ticket_url = f"{config.BASE_URL}/projects/{run['project_id']}/tickets/{ticket_id}"
+                    if run["kind"] == "initial":
+                        msg = f"**Autopilot is working on this issue.**\n\n[View progress]({ticket_url})"
+                    else:
+                        msg = f"**Autopilot is addressing review feedback.**\n\n[View progress]({ticket_url})"
                     await post_issue_comment(
                         run["linear_access_token"],
                         run["linear_issue_id"],
-                        f"Autopilot is working on this issue. [View ticket]({ticket_url})",
+                        msg,
                     )
                 except Exception:
                     logger.warning("Ticket sync: failed to post launch comment for run %s", run_id)
@@ -192,22 +196,38 @@ async def _sync_active_runs():
 
             try:
                 ticket_info = await pool.fetchrow("""
-                    SELECT t.linear_issue_id, r.summary, p.linear_access_token
+                    SELECT t.linear_issue_id, t.project_id, t.pr_url,
+                           r.summary, r.kind, p.linear_access_token
                     FROM tickets t
                     JOIN runs r ON r.ticket_id = t.id
                     JOIN projects p ON p.id = t.project_id
                     WHERE r.id = $1
                 """, run_id)
                 if ticket_info and ticket_info["linear_access_token"]:
-                    if final_status == "failed" and not ticket_info["summary"]:
-                        fail_msg = "**Autopilot run failed.**"
-                        if error_text:
-                            truncated = error_text[-500:]
-                            fail_msg += f"\n```\n{truncated}\n```"
+                    ticket_url = f"{config.BASE_URL}/projects/{ticket_info['project_id']}/tickets/{ticket_id}"
+
+                    if final_status == "success":
+                        summary = ticket_info["summary"] or "Run completed successfully."
+                        msg = f"**Autopilot completed successfully.**\n\n{summary}"
+                        if ticket_info["pr_url"]:
+                            msg += f"\n\n[View PR]({ticket_info['pr_url']}) · [View details]({ticket_url})"
+                        else:
+                            msg += f"\n\n[View details]({ticket_url})"
                         await post_issue_comment(
                             ticket_info["linear_access_token"],
                             ticket_info["linear_issue_id"],
-                            fail_msg,
+                            msg,
+                        )
+                    elif final_status == "failed":
+                        msg = "**Autopilot run failed.**"
+                        if error_text:
+                            truncated = error_text[-500:]
+                            msg += f"\n\n```\n{truncated}\n```"
+                        msg += f"\n\n[View details]({ticket_url})"
+                        await post_issue_comment(
+                            ticket_info["linear_access_token"],
+                            ticket_info["linear_issue_id"],
+                            msg,
                         )
             except Exception:
                 logger.warning("Ticket sync: failed to post completion comment for run %s", run_id)

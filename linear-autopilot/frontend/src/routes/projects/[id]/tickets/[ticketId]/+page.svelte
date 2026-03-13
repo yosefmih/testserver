@@ -4,14 +4,21 @@
 	import { getTicket, getRunLogs, triggerReviewNow, cancelTicket } from '$lib/api';
 	import type { Run } from '$lib/api';
 
+	type ActionEntry = {
+		kind: 'action';
+		tool: string;
+		summary: string;
+		input: string;
+		output: string;
+	};
+
 	type LogEntry =
-		| { kind: 'text'; text: string }
-		| { kind: 'bash'; command: string; description: string }
-		| { kind: 'tool_use'; tool: string; input: string }
-		| { kind: 'tool_result'; content: string }
-		| { kind: 'system'; text: string }
+		| { kind: 'message'; text: string }
+		| ActionEntry
+		| { kind: 'command'; command: string; description: string; output: string }
 		| { kind: 'result'; cost: string; duration: string; turns: number; error: boolean; message: string }
 		| { kind: 'error'; text: string; code: string }
+		| { kind: 'system'; text: string }
 		| { kind: 'raw'; text: string };
 
 	const NOISE_TOOLS = new Set(['TodoWrite', 'TodoRead']);
@@ -209,23 +216,86 @@
 		return 'text-warm-500';
 	}
 
-	function parseToolUse(block: any): LogEntry | null {
-		const name = block.name || block.tool?.name;
-		const rawInput = block.input || block.tool?.input;
-		if (!name || NOISE_TOOLS.has(name)) return null;
+	// --- Smart summaries for tool calls ---
 
-		if (name === 'Bash') {
-			const input = typeof rawInput === 'string' ? JSON.parse(rawInput || '{}') : rawInput || {};
-			return { kind: 'bash', command: input.command || '', description: input.description || '' };
-		}
+	function summarizeTool(name: string, rawInput: any): string {
+		const input = typeof rawInput === 'string' ? safeJsonParse(rawInput) : rawInput || {};
 
-		const input = typeof rawInput === 'string' ? rawInput : JSON.stringify(rawInput, null, 2);
-		return { kind: 'tool_use', tool: name, input };
+		if (name === 'Read') return input.file_path ? shortPath(input.file_path) : 'file';
+		if (name === 'Write') return input.file_path ? shortPath(input.file_path) : 'file';
+		if (name === 'Edit') return input.file_path ? shortPath(input.file_path) : 'file';
+		if (name === 'Glob') return input.pattern ? `\`${input.pattern}\`` : 'files';
+		if (name === 'Grep') return input.pattern ? `\`${input.pattern}\`` : 'content';
+		if (name === 'Agent') return input.description || input.prompt?.slice(0, 60) || 'subtask';
+		if (name === 'Bash') return input.description || truncate(input.command || '', 80);
+
+		if (name.startsWith('mcp__github__')) return formatMcpName(name);
+		if (name.startsWith('mcp__linear__')) return formatMcpName(name);
+
+		return '';
 	}
+
+	function formatMcpName(name: string): string {
+		const parts = name.split('__');
+		if (parts.length >= 3) {
+			const action = parts.slice(2).join(' ').replace(/_/g, ' ');
+			return action;
+		}
+		return name;
+	}
+
+	function toolDisplayName(name: string): string {
+		if (name === 'Bash') return 'Terminal';
+		if (name === 'Read') return 'Read';
+		if (name === 'Write') return 'Write';
+		if (name === 'Edit') return 'Edit';
+		if (name === 'Glob') return 'Find';
+		if (name === 'Grep') return 'Search';
+		if (name === 'Agent') return 'Agent';
+		if (name.startsWith('mcp__github__')) return 'GitHub';
+		if (name.startsWith('mcp__linear__')) return 'Linear';
+		return name;
+	}
+
+	function toolColor(name: string): string {
+		if (name === 'Bash') return 'text-warm-400 bg-warm-800/60';
+		if (name === 'Read') return 'text-blue-400 bg-blue-900/30';
+		if (name === 'Write' || name === 'Edit') return 'text-amber-400 bg-amber-900/30';
+		if (name === 'Glob' || name === 'Grep') return 'text-violet-400 bg-violet-900/30';
+		if (name === 'Agent') return 'text-accent bg-accent/10';
+		if (name.startsWith('mcp__github__')) return 'text-green-400 bg-green-900/30';
+		if (name.startsWith('mcp__linear__')) return 'text-indigo-400 bg-indigo-900/30';
+		return 'text-warm-400 bg-warm-800/40';
+	}
+
+	function shortPath(fullPath: string): string {
+		const parts = fullPath.replace(/^\/+/, '').split('/');
+		if (parts.length <= 3) return fullPath;
+		return '.../' + parts.slice(-3).join('/');
+	}
+
+	function truncate(s: string, max: number): string {
+		if (s.length <= max) return s;
+		return s.slice(0, max) + '...';
+	}
+
+	function safeJsonParse(s: string): any {
+		try { return JSON.parse(s); } catch { return {}; }
+	}
+
+	function formatOutput(content: string): string {
+		if (!content) return '';
+		const trimmed = content.trim();
+		if (trimmed.length > 200) return trimmed.slice(0, 200) + '...';
+		return trimmed;
+	}
+
+	// --- Log parsing ---
 
 	function parseLogs(lines: string[]): LogEntry[] {
 		const result: LogEntry[] = [];
 		const seenToolIds = new Set<string>();
+		const pendingActions = new Map<string, ActionEntry>();
 
 		for (const line of lines) {
 			const trimmed = line.trim();
@@ -235,7 +305,9 @@
 			try {
 				parsed = JSON.parse(trimmed);
 			} catch {
-				result.push({ kind: 'raw', text: trimmed });
+				if (trimmed.length > 5 && !trimmed.startsWith('{')) {
+					result.push({ kind: 'raw', text: trimmed });
+				}
 				continue;
 			}
 
@@ -248,12 +320,15 @@
 				const content = parsed.message?.content;
 				if (!Array.isArray(content)) continue;
 				for (const block of content) {
-					if (block.type === 'text' && block.text) {
-						result.push({ kind: 'text', text: block.text });
+					if (block.type === 'text' && block.text?.trim()) {
+						result.push({ kind: 'message', text: block.text });
 					} else if (block.type === 'tool_use') {
 						if (block.id) seenToolIds.add(block.id);
-						const entry = parseToolUse(block);
-						if (entry) result.push(entry);
+						const entry = buildAction(block.name, block.input, block.id);
+						if (entry) {
+							if (block.id) pendingActions.set(block.id, entry);
+							result.push(entry);
+						}
 					}
 				}
 			} else if (parsed.type === 'user') {
@@ -263,16 +338,31 @@
 				if (tool?.id && seenToolIds.has(tool.id)) continue;
 				if (tool?.id) seenToolIds.add(tool.id);
 				if (tool?.type === 'tool_use') {
-					const entry = parseToolUse(tool);
-					if (entry) result.push(entry);
+					const entry = buildAction(tool.name, tool.input, tool.id);
+					if (entry) {
+						if (tool.id) pendingActions.set(tool.id, entry);
+						result.push(entry);
+					}
 				}
 			} else if (parsed.type === 'tool_result') {
 				const toolName = parsed.tool_name || '';
 				if (NOISE_TOOLS.has(toolName)) continue;
+				const toolId = parsed.tool_use_id || '';
 				const raw = parsed.tool_result?.content;
 				const content = typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2);
-				if (content && content !== '{}' && content !== 'null') {
-					result.push({ kind: 'tool_result', content });
+
+				if (toolId && pendingActions.has(toolId)) {
+					const action = pendingActions.get(toolId)!;
+					action.output = content || '';
+					pendingActions.delete(toolId);
+				} else if (content && content !== '{}' && content !== 'null') {
+					result.push({
+						kind: 'action',
+						tool: toolName || 'unknown',
+						summary: '',
+						input: '',
+						output: content,
+					});
 				}
 			} else if (parsed.type === 'system' || parsed.type === 'init') {
 				if (parsed.session_id) {
@@ -288,6 +378,32 @@
 			}
 		}
 		return result;
+	}
+
+	function buildAction(name: string, rawInput: any, id?: string): ActionEntry | null {
+		if (!name || NOISE_TOOLS.has(name)) return null;
+
+		const input = typeof rawInput === 'string' ? rawInput : JSON.stringify(rawInput, null, 2);
+		const summary = summarizeTool(name, rawInput);
+
+		if (name === 'Bash') {
+			const parsed = typeof rawInput === 'string' ? safeJsonParse(rawInput) : rawInput || {};
+			return {
+				kind: 'action',
+				tool: name,
+				summary: parsed.description || '',
+				input: parsed.command || '',
+				output: '',
+			};
+		}
+
+		return {
+			kind: 'action',
+			tool: name,
+			summary,
+			input: input || '',
+			output: '',
+		};
 	}
 </script>
 
@@ -393,7 +509,7 @@
 
 								<div class="px-5 py-2 flex items-center justify-between border-b border-warm-700/20">
 									<div class="flex items-center gap-3">
-										<span class="text-[10px] text-warm-500 uppercase tracking-wider">Sandbox Logs</span>
+										<span class="text-[10px] text-warm-500 uppercase tracking-wider">Activity</span>
 										{#if streaming}
 											<span class="flex items-center gap-1.5">
 												<span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
@@ -431,60 +547,72 @@
 												<pre class="px-5 py-4 text-xs font-mono text-cream-dim leading-relaxed">{runLogs[run.id].join('\n')}</pre>
 											</div>
 										{:else if runEntries[run.id]?.length}
-											<div class="max-h-[70vh] overflow-y-auto divide-y divide-warm-700/30" bind:this={logContainer}>
+											<div class="max-h-[70vh] overflow-y-auto" bind:this={logContainer}>
 												{#each runEntries[run.id] as entry, idx}
-													{#if entry.kind === 'text'}
-														<div class="px-5 py-3">
-															<pre class="text-sm text-cream whitespace-pre-wrap font-sans leading-relaxed">{entry.text}</pre>
+
+													{#if entry.kind === 'message'}
+														<div class="px-5 py-3 border-b border-warm-700/15">
+															<pre class="text-[13px] text-cream whitespace-pre-wrap font-sans leading-relaxed">{entry.text}</pre>
 														</div>
-													{:else if entry.kind === 'bash'}
-														<div class="px-5 py-3 bg-warm-900/30">
-															{#if entry.description}
-																<span class="text-[10px] font-mono uppercase tracking-wider text-warm-500 mb-1 block">{entry.description}</span>
-															{/if}
-															<div class="flex items-start gap-2">
-																<span class="text-accent/60 font-mono text-xs select-none shrink-0">$</span>
-																<pre class="text-xs font-mono text-cream-dim whitespace-pre-wrap">{entry.command}</pre>
-															</div>
-														</div>
-													{:else if entry.kind === 'tool_use'}
-														<div class="px-5 py-3 bg-warm-900/20">
-															<button class="flex items-center gap-2 w-full text-left" onclick={() => toggleExpand(idx)}>
-																<span class="text-[10px] font-mono uppercase tracking-wider text-accent/80 bg-accent/10 px-1.5 py-0.5">{entry.tool}</span>
-																{#if entry.input && entry.input !== '{}'}
-																	<span class="text-[10px] text-warm-500">{expandedEntries.has(idx) ? '▾' : '▸'}</span>
-																{/if}
-															</button>
-															{#if entry.input && entry.input !== '{}' && expandedEntries.has(idx)}
-																<pre class="text-xs font-mono text-warm-400 whitespace-pre-wrap overflow-x-auto max-h-64 overflow-y-auto mt-2">{entry.input}</pre>
-															{/if}
-														</div>
-													{:else if entry.kind === 'tool_result'}
-														<div class="px-5 py-2 bg-warm-900/10">
-															<button class="flex items-center gap-2 w-full text-left" onclick={() => toggleExpand(idx)}>
-																<span class="text-[10px] font-mono uppercase tracking-wider text-warm-600">output</span>
-																<span class="text-[10px] text-warm-500">{expandedEntries.has(idx) ? '▾' : '▸'}</span>
+
+													{:else if entry.kind === 'action' && entry.tool === 'Bash'}
+														<div class="group px-5 py-2 border-b border-warm-700/10 hover:bg-warm-900/20 transition-colors">
+															<button class="flex items-center gap-2.5 w-full text-left" onclick={() => toggleExpand(idx)}>
+																<span class="text-[10px] font-mono px-1.5 py-0.5 rounded {toolColor(entry.tool)}">{toolDisplayName(entry.tool)}</span>
+																<span class="text-xs text-cream-dim truncate flex-1">{entry.summary || truncate(entry.input, 100)}</span>
+																<span class="text-[10px] text-warm-600 opacity-0 group-hover:opacity-100 transition-opacity">{expandedEntries.has(idx) ? '▾' : '▸'}</span>
 															</button>
 															{#if expandedEntries.has(idx)}
-																<pre class="text-xs font-mono text-warm-400 whitespace-pre-wrap overflow-x-auto max-h-64 overflow-y-auto mt-1.5">{entry.content}</pre>
+																<div class="mt-2 ml-8 space-y-2">
+																	{#if entry.input}
+																		<pre class="text-xs font-mono text-warm-400 whitespace-pre-wrap bg-warm-900/40 rounded px-3 py-2 overflow-x-auto max-h-48 overflow-y-auto">{entry.input}</pre>
+																	{/if}
+																	{#if entry.output}
+																		<pre class="text-xs font-mono text-warm-500 whitespace-pre-wrap bg-warm-900/20 rounded px-3 py-2 overflow-x-auto max-h-48 overflow-y-auto">{entry.output}</pre>
+																	{/if}
+																</div>
 															{/if}
 														</div>
-													{:else if entry.kind === 'system'}
-														<div class="px-5 py-1.5">
-															<span class="text-[10px] font-mono text-warm-600">{entry.text}</span>
+
+													{:else if entry.kind === 'action'}
+														<div class="group px-5 py-2 border-b border-warm-700/10 hover:bg-warm-900/20 transition-colors">
+															<button class="flex items-center gap-2.5 w-full text-left" onclick={() => toggleExpand(idx)}>
+																<span class="text-[10px] font-mono px-1.5 py-0.5 rounded {toolColor(entry.tool)}">{toolDisplayName(entry.tool)}</span>
+																<span class="text-xs text-cream-dim truncate flex-1">{entry.summary}</span>
+																{#if entry.output}
+																	<span class="text-[10px] text-warm-600 opacity-0 group-hover:opacity-100 transition-opacity">{expandedEntries.has(idx) ? '▾' : '▸'}</span>
+																{/if}
+															</button>
+															{#if expandedEntries.has(idx)}
+																<div class="mt-2 ml-8 space-y-2">
+																	{#if entry.input && entry.input !== '{}'}
+																		<details class="text-xs">
+																			<summary class="text-warm-600 cursor-pointer hover:text-warm-400 transition-colors">input</summary>
+																			<pre class="font-mono text-warm-400 whitespace-pre-wrap bg-warm-900/40 rounded px-3 py-2 overflow-x-auto max-h-48 overflow-y-auto mt-1">{entry.input}</pre>
+																		</details>
+																	{/if}
+																	{#if entry.output}
+																		<pre class="text-xs font-mono text-warm-500 whitespace-pre-wrap bg-warm-900/20 rounded px-3 py-2 overflow-x-auto max-h-48 overflow-y-auto">{entry.output}</pre>
+																	{/if}
+																</div>
+															{/if}
 														</div>
+
 													{:else if entry.kind === 'error'}
-														<div class="px-5 py-3 bg-danger/10">
-															<div class="flex items-center gap-2 mb-1.5">
-																<span class="text-[10px] font-mono uppercase tracking-wider text-danger/80 bg-danger/10 px-1.5 py-0.5">error</span>
-																<span class="text-xs font-mono text-danger/70">{entry.code}</span>
+														<div class="px-5 py-3 bg-danger/8 border-b border-danger/15">
+															<div class="flex items-center gap-2 mb-1">
+																<span class="text-[10px] font-mono uppercase tracking-wider text-danger/80 bg-danger/10 px-1.5 py-0.5 rounded">error</span>
+																{#if entry.code}
+																	<span class="text-xs font-mono text-danger/60">{entry.code}</span>
+																{/if}
 															</div>
 															<pre class="text-sm font-mono text-danger whitespace-pre-wrap">{entry.text}</pre>
 														</div>
+
 													{:else if entry.kind === 'result'}
-														<div class="px-5 py-3 {entry.error ? 'bg-danger/5' : 'bg-success/5'}">
+														<div class="px-5 py-3 {entry.error ? 'bg-danger/5' : 'bg-success/5'} border-b border-warm-700/10">
 															<div class="flex items-center gap-4 text-xs">
-																<span class="text-[10px] font-mono uppercase tracking-wider {entry.error ? 'text-danger/80' : 'text-success/80'}">{entry.error ? 'failed' : 'completed'}</span>
+																<span class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded {entry.error ? 'text-danger/80 bg-danger/10' : 'text-success/80 bg-success/10'}">{entry.error ? 'failed' : 'completed'}</span>
 																{#if entry.turns}<span class="font-mono text-warm-400">{entry.turns} turn{entry.turns === 1 ? '' : 's'}</span>{/if}
 																{#if entry.duration}<span class="font-mono text-warm-400">{entry.duration}</span>{/if}
 																{#if entry.cost}<span class="font-mono text-warm-400">{entry.cost}</span>{/if}
@@ -493,11 +621,18 @@
 																<pre class="text-xs font-mono {entry.error ? 'text-danger' : 'text-warm-400'} whitespace-pre-wrap mt-1.5">{entry.message}</pre>
 															{/if}
 														</div>
-													{:else}
-														<div class="px-5 py-2">
+
+													{:else if entry.kind === 'system'}
+														<div class="px-5 py-1 border-b border-warm-700/10">
+															<span class="text-[10px] font-mono text-warm-600">{entry.text}</span>
+														</div>
+
+													{:else if entry.kind === 'raw'}
+														<div class="px-5 py-1.5 border-b border-warm-700/10">
 															<pre class="text-xs font-mono text-warm-500 whitespace-pre-wrap">{entry.text}</pre>
 														</div>
 													{/if}
+
 												{/each}
 											</div>
 										{/if}

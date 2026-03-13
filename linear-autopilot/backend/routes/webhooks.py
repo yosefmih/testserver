@@ -210,6 +210,8 @@ async def github_webhook(request: Request):
         return await _handle_issue_comment(payload)
     elif event == "pull_request":
         return await _handle_pr_event(payload)
+    elif event == "check_suite" and payload.get("action") == "completed":
+        return await _handle_check_suite_completed(payload)
     else:
         return _ignore("unhandled github event", event=event)
 
@@ -307,3 +309,33 @@ async def _handle_pr_event(payload: dict):
 
     logger.info("Ticket %s marked as %s (PR %s/%d)", ticket["id"], new_status, repo_full_name, pr_number)
     return {"status": "updated", "ticket_status": new_status}
+
+
+async def _handle_check_suite_completed(payload: dict):
+    check_suite = payload.get("check_suite", {})
+    repo = payload.get("repository", {})
+
+    conclusion = check_suite.get("conclusion", "")
+    if conclusion not in ("failure", "timed_out"):
+        return _ignore("check_suite passed", conclusion=conclusion)
+
+    repo_full_name = repo.get("full_name", "")
+    pull_requests = check_suite.get("pull_requests", [])
+
+    if not pull_requests:
+        return _ignore("check_suite has no associated PRs")
+
+    for pr in pull_requests:
+        pr_number = pr.get("number")
+        if not pr_number:
+            continue
+
+        ticket = await _find_ticket_for_pr(repo_full_name, pr_number)
+        if not ticket:
+            continue
+
+        result = await _trigger_review_run(str(ticket["id"]), f"CI failed ({conclusion})")
+        logger.info("CI failure triggered review for ticket %s (PR %s#%d)", ticket["id"], repo_full_name, pr_number)
+        return result
+
+    return _ignore("no active tickets for failing PRs", repo=repo_full_name)

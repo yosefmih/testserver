@@ -111,6 +111,7 @@ curl -s -X POST "{callback_url}?token=$CALLBACK_TOKEN" \\
 The summary should be concise and explain what changes you made and the reasoning behind them. This gets posted to the Linear issue for the team."""
 
 
+
 def _build_review_prompt(
     issue_title: str,
     issue_url: str,
@@ -119,7 +120,8 @@ def _build_review_prompt(
     pr_number: int,
     callback_url: str,
 ) -> str:
-    return f"""Address new PR review comments for this Linear issue.
+    owner, repo = pr_repo.split("/", 1)
+    return f"""Address review comments and CI failures for this Linear issue.
 
 Issue Title: {issue_title}
 Linear URL: {issue_url}
@@ -131,21 +133,24 @@ This is a continuation of your previous session — you have full context of wha
 
 Steps:
 1. Pull latest changes in the repo you were working in
-2. Use the GitHub MCP server to fetch ALL comments on PR #{pr_number} in {pr_repo}:
-   - Use mcp__github__pull_request_read to get PR details and all review comments
-3. Identify which comments are NEW (ones you haven't addressed yet) and not authored by you
-4. Address each new comment by making the requested code changes
-5. Commit and push to the existing branch
-6. Reply to EACH comment individually on GitHub:
+2. Check CI status using mcp__github__pull_request_read with method="get_check_runs", owner="{owner}", repo="{repo}", pullNumber={pr_number}
+   - If any check runs have failed, read their output and fix the issues
+3. Fetch ALL comments on PR #{pr_number} in {pr_repo}:
+   - Use mcp__github__pull_request_read with method="get_review_comments" to get review threads
+   - Use mcp__github__pull_request_read with method="get_comments" to get general PR comments
+4. Identify which comments are NEW (ones you haven't addressed yet) and not authored by you
+5. Address each new comment by making the requested code changes
+6. Commit and push to the existing branch
+7. Reply to EACH comment individually on GitHub:
    - For inline review comments: use mcp__github__add_reply_to_pull_request_comment
    - For general PR conversation comments: use mcp__github__add_issue_comment
    - Keep replies concise — briefly describe what you changed
-7. Report completion
+8. Report completion
 
 IMPORTANT: After pushing, report completion by running:
 curl -s -X POST "{callback_url}?token=$CALLBACK_TOKEN" \\
   -H "Content-Type: application/json" \\
-  -d '{{"status": "addressed", "summary": "<2-3 sentence summary of what review comments you addressed and what changes you made>"}}'
+  -d '{{"status": "addressed", "summary": "<2-3 sentence summary of what review comments you addressed, CI failures you fixed, and what changes you made>"}}'
 
 The summary gets posted to the Linear issue for the team."""
 

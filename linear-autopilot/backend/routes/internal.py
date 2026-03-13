@@ -74,10 +74,11 @@ async def report_run_metadata(request: Request, run_id: str, body: RunMetadata):
                     WHERE t.id = $1
                 """, ticket_id)
                 if ticket and ticket["linear_access_token"]:
+                    pr_label = f"#{body.pr_number}" if body.pr_number else "PR"
                     await post_issue_comment(
                         ticket["linear_access_token"],
                         ticket["linear_issue_id"],
-                        f"PR created: {body.pr_url}",
+                        f"**Pull request opened:** [{pr_label}]({body.pr_url})",
                     )
             except Exception:
                 logger.warning("Failed to post PR comment to Linear for ticket %s", ticket_id)
@@ -87,21 +88,6 @@ async def report_run_metadata(request: Request, run_id: str, body: RunMetadata):
             "UPDATE runs SET summary = $1 WHERE id = $2",
             body.summary, run_id,
         )
-        try:
-            ticket = await pool.fetchrow("""
-                SELECT t.linear_issue_id, p.linear_access_token
-                FROM tickets t
-                JOIN projects p ON p.id = t.project_id
-                WHERE t.id = $1
-            """, ticket_id)
-            if ticket and ticket["linear_access_token"]:
-                await post_issue_comment(
-                    ticket["linear_access_token"],
-                    ticket["linear_issue_id"],
-                    f"**Autopilot summary:**\n{body.summary}",
-                )
-        except Exception:
-            logger.warning("Failed to post summary to Linear for run %s", run_id)
 
     await pool.execute(
         "UPDATE runs SET callback_token = NULL WHERE id = $1",
