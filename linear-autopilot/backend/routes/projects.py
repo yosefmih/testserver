@@ -1,11 +1,14 @@
+import json
 import logging
 import re
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+import websockets
 
 from db import get_pool
 from middleware.auth import get_current_user_id
+from services.sandbox_runner import SANDBOX_API_URL
 
 logger = logging.getLogger(__name__)
 
@@ -386,3 +389,40 @@ _LOG_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+(stdout|stderr)\s+F\
 
 def _clean_log_line(line: str) -> str:
     return _LOG_PREFIX_RE.sub("", line)
+
+
+@router.websocket('/projects/{project_id}/tickets/{ticket_id}/runs/{run_id}/logs/stream')
+async def stream_run_logs(ws: WebSocket, project_id: str, ticket_id: str, run_id: str):
+    pool = await get_pool()
+
+    run = await pool.fetchrow("""
+        SELECT r.sandbox_id, r.status
+        FROM runs r
+        JOIN tickets t ON t.id = r.ticket_id
+        WHERE r.id = $1 AND r.ticket_id = $2 AND t.project_id = $3
+    """, run_id, ticket_id, project_id)
+
+    if not run or not run['sandbox_id']:
+        await ws.close(code=4004, reason='Run not found or no sandbox')
+        return
+
+    await ws.accept()
+
+    central_ws_url = SANDBOX_API_URL.replace('http://', 'ws://').replace('https://', 'wss://')
+    upstream_url = f'{central_ws_url}/v1/sandbox/{run["sandbox_id"]}/logs/stream'
+
+    try:
+        async with websockets.connect(upstream_url) as upstream:
+            async for raw_msg in upstream:
+                try:
+                    msg = json.loads(raw_msg)
+                    for stream in msg.get('streams', []):
+                        for _ts, line in stream.get('values', []):
+                            cleaned = _clean_log_line(line)
+                            await ws.send_text(cleaned)
+                except json.JSONDecodeError:
+                    pass
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error('Log stream error for run %s (sandbox %s): %s', run_id, run['sandbox_id'], e)

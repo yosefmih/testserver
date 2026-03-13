@@ -32,6 +32,18 @@
 	let showRaw = $state(false);
 	let expandedEntries = $state<Set<number>>(new Set());
 	let autoRefresh = $state<ReturnType<typeof setInterval> | null>(null);
+	let logSocket = $state<WebSocket | null>(null);
+	let streaming = $state(false);
+	let logContainer = $state<HTMLElement | null>(null);
+
+	$effect(() => {
+		if (streaming && expandedRun && runLogs[expandedRun]) {
+			runLogs[expandedRun].length;
+			requestAnimationFrame(() => {
+				if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
+			});
+		}
+	});
 	let triggering = $state(false);
 	let cancelling = $state(false);
 	let hasActiveRun = $derived(ticket?.runs?.some((r: Run) => ACTIVE_STATUSES.includes(r.status)) ?? false);
@@ -70,6 +82,7 @@
 		loadTicket();
 		return () => {
 			if (autoRefresh) clearInterval(autoRefresh);
+			closeLogStream();
 		};
 	});
 
@@ -80,11 +93,16 @@
 		if (hasActiveRun && !autoRefresh) {
 			autoRefresh = setInterval(async () => {
 				ticket = await getTicket(projectId, ticketId);
-				if (expandedRun) await loadRunLogs(expandedRun);
 				const stillActive = ticket.runs.some((r: Run) => ACTIVE_STATUSES.includes(r.status));
-				if (!stillActive && autoRefresh) {
-					clearInterval(autoRefresh);
-					autoRefresh = null;
+				if (!stillActive) {
+					if (autoRefresh) {
+						clearInterval(autoRefresh);
+						autoRefresh = null;
+					}
+					if (expandedRun) {
+						closeLogStream();
+						await loadRunLogs(expandedRun);
+					}
 				}
 			}, 5000);
 		}
@@ -102,14 +120,61 @@
 		loadingLogs = false;
 	}
 
+	function closeLogStream() {
+		if (logSocket) {
+			logSocket.close();
+			logSocket = null;
+		}
+		streaming = false;
+	}
+
+	function connectLogStream(runId: string) {
+		closeLogStream();
+		const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+		const url = `${proto}//${window.location.host}/api/v1/projects/${projectId}/tickets/${ticketId}/runs/${runId}/logs/stream`;
+		const ws = new WebSocket(url);
+		streaming = true;
+
+		if (!runLogs[runId]) {
+			runLogs = { ...runLogs, [runId]: [] };
+		}
+
+		ws.onmessage = (event) => {
+			const current = runLogs[runId] || [];
+			runLogs = { ...runLogs, [runId]: [...current, event.data] };
+		};
+
+		ws.onerror = () => {
+			streaming = false;
+		};
+
+		ws.onclose = () => {
+			streaming = false;
+			logSocket = null;
+		};
+
+		logSocket = ws;
+	}
+
+	function isRunActive(runId: string): boolean {
+		const run = ticket?.runs?.find((r: Run) => r.id === runId);
+		return run ? ACTIVE_STATUSES.includes(run.status) : false;
+	}
+
 	async function toggleRun(runId: string) {
 		if (expandedRun === runId) {
 			expandedRun = null;
 			expandedEntries = new Set();
+			closeLogStream();
 		} else {
 			expandedRun = runId;
 			expandedEntries = new Set();
-			if (!runLogs[runId]) {
+			closeLogStream();
+
+			if (isRunActive(runId)) {
+				await loadRunLogs(runId);
+				connectLogStream(runId);
+			} else if (!runLogs[runId]) {
 				await loadRunLogs(runId);
 			}
 		}
@@ -327,7 +392,15 @@
 								{/if}
 
 								<div class="px-5 py-2 flex items-center justify-between border-b border-warm-700/20">
-									<span class="text-[10px] text-warm-500 uppercase tracking-wider">Sandbox Logs</span>
+									<div class="flex items-center gap-3">
+										<span class="text-[10px] text-warm-500 uppercase tracking-wider">Sandbox Logs</span>
+										{#if streaming}
+											<span class="flex items-center gap-1.5">
+												<span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
+												<span class="text-[10px] text-accent uppercase tracking-wider">Live</span>
+											</span>
+										{/if}
+									</div>
 									<div class="flex items-center gap-4">
 										<button
 											class="text-xs transition-colors duration-200 {showRaw ? 'text-cream' : 'text-warm-500 hover:text-cream'}"
@@ -354,11 +427,11 @@
 								<div class="bg-surface-base overflow-hidden">
 									{#if runLogs[run.id]?.length}
 										{#if showRaw}
-											<div class="overflow-x-auto max-h-[70vh] overflow-y-auto">
+											<div class="overflow-x-auto max-h-[70vh] overflow-y-auto" bind:this={logContainer}>
 												<pre class="px-5 py-4 text-xs font-mono text-cream-dim leading-relaxed">{runLogs[run.id].join('\n')}</pre>
 											</div>
 										{:else if runEntries[run.id]?.length}
-											<div class="max-h-[70vh] overflow-y-auto divide-y divide-warm-700/30">
+											<div class="max-h-[70vh] overflow-y-auto divide-y divide-warm-700/30" bind:this={logContainer}>
 												{#each runEntries[run.id] as entry, idx}
 													{#if entry.kind === 'text'}
 														<div class="px-5 py-3">
