@@ -1,22 +1,29 @@
+import asyncio
 import os
 import time
+import logging
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+import httpx
+import websockets
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from porter_sandbox_api_client import Client
 from porter_sandbox_api_client.api.sandboxes import create_sandbox, get_sandbox, delete_sandbox
-from porter_sandbox_api_client.models import SandboxSpec, NetworkingConfig, SandboxSpecEnv
+from porter_sandbox_api_client.models import SandboxSpec, SandboxSpecEnv, NetworkingConfig
+
+logger = logging.getLogger(__name__)
 
 SANDBOX_API_URL = os.environ.get("SANDBOX_API_URL", "http://sandbox-central.kube-system.svc.cluster.local")
-WILDCARD_DOMAIN = os.environ.get("WILDCARD_DOMAIN", "sandbox.withporter.run")
+SANDBOX_NAMESPACE = os.environ.get("SANDBOX_NAMESPACE", "default")
 JUPYTER_IMAGE = os.environ.get("JUPYTER_IMAGE", "jupyter/scipy-notebook")
 TTL_SECONDS = int(os.environ.get("TTL_SECONDS", "3600"))
+DEFAULT_IAM_ROLE_ARN = os.environ.get("IAM_ROLE_ARN", "")
 
 app = FastAPI(title="Jupyter Sandbox Platform")
 
@@ -30,7 +37,17 @@ app.add_middleware(
 
 sessions: Dict[str, dict] = {}
 
-client = Client(base_url=SANDBOX_API_URL)
+sandbox_client = Client(base_url=SANDBOX_API_URL)
+
+proxy_http_client = httpx.AsyncClient(timeout=30.0)
+
+
+def sandbox_internal_url(sandbox_id: str) -> str:
+    return f"http://sandbox-{sandbox_id}-svc.{SANDBOX_NAMESPACE}.svc.cluster.local:8888"
+
+
+class CreateSessionRequest(BaseModel):
+    iam_role_arn: Optional[str] = None
 
 
 class SessionResponse(BaseModel):
@@ -38,6 +55,7 @@ class SessionResponse(BaseModel):
     jupyter_url: str
     status: str
     created_at: str
+    iam_role_arn: Optional[str] = None
 
 
 class SessionListResponse(BaseModel):
@@ -49,7 +67,9 @@ class DeleteResponse(BaseModel):
 
 
 @app.post("/api/sessions", response_model=SessionResponse)
-async def create_session():
+async def create_session(body: Optional[CreateSessionRequest] = None):
+    iam_role_arn = (body.iam_role_arn if body and body.iam_role_arn else DEFAULT_IAM_ROLE_ARN) or None
+
     spec = SandboxSpec(
         image=JUPYTER_IMAGE,
         command=["start-notebook.sh"],
@@ -58,34 +78,33 @@ async def create_session():
             "--NotebookApp.password=''",
             "--NotebookApp.allow_origin='*'",
         ],
-        networking=NetworkingConfig(
-            port=8888,
-            wildcard_subdomain=WILDCARD_DOMAIN,
-        ),
+        networking=NetworkingConfig(port=8888),
         ttl_seconds=TTL_SECONDS,
         env=SandboxSpecEnv.from_dict({"JUPYTER_ENABLE_LAB": "yes"}),
+        iam_role_arn=iam_role_arn,
     )
 
-    response = create_sandbox.sync(client=client, body=spec)
+    response = create_sandbox.sync(client=sandbox_client, body=spec)
 
-    if hasattr(response, "id"):
-        sandbox_id = response.id
-    else:
+    if not hasattr(response, "id"):
         raise HTTPException(status_code=500, detail=f"Failed to create sandbox: {response}")
+
+    sandbox_id = response.id
 
     deadline = time.time() + 60
     status = "creating"
     while time.time() < deadline:
-        status_response = get_sandbox.sync(id=sandbox_id, client=client)
+        status_response = get_sandbox.sync(id=sandbox_id, client=sandbox_client)
         if hasattr(status_response, "phase"):
-            status = status_response.phase
+            phase = status_response.phase
+            status = phase.value if hasattr(phase, "value") else str(phase)
             if status == "running":
                 break
             elif status in ("failed", "cancelled"):
                 raise HTTPException(status_code=500, detail=f"Sandbox failed to start: {status}")
         time.sleep(1)
 
-    jupyter_url = f"https://{sandbox_id}.{WILDCARD_DOMAIN}"
+    jupyter_url = f"/sandbox/{sandbox_id}/lab"
     created_at = datetime.utcnow().isoformat() + "Z"
 
     sessions[sandbox_id] = {
@@ -93,6 +112,7 @@ async def create_session():
         "jupyter_url": jupyter_url,
         "status": status,
         "created_at": created_at,
+        "iam_role_arn": iam_role_arn,
     }
 
     return SessionResponse(
@@ -100,6 +120,7 @@ async def create_session():
         jupyter_url=jupyter_url,
         status=status,
         created_at=created_at,
+        iam_role_arn=iam_role_arn,
     )
 
 
@@ -110,10 +131,11 @@ async def list_sessions():
 
     for sandbox_id, session in sessions.items():
         try:
-            status_response = get_sandbox.sync(id=sandbox_id, client=client)
+            status_response = get_sandbox.sync(id=sandbox_id, client=sandbox_client)
             if hasattr(status_response, "phase"):
-                session["status"] = status_response.phase
-                if status_response.phase in ("succeeded", "failed", "cancelled"):
+                phase = status_response.phase
+                session["status"] = phase.value if hasattr(phase, "value") else str(phase)
+                if session["status"] in ("succeeded", "failed", "cancelled"):
                     to_remove.append(sandbox_id)
                     continue
             updated_sessions.append(SessionResponse(**session))
@@ -132,12 +154,93 @@ async def terminate_session(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
 
     try:
-        delete_sandbox.sync(id=session_id, client=client)
+        delete_sandbox.sync(id=session_id, client=sandbox_client)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete sandbox: {e}")
 
     sessions.pop(session_id, None)
     return DeleteResponse(success=True)
+
+
+@app.api_route(
+    "/sandbox/{sandbox_id}/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+)
+async def proxy_to_sandbox(sandbox_id: str, path: str, request: Request):
+    if sandbox_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    target_url = f"{sandbox_internal_url(sandbox_id)}/{path}"
+    if request.url.query:
+        target_url += f"?{request.url.query}"
+
+    body = await request.body()
+
+    headers = dict(request.headers)
+    headers.pop("host", None)
+
+    try:
+        resp = await proxy_http_client.request(
+            method=request.method,
+            url=target_url,
+            content=body,
+            headers=headers,
+        )
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="Sandbox not reachable")
+
+    response_headers = dict(resp.headers)
+    response_headers.pop("transfer-encoding", None)
+    response_headers.pop("content-encoding", None)
+    response_headers.pop("content-length", None)
+
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers=response_headers,
+    )
+
+
+@app.websocket("/sandbox/{sandbox_id}/{path:path}")
+async def proxy_websocket(websocket: WebSocket, sandbox_id: str, path: str):
+    if sandbox_id not in sessions:
+        await websocket.close(code=4004)
+        return
+
+    await websocket.accept()
+
+    ws_target = sandbox_internal_url(sandbox_id).replace("http://", "ws://")
+    ws_url = f"{ws_target}/{path}"
+    if websocket.url.query:
+        ws_url += f"?{websocket.url.query}"
+
+    try:
+        async with websockets.connect(ws_url) as upstream:
+
+            async def client_to_upstream():
+                try:
+                    while True:
+                        data = await websocket.receive_bytes()
+                        await upstream.send(data)
+                except WebSocketDisconnect:
+                    await upstream.close()
+
+            async def upstream_to_client():
+                try:
+                    async for message in upstream:
+                        if isinstance(message, bytes):
+                            await websocket.send_bytes(message)
+                        else:
+                            await websocket.send_text(message)
+                except Exception:
+                    await websocket.close()
+
+            await asyncio.gather(client_to_upstream(), upstream_to_client())
+    except Exception:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 @app.get("/health")

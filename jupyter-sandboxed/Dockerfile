@@ -21,7 +21,6 @@ COPY backend/ ./backend/
 COPY --from=frontend-builder /app/static ./static/
 
 ENV SANDBOX_API_URL=http://sandbox-central.kube-system.svc.cluster.local
-ENV WILDCARD_DOMAIN=sandbox.withporter.run
 ENV JUPYTER_IMAGE=jupyter/scipy-notebook
 ENV TTL_SECONDS=3600
 

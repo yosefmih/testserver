@@ -10,6 +10,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': 'http://localhost:8000',
+      '/sandbox': {
+        target: 'http://localhost:8000',
+        ws: true,
+      },
     },
   },
 })

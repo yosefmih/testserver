@@ -5,12 +5,14 @@ interface Session {
   jupyter_url: string
   status: string
   created_at: string
+  iam_role_arn?: string
 }
 
 function App() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [iamRoleArn, setIamRoleArn] = useState('')
 
   const fetchSessions = async () => {
     try {
@@ -32,7 +34,15 @@ function App() {
     setIsCreating(true)
     setError(null)
     try {
-      const response = await fetch('/api/sessions', { method: 'POST' })
+      const body: Record<string, string> = {}
+      if (iamRoleArn.trim()) {
+        body.iam_role_arn = iamRoleArn.trim()
+      }
+      const response = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.detail || 'Failed to create session')
@@ -62,15 +72,30 @@ function App() {
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-4xl mx-auto py-12 px-4">
         <div className="bg-white rounded-lg shadow-lg p-8">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Jupyter Sandbox</h1>
-              <p className="text-gray-600 mt-1">Launch on-demand Jupyter notebooks</p>
-            </div>
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">Jupyter Sandbox</h1>
+            <p className="text-gray-600 mt-1">Launch on-demand Jupyter notebooks with optional AWS access</p>
+          </div>
+
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              IAM Role ARN (optional)
+            </label>
+            <input
+              type="text"
+              value={iamRoleArn}
+              onChange={(e) => setIamRoleArn(e.target.value)}
+              placeholder="arn:aws:iam::123456789012:role/my-role"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              If set, the notebook will have AWS credentials for this role via Pod Identity.
+              Use boto3 directly in your notebook to access AWS services.
+            </p>
             <button
               onClick={createSession}
               disabled={isCreating}
-              className={`px-6 py-3 rounded-lg font-medium text-white transition-colors ${
+              className={`mt-3 px-6 py-2 rounded-lg font-medium text-white transition-colors ${
                 isCreating
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-700'
@@ -78,21 +103,9 @@ function App() {
             >
               {isCreating ? (
                 <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                      fill="none"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
                   Creating...
                 </span>
@@ -136,14 +149,18 @@ function App() {
                         <a
                           href={session.jupyter_url}
                           target="_blank"
-                          rel="noopener noreferrer"
                           className="text-blue-600 hover:underline font-medium"
                         >
-                          {session.jupyter_url}
+                          Open Jupyter Lab
                         </a>
                       </div>
                       <div className="mt-1 text-sm text-gray-500">
                         Created: {formatTime(session.created_at)} · Status: {session.status}
+                        {session.iam_role_arn && (
+                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                            AWS: {session.iam_role_arn.split('/').pop()}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <button
@@ -159,7 +176,7 @@ function App() {
           </div>
 
           <div className="mt-8 pt-6 border-t border-gray-200 text-sm text-gray-500">
-            Sessions automatically terminate after 1 hour of inactivity.
+            Sessions automatically terminate after 1 hour.
           </div>
         </div>
       </div>

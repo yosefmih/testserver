@@ -15,9 +15,9 @@ services:
   serviceMeshEnabled: false
 env:
   SANDBOX_API_URL: "http://sandbox-central.kube-system.svc.cluster.local"
-  WILDCARD_DOMAIN: "sandbox.withporter.run"
   JUPYTER_IMAGE: "jupyter/scipy-notebook"
   TTL_SECONDS: "3600"
+  IAM_ROLE_ARN: ""
 build:
   context: ./
   method: docker
