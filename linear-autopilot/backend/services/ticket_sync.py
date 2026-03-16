@@ -9,7 +9,7 @@ from services.sandbox_runner import (
     sandbox_client, create_sandbox_for_run, create_volume_for_ticket,
     generate_callback_token, parse_sandbox_phase, parse_sandbox_exit_code,
 )
-from services.linear_oauth import post_issue_comment
+from services.linear_oauth import post_issue_comment_with_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ async def _launch_pending_runs():
         SELECT r.id, r.ticket_id, r.kind,
                t.linear_issue_id, t.linear_issue_title, t.linear_issue_description,
                t.linear_issue_url, t.volume_id, t.pr_url, t.project_id,
-               p.github_installation_id, p.linear_access_token,
+               p.github_installation_id, p.linear_access_token, p.linear_refresh_token,
                p.anthropic_api_key, p.custom_tools, p.system_prompt
         FROM runs r
         JOIN tickets t ON t.id = r.ticket_id
@@ -112,13 +112,18 @@ async def _launch_pending_runs():
                         msg = f"**Autopilot is working on this issue.**\n\n[View progress]({run_url})"
                     else:
                         msg = f"**Autopilot is addressing review feedback.**\n\n[View progress]({run_url})"
-                    await post_issue_comment(
+                    await post_issue_comment_with_refresh(
+                        str(run["project_id"]),
                         run["linear_access_token"],
+                        run["linear_refresh_token"],
                         run["linear_issue_id"],
                         msg,
                     )
+                    logger.info("Ticket sync: posted launch comment for run %s to issue %s", run_id, run["linear_issue_id"])
                 except Exception:
                     logger.warning("Ticket sync: failed to post launch comment for run %s", run_id, exc_info=True)
+            else:
+                logger.warning("Ticket sync: no linear_access_token for run %s, skipping launch comment", run_id)
 
         except Exception as e:
             logger.exception("Ticket sync: failed to launch run %s", run_id)
@@ -131,8 +136,10 @@ async def _launch_pending_runs():
                 try:
                     run_url = f"{config.BASE_URL}/projects/{run['project_id']}/tickets/{ticket_id}?run={run_id}"
                     msg = f"**Autopilot failed to start.**\n\n{str(e)}\n\n[View details]({run_url})"
-                    await post_issue_comment(
+                    await post_issue_comment_with_refresh(
+                        str(run["project_id"]),
                         run["linear_access_token"],
+                        run["linear_refresh_token"],
                         run["linear_issue_id"],
                         msg,
                     )
@@ -223,13 +230,17 @@ async def _sync_active_runs():
             try:
                 ticket_info = await pool.fetchrow("""
                     SELECT t.linear_issue_id, t.project_id, t.pr_url,
-                           r.summary, r.kind, p.linear_access_token
+                           r.summary, r.kind, p.linear_access_token, p.linear_refresh_token
                     FROM tickets t
                     JOIN runs r ON r.ticket_id = t.id
                     JOIN projects p ON p.id = t.project_id
                     WHERE r.id = $1
                 """, run_id)
-                if ticket_info and ticket_info["linear_access_token"]:
+                if not ticket_info:
+                    logger.warning("Ticket sync: no ticket_info found for run %s, skipping completion comment", run_id)
+                elif not ticket_info["linear_access_token"]:
+                    logger.warning("Ticket sync: no linear_access_token for run %s, skipping completion comment", run_id)
+                elif ticket_info and ticket_info["linear_access_token"]:
                     run_url = f"{config.BASE_URL}/projects/{ticket_info['project_id']}/tickets/{ticket_id}?run={run_id}"
 
                     if final_status == "success":
@@ -240,11 +251,14 @@ async def _sync_active_runs():
                             msg += f"\n\n[View PR]({ticket_info['pr_url']}) · [View run]({run_url})"
                         else:
                             msg += f"\n\n[View run]({run_url})"
-                        await post_issue_comment(
+                        await post_issue_comment_with_refresh(
+                            str(ticket_info["project_id"]),
                             ticket_info["linear_access_token"],
+                            ticket_info["linear_refresh_token"],
                             ticket_info["linear_issue_id"],
                             msg,
                         )
+                        logger.info("Ticket sync: posted success comment for run %s to issue %s", run_id, ticket_info["linear_issue_id"])
                     elif final_status == "failed":
                         kind_label = "initial run" if ticket_info["kind"] == "initial" else "review run"
                         msg = f"**Autopilot {kind_label} failed.**"
@@ -252,11 +266,14 @@ async def _sync_active_runs():
                             truncated = error_text[-500:]
                             msg += f"\n\n```\n{truncated}\n```"
                         msg += f"\n\n[View run]({run_url})"
-                        await post_issue_comment(
+                        await post_issue_comment_with_refresh(
+                            str(ticket_info["project_id"]),
                             ticket_info["linear_access_token"],
+                            ticket_info["linear_refresh_token"],
                             ticket_info["linear_issue_id"],
                             msg,
                         )
+                        logger.info("Ticket sync: posted failure comment for run %s to issue %s", run_id, ticket_info["linear_issue_id"])
             except Exception:
                 logger.warning("Ticket sync: failed to post completion comment for run %s", run_id, exc_info=True)
 
