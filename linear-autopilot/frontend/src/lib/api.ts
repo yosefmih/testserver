@@ -198,6 +198,7 @@ export type Invite = {
 	invited_by: string;
 	created_at: string;
 	expires_at: string;
+	invite_url: string;
 };
 
 export function listInvites(projectId: string) {

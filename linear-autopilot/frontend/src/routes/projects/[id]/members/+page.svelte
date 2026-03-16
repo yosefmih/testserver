@@ -98,6 +98,11 @@
 		navigator.clipboard.writeText(inviteUrl);
 		message = 'Invite link copied to clipboard';
 	}
+
+	function copyLink(url: string) {
+		navigator.clipboard.writeText(url);
+		message = 'Invite link copied to clipboard';
+	}
 </script>
 
 {#if project}
@@ -192,6 +197,12 @@
 						</div>
 						<div class="flex items-center gap-3">
 							<span class="text-warm-500 text-xs px-3 py-1.5 border border-warm-700/50 capitalize">{invite.role}</span>
+							<button
+								class="text-warm-500 text-xs hover:text-accent transition-colors duration-200"
+								onclick={() => copyLink(invite.invite_url)}
+							>
+								Copy link
+							</button>
 							<button
 								class="text-warm-500 text-xs hover:text-red-400 transition-colors duration-200"
 								onclick={() => handleRevoke(invite)}

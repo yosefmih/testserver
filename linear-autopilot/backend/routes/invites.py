@@ -3,6 +3,7 @@ import secrets
 
 from fastapi import APIRouter, Request, HTTPException
 
+from config import config
 from db import get_pool
 from middleware.auth import get_current_user_id, require_project_member
 
@@ -35,6 +36,7 @@ async def list_invites(request: Request, project_id: str):
             "invited_by": r["invited_by_name"] or r["invited_by_email"],
             "created_at": r["created_at"].isoformat(),
             "expires_at": r["expires_at"].isoformat(),
+            "invite_url": f"{config.BASE_URL}/invite/{r['token']}",
         }
         for r in rows
     ]
