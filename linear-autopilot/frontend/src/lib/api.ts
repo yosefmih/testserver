@@ -77,6 +77,7 @@ export function getProject(id: string) {
 		custom_tools: string;
 		system_prompt: string;
 		created_at: string;
+		role: string;
 		tickets: Ticket[];
 	}>(`/api/v1/projects/${id}`);
 }
@@ -150,4 +151,40 @@ export function disconnectLinear(projectId: string) {
 
 export function logout() {
 	return apiFetch('/auth/logout', { method: 'POST' });
+}
+
+// --- Members ---
+
+export type Member = {
+	id: string;
+	user_id: string;
+	email: string;
+	name: string;
+	avatar_url: string | null;
+	role: string;
+	created_at: string;
+};
+
+export function listMembers(projectId: string) {
+	return apiFetch<Member[]>(`/api/v1/projects/${projectId}/members`);
+}
+
+export function addMember(projectId: string, email: string, role: string = 'developer') {
+	return apiFetch<Member>(`/api/v1/projects/${projectId}/members`, {
+		method: 'POST',
+		body: JSON.stringify({ email, role }),
+	});
+}
+
+export function updateMemberRole(projectId: string, memberId: string, role: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/members/${memberId}`, {
+		method: 'PATCH',
+		body: JSON.stringify({ role }),
+	});
+}
+
+export function removeMember(projectId: string, memberId: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/members/${memberId}`, {
+		method: 'DELETE',
+	});
 }

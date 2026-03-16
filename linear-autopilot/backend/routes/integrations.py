@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from config import config
 from db import get_pool
-from middleware.auth import get_current_user_id
+from middleware.auth import get_current_user_id, require_project_member
 from services import github_app, linear_oauth
 
 router = APIRouter()
@@ -30,7 +30,10 @@ STATUS_DISCONNECTED = "disconnected"
 
 @router.get("/projects/{project_id}/integrations/github/install")
 async def github_install(request: Request, project_id: str):
-    get_current_user_id(request)
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+    await require_project_member(pool, user_id, project_id, min_role="admin")
+
     install_url = f"{GITHUB_INSTALL_BASE_URL}/{config.GITHUB_APP_SLUG}/installations/new"
     params = urlencode({"state": project_id})
     return RedirectResponse(url=f"{install_url}?{params}")
@@ -42,11 +45,7 @@ async def github_callback(request: Request, installation_id: int, state: str):
     project_id = state
 
     pool = await get_pool()
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_member(pool, user_id, project_id, min_role="admin")
 
     await pool.execute(
         "UPDATE projects SET github_installation_id = $1, updated_at = now() WHERE id = $2",
@@ -61,12 +60,12 @@ async def list_github_repos(request: Request, project_id: str):
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
+    await require_project_member(pool, user_id, project_id)
+
     project = await pool.fetchrow(
-        "SELECT github_installation_id FROM projects WHERE id = $1 AND user_id = $2",
-        project_id, user_id,
+        "SELECT github_installation_id FROM projects WHERE id = $1",
+        project_id,
     )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
     if not project["github_installation_id"]:
         raise HTTPException(status_code=400, detail="GitHub not connected")
 
@@ -78,7 +77,9 @@ async def list_github_repos(request: Request, project_id: str):
 
 @router.get("/projects/{project_id}/integrations/linear/connect")
 async def linear_connect(request: Request, project_id: str):
-    get_current_user_id(request)
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+    await require_project_member(pool, user_id, project_id, min_role="admin")
 
     state = f"{project_id}:{secrets.token_hex(16)}"
     params = urlencode({
@@ -105,11 +106,7 @@ async def github_disconnect(request: Request, project_id: str):
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_member(pool, user_id, project_id, min_role="admin")
 
     await pool.execute(
         "UPDATE projects SET github_installation_id = NULL, updated_at = now() WHERE id = $1",
@@ -123,11 +120,7 @@ async def linear_disconnect(request: Request, project_id: str):
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_member(pool, user_id, project_id, min_role="admin")
 
     await pool.execute("""
         UPDATE projects SET
@@ -150,12 +143,7 @@ async def linear_callback(request: Request, code: str, state: str):
     user_id = get_current_user_id(request)
 
     pool = await get_pool()
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2",
-        project_id, user_id,
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_member(pool, user_id, project_id, min_role="admin")
 
     tokens = await linear_oauth.exchange_code(code)
 

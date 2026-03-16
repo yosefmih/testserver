@@ -85,7 +85,15 @@
 			<a href="/projects/{projectId}" class="text-warm-500 text-sm hover:text-cream transition-colors duration-200 no-underline">&larr; Back to project</a>
 		</div>
 
-		<h1 class="font-serif text-3xl tracking-tight mb-12">{project.name} <span class="text-warm-500">&mdash;</span> Settings</h1>
+		<div class="flex items-center gap-6 mb-12">
+			<h1 class="font-serif text-3xl tracking-tight">{project.name} <span class="text-warm-500">&mdash;</span> Settings</h1>
+			<a
+				href="/projects/{projectId}/members"
+				class="text-warm-500 text-sm hover:text-cream transition-colors duration-200 no-underline"
+			>
+				Manage Members
+			</a>
+		</div>
 
 		<!-- Anthropic API Key -->
 		<section class="mb-8">

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 import websockets
 
 from db import get_pool
-from middleware.auth import get_current_user_id
+from middleware.auth import get_current_user_id, require_project_member
 from services.sandbox_runner import SANDBOX_API_URL
 
 logger = logging.getLogger(__name__)
@@ -40,12 +40,13 @@ async def list_projects(request: Request):
     pool = await get_pool()
 
     rows = await pool.fetch("""
-        SELECT id, name, github_installation_id,
-               linear_access_token, linear_organization_id, anthropic_api_key,
-               autopilot_label, created_at
-        FROM projects
-        WHERE user_id = $1
-        ORDER BY created_at DESC
+        SELECT p.id, p.name, p.github_installation_id,
+               p.linear_access_token, p.linear_organization_id, p.anthropic_api_key,
+               p.autopilot_label, p.created_at, pm.role
+        FROM projects p
+        JOIN project_members pm ON pm.project_id = p.id
+        WHERE pm.user_id = $1
+        ORDER BY p.created_at DESC
     """, user_id)
 
     return [
@@ -58,6 +59,7 @@ async def list_projects(request: Request):
             "claude_connected": r["anthropic_api_key"] is not None,
             "autopilot_label": r["autopilot_label"],
             "created_at": r["created_at"].isoformat(),
+            "role": r["role"],
         }
         for r in rows
     ]
@@ -73,6 +75,11 @@ async def create_project(request: Request, body: CreateProjectRequest):
         user_id, body.name,
     )
 
+    await pool.execute(
+        "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'admin')",
+        row["id"], user_id,
+    )
+
     return {
         "id": str(row["id"]),
         "name": row["name"],
@@ -85,16 +92,15 @@ async def get_project(request: Request, project_id: str):
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
+    role = await require_project_member(pool, user_id, project_id)
+
     project = await pool.fetchrow("""
         SELECT id, name, github_installation_id,
                linear_access_token, linear_organization_id, anthropic_api_key,
                custom_tools, system_prompt, autopilot_label, created_at
         FROM projects
-        WHERE id = $1 AND user_id = $2
-    """, project_id, user_id)
-
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        WHERE id = $1
+    """, project_id)
 
     tickets = await pool.fetch("""
         SELECT id, linear_issue_id, linear_issue_title, linear_issue_url,
@@ -117,6 +123,7 @@ async def get_project(request: Request, project_id: str):
         "custom_tools": project["custom_tools"] or "",
         "system_prompt": project["system_prompt"] or "",
         "created_at": project["created_at"].isoformat(),
+        "role": role,
         "tickets": [
             {
                 "id": str(t["id"]),
@@ -145,11 +152,7 @@ async def update_project_settings(request: Request, project_id: str, body: Updat
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_member(pool, user_id, project_id, min_role="admin")
 
     field_map = {
         "autopilot_label": body.autopilot_label,
@@ -185,15 +188,12 @@ async def delete_project(request: Request, project_id: str):
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_member(pool, user_id, project_id, min_role="admin")
 
     await pool.execute("DELETE FROM review_comments WHERE ticket_id IN (SELECT id FROM tickets WHERE project_id = $1)", project_id)
     await pool.execute("DELETE FROM runs WHERE ticket_id IN (SELECT id FROM tickets WHERE project_id = $1)", project_id)
     await pool.execute("DELETE FROM tickets WHERE project_id = $1", project_id)
+    await pool.execute("DELETE FROM project_members WHERE project_id = $1", project_id)
     await pool.execute("DELETE FROM projects WHERE id = $1", project_id)
 
     return {"status": "deleted"}
@@ -206,11 +206,7 @@ async def get_ticket(request: Request, project_id: str, ticket_id: str):
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_member(pool, user_id, project_id)
 
     ticket = await pool.fetchrow("""
         SELECT id, linear_issue_id, linear_issue_title, linear_issue_url,
@@ -258,11 +254,7 @@ async def trigger_review(request: Request, project_id: str, ticket_id: str):
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_member(pool, user_id, project_id)
 
     ticket = await pool.fetchrow(
         "SELECT id, status, pr_url FROM tickets WHERE id = $1 AND project_id = $2",
@@ -299,11 +291,7 @@ async def cancel_ticket(request: Request, project_id: str, ticket_id: str):
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_member(pool, user_id, project_id)
 
     ticket = await pool.fetchrow(
         "SELECT id, status, volume_id FROM tickets WHERE id = $1 AND project_id = $2",
@@ -353,11 +341,7 @@ async def get_run_logs(request: Request, project_id: str, ticket_id: str, run_id
     user_id = get_current_user_id(request)
     pool = await get_pool()
 
-    project = await pool.fetchrow(
-        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", project_id, user_id
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_member(pool, user_id, project_id)
 
     run = await pool.fetchrow("""
         SELECT r.sandbox_id, r.status
@@ -451,3 +435,138 @@ async def stream_run_logs(ws: WebSocket, project_id: str, ticket_id: str, run_id
         pass
     except Exception as e:
         logger.error('Log stream error for run %s (sandbox %s): %s', run_id, run['sandbox_id'], e)
+
+
+# --- Member routes ---
+
+@router.get("/projects/{project_id}/members")
+async def list_members(request: Request, project_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    await require_project_member(pool, user_id, project_id)
+
+    rows = await pool.fetch("""
+        SELECT pm.id, pm.role, pm.created_at,
+               u.id AS user_id, u.email, u.name, u.avatar_url
+        FROM project_members pm
+        JOIN users u ON u.id = pm.user_id
+        WHERE pm.project_id = $1
+        ORDER BY pm.created_at ASC
+    """, project_id)
+
+    return [
+        {
+            "id": str(r["id"]),
+            "user_id": str(r["user_id"]),
+            "email": r["email"],
+            "name": r["name"],
+            "avatar_url": r["avatar_url"],
+            "role": r["role"],
+            "created_at": r["created_at"].isoformat(),
+        }
+        for r in rows
+    ]
+
+
+class AddMemberRequest(BaseModel):
+    email: str
+    role: str = "developer"
+
+
+@router.post("/projects/{project_id}/members")
+async def add_member(request: Request, project_id: str, body: AddMemberRequest):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    await require_project_member(pool, user_id, project_id, min_role="admin")
+
+    if body.role not in ("admin", "developer"):
+        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'developer'")
+
+    target_user = await pool.fetchrow("SELECT id FROM users WHERE email = $1", body.email)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="No user found with that email. They must sign in first.")
+
+    existing = await pool.fetchrow(
+        "SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2",
+        project_id, target_user["id"],
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="User is already a member of this project")
+
+    row = await pool.fetchrow(
+        "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, $3) RETURNING id, created_at",
+        project_id, target_user["id"], body.role,
+    )
+
+    return {
+        "id": str(row["id"]),
+        "user_id": str(target_user["id"]),
+        "email": body.email,
+        "role": body.role,
+        "created_at": row["created_at"].isoformat(),
+    }
+
+
+class UpdateMemberRequest(BaseModel):
+    role: str
+
+
+@router.patch("/projects/{project_id}/members/{member_id}")
+async def update_member(request: Request, project_id: str, member_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    await require_project_member(pool, user_id, project_id, min_role="admin")
+
+    body = UpdateMemberRequest(**(await request.json()))
+    if body.role not in ("admin", "developer"):
+        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'developer'")
+
+    member = await pool.fetchrow(
+        "SELECT id, user_id FROM project_members WHERE id = $1 AND project_id = $2",
+        member_id, project_id,
+    )
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    await pool.execute(
+        "UPDATE project_members SET role = $1 WHERE id = $2",
+        body.role, member_id,
+    )
+
+    return {"status": "updated"}
+
+
+@router.delete("/projects/{project_id}/members/{member_id}")
+async def remove_member(request: Request, project_id: str, member_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    await require_project_member(pool, user_id, project_id, min_role="admin")
+
+    member = await pool.fetchrow(
+        "SELECT id, user_id FROM project_members WHERE id = $1 AND project_id = $2",
+        member_id, project_id,
+    )
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    if str(member["user_id"]) == user_id:
+        raise HTTPException(status_code=400, detail="Cannot remove yourself from the project")
+
+    admin_count = await pool.fetchval(
+        "SELECT COUNT(*) FROM project_members WHERE project_id = $1 AND role = 'admin'",
+        project_id,
+    )
+    if admin_count <= 1 and member["user_id"] != user_id:
+        current_member_role = await pool.fetchval(
+            "SELECT role FROM project_members WHERE id = $1", member_id
+        )
+        if current_member_role == "admin":
+            raise HTTPException(status_code=400, detail="Cannot remove the last admin")
+
+    await pool.execute("DELETE FROM project_members WHERE id = $1", member_id)
+
+    return {"status": "removed"}

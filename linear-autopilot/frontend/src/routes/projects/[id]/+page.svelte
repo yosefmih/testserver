@@ -43,12 +43,20 @@
 
 		<div class="flex items-start justify-between mb-12">
 			<h1 class="font-serif text-3xl tracking-tight">{project.name}</h1>
-			<a
-				href="/projects/{project.id}/settings"
-				class="border border-warm-600 text-cream-dim px-4 py-2 text-sm hover:bg-surface-raised hover:border-warm-400 transition-all duration-200 no-underline"
-			>
-				Settings
-			</a>
+			<div class="flex items-center gap-3">
+				<a
+					href="/projects/{project.id}/members"
+					class="border border-warm-600 text-cream-dim px-4 py-2 text-sm hover:bg-surface-raised hover:border-warm-400 transition-all duration-200 no-underline"
+				>
+					Members
+				</a>
+				<a
+					href="/projects/{project.id}/settings"
+					class="border border-warm-600 text-cream-dim px-4 py-2 text-sm hover:bg-surface-raised hover:border-warm-400 transition-all duration-200 no-underline"
+				>
+					Settings
+				</a>
+			</div>
 		</div>
 
 		<div class="flex items-center gap-8 mb-12 pb-6 border-b border-warm-700/50">
