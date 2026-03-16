@@ -88,6 +88,7 @@ async def report_run_metadata(request: Request, run_id: str, body: RunMetadata):
             "UPDATE runs SET summary = $1 WHERE id = $2",
             body.summary, run_id,
         )
+        logger.info("Run %s saved summary for ticket %s", run_id, ticket_id)
 
     await pool.execute(
         "UPDATE runs SET callback_token = NULL WHERE id = $1",

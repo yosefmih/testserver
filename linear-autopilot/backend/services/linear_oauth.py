@@ -96,8 +96,16 @@ async def post_issue_comment(access_token: str, issue_id: str, body: str):
     }
     """
     async with httpx.AsyncClient() as client:
-        await client.post(
+        resp = await client.post(
             LINEAR_GRAPHQL_URL,
             json={"query": mutation, "variables": {"issueId": issue_id, "body": body}},
             headers={"Authorization": access_token},
         )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("errors"):
+            logger.error("Linear commentCreate failed for issue %s: %s", issue_id, data["errors"])
+            raise Exception(f"Linear API error: {data['errors']}")
+        if not data.get("data", {}).get("commentCreate", {}).get("success"):
+            logger.error("Linear commentCreate returned success=false for issue %s: %s", issue_id, data)
+            raise Exception("Linear commentCreate returned success=false")
