@@ -96,6 +96,7 @@ async def _handle_issue(payload: dict, action: str, project):
 
     issue = {
         "id": issue_data.get("id", ""),
+        "identifier": issue_data.get("identifier"),
         "title": issue_data.get("title", ""),
         "description": issue_data.get("description", ""),
         "url": issue_data.get("url", ""),
@@ -134,12 +135,12 @@ async def _create_ticket_for_issue(issue: dict, project):
         return _ignore("ticket already exists", issue_id=issue_id, status=existing["status"])
 
     ticket = await pool.fetchrow("""
-        INSERT INTO tickets (project_id, linear_issue_id, linear_issue_title,
-                            linear_issue_description, linear_issue_url, status)
-        VALUES ($1, $2, $3, $4, $5, 'active')
+        INSERT INTO tickets (project_id, linear_issue_id, linear_issue_identifier,
+                            linear_issue_title, linear_issue_description, linear_issue_url, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 'active')
         RETURNING id
-    """, project_id, issue_id, issue.get("title", ""),
-       issue.get("description", ""), issue.get("url", ""))
+    """, project_id, issue_id, issue.get("identifier"),
+       issue.get("title", ""), issue.get("description", ""), issue.get("url", ""))
 
     ticket_id = str(ticket["id"])
 

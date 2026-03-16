@@ -81,12 +81,12 @@
 		{#if project.tickets.length > 0}
 			<div class="space-y-1">
 				{#each project.tickets as ticket}
-					<a href="/projects/{project.id}/tickets/{ticket.id}" class="flex items-center justify-between px-5 py-3 border border-warm-700/50 hover:bg-surface-raised/50 transition-all duration-200 no-underline group">
+					<a href="/projects/{project.id}/tickets/{ticket.linear_issue_identifier || ticket.id}" class="flex items-center justify-between px-5 py-3 border border-warm-700/50 hover:bg-surface-raised/50 transition-all duration-200 no-underline group">
 						<div class="flex items-center gap-4">
 							<span class="flex items-center gap-1.5 {statusColor(ticket.status)}">
 								<span class="w-1.5 h-1.5 rounded-full {dotColor(ticket.status)}"></span>
 							</span>
-							<span class="font-mono text-sm text-cream">{ticket.linear_issue_id}</span>
+							<span class="font-mono text-sm text-cream">{ticket.linear_issue_identifier || ticket.linear_issue_title}</span>
 							{#if ticket.pr_url}
 								<span class="text-[10px] font-mono uppercase tracking-wider text-accent/80 bg-accent/10 px-1.5 py-0.5">PR</span>
 							{/if}

@@ -48,6 +48,7 @@ export function createProject(name: string) {
 export type Ticket = {
 	id: string;
 	linear_issue_id: string;
+	linear_issue_identifier: string | null;
 	linear_issue_title: string;
 	linear_issue_url: string | null;
 	pr_url: string | null;
@@ -102,6 +103,7 @@ export function getTicket(projectId: string, ticketId: string) {
 	return apiFetch<{
 		id: string;
 		linear_issue_id: string;
+		linear_issue_identifier: string | null;
 		linear_issue_title: string;
 		linear_issue_url: string | null;
 		pr_repo: string | null;

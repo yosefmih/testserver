@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
 
 from db import get_pool
-from services.linear_oauth import post_issue_comment
+from services.linear_oauth import post_issue_comment_with_refresh
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -68,15 +68,17 @@ async def report_run_metadata(request: Request, run_id: str, body: RunMetadata):
         if body.pr_url:
             try:
                 ticket = await pool.fetchrow("""
-                    SELECT t.linear_issue_id, p.linear_access_token
+                    SELECT t.linear_issue_id, t.project_id, p.linear_access_token, p.linear_refresh_token
                     FROM tickets t
                     JOIN projects p ON p.id = t.project_id
                     WHERE t.id = $1
                 """, ticket_id)
                 if ticket and ticket["linear_access_token"]:
                     pr_label = f"#{body.pr_number}" if body.pr_number else "PR"
-                    await post_issue_comment(
+                    await post_issue_comment_with_refresh(
+                        str(ticket["project_id"]),
                         ticket["linear_access_token"],
+                        ticket["linear_refresh_token"],
                         ticket["linear_issue_id"],
                         f"**Pull request opened:** [{pr_label}]({body.pr_url})",
                     )

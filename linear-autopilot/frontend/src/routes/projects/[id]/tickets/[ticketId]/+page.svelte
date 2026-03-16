@@ -433,7 +433,7 @@
 			<div>
 				<h1 class="font-serif text-2xl tracking-tight mb-2">{ticket.linear_issue_title}</h1>
 				<div class="flex items-center gap-4 text-sm">
-					<span class="font-mono text-warm-500">{ticket.linear_issue_id}</span>
+					<span class="font-mono text-warm-500">{ticket.linear_issue_identifier || ticket.linear_issue_id}</span>
 					<span class={ticketStatusColor(ticket.status)}>{ticket.status}</span>
 				</div>
 			</div>

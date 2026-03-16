@@ -21,8 +21,8 @@ async def _launch_pending_runs():
 
     runs = await pool.fetch("""
         SELECT r.id, r.ticket_id, r.kind,
-               t.linear_issue_id, t.linear_issue_title, t.linear_issue_description,
-               t.linear_issue_url, t.volume_id, t.pr_url, t.project_id,
+               t.linear_issue_id, t.linear_issue_identifier, t.linear_issue_title,
+               t.linear_issue_description, t.linear_issue_url, t.volume_id, t.pr_url, t.project_id,
                p.github_installation_id, p.linear_access_token, p.linear_refresh_token,
                p.anthropic_api_key, p.custom_tools, p.system_prompt
         FROM runs r
@@ -107,7 +107,8 @@ async def _launch_pending_runs():
 
             if run["linear_access_token"]:
                 try:
-                    run_url = f"{config.BASE_URL}/projects/{run['project_id']}/tickets/{ticket_id}?run={run_id}"
+                    ticket_ref = run["linear_issue_identifier"] or ticket_id
+                    run_url = f"{config.BASE_URL}/projects/{run['project_id']}/tickets/{ticket_ref}?run={run_id}"
                     if run["kind"] == "initial":
                         msg = f"**Autopilot is working on this issue.**\n\n[View progress]({run_url})"
                     else:
@@ -134,7 +135,8 @@ async def _launch_pending_runs():
 
             if run["linear_access_token"]:
                 try:
-                    run_url = f"{config.BASE_URL}/projects/{run['project_id']}/tickets/{ticket_id}?run={run_id}"
+                    ticket_ref = run["linear_issue_identifier"] or ticket_id
+                    run_url = f"{config.BASE_URL}/projects/{run['project_id']}/tickets/{ticket_ref}?run={run_id}"
                     msg = f"**Autopilot failed to start.**\n\n{str(e)}\n\n[View details]({run_url})"
                     await post_issue_comment_with_refresh(
                         str(run["project_id"]),
@@ -229,7 +231,7 @@ async def _sync_active_runs():
 
             try:
                 ticket_info = await pool.fetchrow("""
-                    SELECT t.linear_issue_id, t.project_id, t.pr_url,
+                    SELECT t.linear_issue_id, t.linear_issue_identifier, t.project_id, t.pr_url,
                            r.summary, r.kind, p.linear_access_token, p.linear_refresh_token
                     FROM tickets t
                     JOIN runs r ON r.ticket_id = t.id
@@ -241,7 +243,8 @@ async def _sync_active_runs():
                 elif not ticket_info["linear_access_token"]:
                     logger.warning("Ticket sync: no linear_access_token for run %s, skipping completion comment", run_id)
                 elif ticket_info and ticket_info["linear_access_token"]:
-                    run_url = f"{config.BASE_URL}/projects/{ticket_info['project_id']}/tickets/{ticket_id}?run={run_id}"
+                    ticket_ref = ticket_info["linear_issue_identifier"] or ticket_id
+                    run_url = f"{config.BASE_URL}/projects/{ticket_info['project_id']}/tickets/{ticket_ref}?run={run_id}"
 
                     if final_status == "success":
                         summary = ticket_info["summary"] or "Run completed successfully."

@@ -36,6 +36,10 @@ async def wait_for_volume_ready(volume_id: str) -> None:
     elapsed = 0
     while elapsed < VOLUME_READY_TIMEOUT:
         response = get_volume.sync(id=volume_id, client=sandbox_client)
+        if response is None or not hasattr(response, "phase"):
+            error_detail = getattr(response, "detail", str(response)) if response else "no response"
+            raise Exception(f"Volume {volume_id} lookup failed: {error_detail}")
+
         phase = response.phase.value if hasattr(response.phase, "value") else str(response.phase)
 
         if phase == "ready":
@@ -68,6 +72,10 @@ async def create_volume_for_ticket() -> str:
 
 async def ensure_volume_ready(volume_id: str) -> None:
     response = get_volume.sync(id=volume_id, client=sandbox_client)
+    if response is None or not hasattr(response, "phase"):
+        error_detail = getattr(response, "detail", str(response)) if response else "no response"
+        raise Exception(f"Volume {volume_id} lookup failed: {error_detail}")
+
     phase = response.phase.value if hasattr(response.phase, "value") else str(response.phase)
     if phase == "ready":
         return

@@ -16,6 +16,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+
+
+async def _resolve_ticket_id(pool, project_id: str, ticket_ref: str) -> str:
+    if UUID_RE.match(ticket_ref):
+        return ticket_ref
+    row = await pool.fetchrow(
+        "SELECT id FROM tickets WHERE project_id = $1 AND linear_issue_identifier = $2",
+        project_id, ticket_ref,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return str(row["id"])
+
 # Ticket status constants
 TICKET_STATUS_ACTIVE = "active"
 TICKET_STATUS_CANCELLED = "cancelled"
@@ -105,8 +119,8 @@ async def get_project(request: Request, project_id: str):
     """, project_id)
 
     tickets = await pool.fetch("""
-        SELECT id, linear_issue_id, linear_issue_title, linear_issue_url,
-               pr_url, status, created_at, updated_at
+        SELECT id, linear_issue_id, linear_issue_identifier, linear_issue_title,
+               linear_issue_url, pr_url, status, created_at, updated_at
         FROM tickets
         WHERE project_id = $1
         ORDER BY created_at DESC
@@ -130,6 +144,7 @@ async def get_project(request: Request, project_id: str):
             {
                 "id": str(t["id"]),
                 "linear_issue_id": t["linear_issue_id"],
+                "linear_issue_identifier": t["linear_issue_identifier"],
                 "linear_issue_title": t["linear_issue_title"],
                 "linear_issue_url": t["linear_issue_url"],
                 "pr_url": t["pr_url"],
@@ -210,9 +225,10 @@ async def get_ticket(request: Request, project_id: str, ticket_id: str):
     pool = await get_pool()
 
     await require_project_member(pool, user_id, project_id)
+    ticket_id = await _resolve_ticket_id(pool, project_id, ticket_id)
 
     ticket = await pool.fetchrow("""
-        SELECT id, linear_issue_id, linear_issue_title, linear_issue_url,
+        SELECT id, linear_issue_id, linear_issue_identifier, linear_issue_title, linear_issue_url,
                pr_repo, pr_number, pr_url, volume_id, status, created_at, updated_at
         FROM tickets WHERE id = $1 AND project_id = $2
     """, ticket_id, project_id)
@@ -228,6 +244,7 @@ async def get_ticket(request: Request, project_id: str, ticket_id: str):
     return {
         "id": str(ticket["id"]),
         "linear_issue_id": ticket["linear_issue_id"],
+        "linear_issue_identifier": ticket["linear_issue_identifier"],
         "linear_issue_title": ticket["linear_issue_title"],
         "linear_issue_url": ticket["linear_issue_url"],
         "pr_repo": ticket["pr_repo"],
@@ -258,6 +275,7 @@ async def trigger_review(request: Request, project_id: str, ticket_id: str):
     pool = await get_pool()
 
     await require_project_member(pool, user_id, project_id)
+    ticket_id = await _resolve_ticket_id(pool, project_id, ticket_id)
 
     ticket = await pool.fetchrow(
         "SELECT id, status, pr_url FROM tickets WHERE id = $1 AND project_id = $2",
@@ -295,6 +313,7 @@ async def cancel_ticket(request: Request, project_id: str, ticket_id: str):
     pool = await get_pool()
 
     await require_project_member(pool, user_id, project_id)
+    ticket_id = await _resolve_ticket_id(pool, project_id, ticket_id)
 
     ticket = await pool.fetchrow(
         "SELECT id, status, volume_id FROM tickets WHERE id = $1 AND project_id = $2",
@@ -345,6 +364,7 @@ async def get_run_logs(request: Request, project_id: str, ticket_id: str, run_id
     pool = await get_pool()
 
     await require_project_member(pool, user_id, project_id)
+    ticket_id = await _resolve_ticket_id(pool, project_id, ticket_id)
 
     run = await pool.fetchrow("""
         SELECT r.sandbox_id, r.status
@@ -401,6 +421,7 @@ def _reassemble_lines(raw_lines: list[str]) -> list[str]:
 @router.websocket('/projects/{project_id}/tickets/{ticket_id}/runs/{run_id}/logs/stream')
 async def stream_run_logs(ws: WebSocket, project_id: str, ticket_id: str, run_id: str):
     pool = await get_pool()
+    ticket_id = await _resolve_ticket_id(pool, project_id, ticket_id)
 
     run = await pool.fetchrow("""
         SELECT r.sandbox_id, r.status

@@ -69,6 +69,7 @@ async def get_issue(access_token: str, issue_id: str) -> dict | None:
     query($id: String!) {
         issue(id: $id) {
             id
+            identifier
             title
             description
             url
@@ -91,6 +92,7 @@ async def get_issue(access_token: str, issue_id: str) -> dict | None:
         issue = body["data"]["issue"]
         return {
             "id": issue["id"],
+            "identifier": issue.get("identifier"),
             "title": issue["title"],
             "description": issue.get("description", ""),
             "url": issue.get("url", ""),
@@ -124,8 +126,7 @@ async def post_issue_comment(access_token: str, issue_id: str, body: str):
     mutation($issueId: String!, $body: String!) {
         commentCreate(input: {
             issueId: $issueId,
-            body: $body,
-            createAsUser: "Autopilot"
+            body: $body
         }) {
             success
         }
