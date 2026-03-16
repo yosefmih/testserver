@@ -431,11 +431,13 @@
 
 		<div class="flex items-start justify-between mb-8">
 			<div>
-				<h1 class="font-serif text-2xl tracking-tight mb-2">{ticket.linear_issue_title}</h1>
-				<div class="flex items-center gap-4 text-sm">
-					<span class="font-mono text-warm-500">{ticket.linear_issue_identifier || ticket.linear_issue_id}</span>
-					<span class={ticketStatusColor(ticket.status)}>{ticket.status}</span>
+				<div class="flex items-center gap-3 mb-2">
+					{#if ticket.linear_issue_identifier}
+						<span class="font-mono text-sm text-warm-500">{ticket.linear_issue_identifier}</span>
+					{/if}
+					<span class={ticketStatusColor(ticket.status) + ' text-sm'}>{ticket.status}</span>
 				</div>
+				<h1 class="font-serif text-2xl tracking-tight">{ticket.linear_issue_title}</h1>
 			</div>
 			<div class="flex gap-3">
 				{#if ticket.pr_url && ticket.status === 'active'}
