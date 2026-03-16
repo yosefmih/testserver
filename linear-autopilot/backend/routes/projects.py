@@ -1,11 +1,13 @@
 import json
 import logging
 import re
+import secrets
 
 from fastapi import APIRouter, Request, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 import websockets
 
+from config import config
 from db import get_pool
 from middleware.auth import get_current_user_id, require_project_member
 from services.sandbox_runner import SANDBOX_API_URL
@@ -193,6 +195,7 @@ async def delete_project(request: Request, project_id: str):
     await pool.execute("DELETE FROM review_comments WHERE ticket_id IN (SELECT id FROM tickets WHERE project_id = $1)", project_id)
     await pool.execute("DELETE FROM runs WHERE ticket_id IN (SELECT id FROM tickets WHERE project_id = $1)", project_id)
     await pool.execute("DELETE FROM tickets WHERE project_id = $1", project_id)
+    await pool.execute("DELETE FROM invites WHERE project_id = $1", project_id)
     await pool.execute("DELETE FROM project_members WHERE project_id = $1", project_id)
     await pool.execute("DELETE FROM projects WHERE id = $1", project_id)
 
@@ -485,8 +488,39 @@ async def add_member(request: Request, project_id: str, body: AddMemberRequest):
         raise HTTPException(status_code=400, detail="Role must be 'admin' or 'developer'")
 
     target_user = await pool.fetchrow("SELECT id FROM users WHERE email = $1", body.email)
+
     if not target_user:
-        raise HTTPException(status_code=404, detail="No user found with that email. They must sign in first.")
+        existing_invite = await pool.fetchrow(
+            "SELECT id FROM invites WHERE project_id = $1 AND email = $2 AND accepted_at IS NULL AND expires_at > now()",
+            project_id, body.email,
+        )
+        if existing_invite:
+            raise HTTPException(status_code=409, detail="An invite has already been sent to this email")
+
+        token = secrets.token_urlsafe(32)
+        row = await pool.fetchrow("""
+            INSERT INTO invites (project_id, email, role, token, invited_by)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (project_id, email) DO UPDATE SET
+                role = EXCLUDED.role, token = EXCLUDED.token,
+                invited_by = EXCLUDED.invited_by,
+                expires_at = now() + INTERVAL '7 days',
+                accepted_at = NULL
+            RETURNING id, created_at, expires_at
+        """, project_id, body.email, body.role, token, user_id)
+
+        invite_url = f"{config.BASE_URL}/invite/{token}"
+        logger.info("Created invite for %s to project %s: %s", body.email, project_id, invite_url)
+
+        return {
+            "id": str(row["id"]),
+            "email": body.email,
+            "role": body.role,
+            "status": "invited",
+            "invite_url": invite_url,
+            "created_at": row["created_at"].isoformat(),
+            "expires_at": row["expires_at"].isoformat(),
+        }
 
     existing = await pool.fetchrow(
         "SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2",
@@ -505,6 +539,7 @@ async def add_member(request: Request, project_id: str, body: AddMemberRequest):
         "user_id": str(target_user["id"]),
         "email": body.email,
         "role": body.role,
+        "status": "added",
         "created_at": row["created_at"].isoformat(),
     }
 

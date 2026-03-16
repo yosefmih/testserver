@@ -33,7 +33,7 @@ def _create_session_token(user_id: str, email: str) -> str:
 
 
 @router.get("/google/login")
-async def google_login(request: Request):
+async def google_login(request: Request, next: str | None = None):
     state = secrets.token_hex(16)
 
     params = urlencode({
@@ -55,6 +55,15 @@ async def google_login(request: Request):
         max_age=300,
         secure=request.url.scheme == "https",
     )
+    if next and next.startswith("/"):
+        response.set_cookie(
+            "oauth_next",
+            next,
+            httponly=True,
+            samesite="lax",
+            max_age=300,
+            secure=request.url.scheme == "https",
+        )
     return response
 
 
@@ -97,7 +106,11 @@ async def google_callback(request: Request, code: str, state: str):
 
     session_token = _create_session_token(str(user["id"]), user["email"])
 
-    response = RedirectResponse(url="/projects", status_code=302)
+    redirect_to = request.cookies.get("oauth_next", "/projects")
+    if not redirect_to.startswith("/"):
+        redirect_to = "/projects"
+
+    response = RedirectResponse(url=redirect_to, status_code=302)
     response.set_cookie(
         config.SESSION_COOKIE_NAME,
         session_token,
@@ -107,6 +120,7 @@ async def google_callback(request: Request, code: str, state: str):
         secure=request.url.scheme == "https",
     )
     response.delete_cookie("oauth_state")
+    response.delete_cookie("oauth_next")
     return response
 
 

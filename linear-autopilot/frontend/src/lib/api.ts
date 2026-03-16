@@ -170,7 +170,7 @@ export function listMembers(projectId: string) {
 }
 
 export function addMember(projectId: string, email: string, role: string = 'developer') {
-	return apiFetch<Member>(`/api/v1/projects/${projectId}/members`, {
+	return apiFetch<Member & { status?: string; invite_url?: string; expires_at?: string }>(`/api/v1/projects/${projectId}/members`, {
 		method: 'POST',
 		body: JSON.stringify({ email, role }),
 	});
@@ -186,5 +186,42 @@ export function updateMemberRole(projectId: string, memberId: string, role: stri
 export function removeMember(projectId: string, memberId: string) {
 	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/members/${memberId}`, {
 		method: 'DELETE',
+	});
+}
+
+// --- Invites ---
+
+export type Invite = {
+	id: string;
+	email: string;
+	role: string;
+	invited_by: string;
+	created_at: string;
+	expires_at: string;
+};
+
+export function listInvites(projectId: string) {
+	return apiFetch<Invite[]>(`/api/v1/projects/${projectId}/invites`);
+}
+
+export function revokeInvite(projectId: string, inviteId: string) {
+	return apiFetch<{ status: string }>(`/api/v1/projects/${projectId}/invites/${inviteId}`, {
+		method: 'DELETE',
+	});
+}
+
+export function getInvite(token: string) {
+	return apiFetch<{
+		status: string;
+		email?: string;
+		role?: string;
+		project_id?: string;
+		project_name?: string;
+	}>(`/api/v1/invites/${token}`);
+}
+
+export function acceptInvite(token: string) {
+	return apiFetch<{ status: string; project_id?: string }>(`/api/v1/invites/${token}/accept`, {
+		method: 'POST',
 	});
 }

@@ -12,6 +12,7 @@ from db import init_pool, close_pool, run_migrations
 from routes.auth import router as auth_router
 from routes.projects import router as projects_router
 from routes.integrations import router as integrations_router
+from routes.invites import router as invites_router, public_router as invites_public_router
 from routes.webhooks import router as webhooks_router
 from routes.internal import router as internal_router
 from services.ticket_sync import ticket_sync_loop
@@ -47,6 +48,8 @@ app = FastAPI(title="Linear Autopilot", lifespan=lifespan)
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(projects_router, prefix="/api/v1", tags=["projects"])
 app.include_router(integrations_router, prefix="/api/v1", tags=["integrations"])
+app.include_router(invites_router, prefix="/api/v1", tags=["invites"])
+app.include_router(invites_public_router, prefix="/api/v1", tags=["invites"])
 app.include_router(webhooks_router, prefix="/webhooks", tags=["webhooks"])
 app.include_router(internal_router, prefix="/api/internal", tags=["internal"])
 
