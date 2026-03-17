@@ -86,10 +86,8 @@
 							<span class="flex items-center gap-1.5 {statusColor(ticket.status)}">
 								<span class="w-1.5 h-1.5 rounded-full {dotColor(ticket.status)}"></span>
 							</span>
-							{#if ticket.linear_issue_identifier}
-								<span class="font-mono text-xs text-warm-500">{ticket.linear_issue_identifier}</span>
-							{/if}
-							<span class="text-sm text-cream">{ticket.linear_issue_title}</span>
+							<span class="font-mono text-xs text-warm-500">{ticket.linear_issue_identifier || '—'}</span>
+							<span class="text-sm text-cream truncate max-w-[300px]">{ticket.linear_issue_title}</span>
 							{#if ticket.pr_url}
 								<span class="text-[10px] font-mono uppercase tracking-wider text-accent/80 bg-accent/10 px-1.5 py-0.5">PR</span>
 							{/if}
