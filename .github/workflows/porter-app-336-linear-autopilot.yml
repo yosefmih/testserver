@@ -24,7 +24,7 @@ jobs:
               uses: porter-dev/setup-porter@v0.1.0
             - name: Deploy stack
               timeout-minutes: 30
-              run: porter apply --no-build
+              run: porter apply --no-build --tag ${{ steps.vars.outputs.sha_short }}
               env:
                 PORTER_APP_NAME: linear-autopilot
                 PORTER_CLUSTER: "336"
