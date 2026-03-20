@@ -1,7 +1,7 @@
 "on":
     push:
         branches:
-            - dev
+            - main
 name: Deploy to linear-autopilot
 jobs:
     porter-deploy:
