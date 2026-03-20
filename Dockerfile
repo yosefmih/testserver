@@ -76,19 +76,23 @@ EXPOSE 3000
 EXPOSE 8080
 EXPOSE 9090
 
-# ARG allows passing variables at build-time (docker build --build-arg RUN_FILE=...).
-ARG RUN_FILE
-# This RUN command just echoes the value during the build process, it's for debugging build args.
-RUN echo "RUN_FILE is set to ${RUN_FILE:-server.py}" # Added a default for clarity in the log
+# === Build arg injection test ===
+# ENV_A: set on Porter app as non-secret env var (no PORTER_ prefix)
+# PORTER_ENV_A: set on Porter app as non-secret env var (has PORTER_ prefix)
+# GHA_ONLY_VAR: set only in GHA workflow env block, not in Porter or --variables
+# VARIABLES_FLAG_VAR: passed only via --variables flag
 
-ARG PORTER_TEST_VAR
-RUN echo "PORTER_TEST_VAR is set to ${PORTER_TEST_VAR:-not set}"
+ARG ENV_A
+ARG PORTER_ENV_A
+ARG GHA_ONLY_VAR
+ARG VARIABLES_FLAG_VAR
 
-# ARG for GitHub token.
-ARG PORTER_PASS_THOUGH_GITHUB_TOKEN
-# Logging the token during build means it appears in build logs. Be mindful of sensitive tokens.
-# For pip installing from private GitHub repos, consider using SSH keys with BuildKit secrets for better security.
-RUN echo "PORTER_PASS_THOUGH_GITHUB_TOKEN during build: ${PORTER_PASS_THOUGH_GITHUB_TOKEN:-not set}"
+RUN echo "=== BUILD ARG TEST RESULTS ===" && \
+    echo "ENV_A=${ENV_A:-NOT SET}" && \
+    echo "PORTER_ENV_A=${PORTER_ENV_A:-NOT SET}" && \
+    echo "GHA_ONLY_VAR=${GHA_ONLY_VAR:-NOT SET}" && \
+    echo "VARIABLES_FLAG_VAR=${VARIABLES_FLAG_VAR:-NOT SET}" && \
+    echo "=== END TEST RESULTS ==="
 
 # CMD specifies the default command to run when the container starts.
 # This is set to run server.py.
