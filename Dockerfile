@@ -1,4 +1,4 @@
-FROM 992382605253.dkr.ecr.us-east-2.amazonaws.com/testserver:latest AS previous
+FROM 992382605253.dkr.ecr.us-east-2.amazonaws.com/testserver:45cc8a01c68e231b1f113f99a971d0cab43026b3 AS previous
 RUN echo "=== PREVIOUS IMAGE PULL SUCCEEDED ==="
 
 FROM alpine:3.20
