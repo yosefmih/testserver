@@ -14,8 +14,15 @@ jobs:
               run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
             - name: Setup porter
               uses: porter-dev/setup-porter@v0.1.0
-            - name: Configure Docker credentials
-              run: porter docker configure
+            - name: Configure Docker credentials and login to ECR
+              run: |
+                porter docker configure
+                docker-credential-porter list | jq -r 'to_entries[] | select(.key | contains("ecr")) | .key' | while read registry; do
+                  echo "Logging into $registry..."
+                  docker-credential-porter get <<< "$registry" | jq -r '"\(.Username) \(.Secret)"' | while read user pass; do
+                    echo "$pass" | docker login --username "$user" --password-stdin "https://$registry"
+                  done
+                done
               env:
                 PORTER_HOST: https://yosefdev2.withporter.run
                 PORTER_PROJECT: "1"
