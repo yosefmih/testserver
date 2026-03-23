@@ -14,6 +14,13 @@ jobs:
               run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
             - name: Setup porter
               uses: porter-dev/setup-porter@v0.1.0
+            - name: Configure Docker credentials
+              run: porter docker configure
+              env:
+                PORTER_HOST: https://yosefdev2.withporter.run
+                PORTER_PROJECT: "1"
+                PORTER_CLUSTER: "1"
+                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_869731671 }}
             - name: Deploy stack
               timeout-minutes: 30
               run: porter apply

@@ -1,4 +1,8 @@
+FROM 992382605253.dkr.ecr.us-east-2.amazonaws.com/testserver:latest AS previous
+RUN echo "=== PREVIOUS IMAGE PULL SUCCEEDED ==="
+
 FROM alpine:3.20
+COPY --from=previous /etc/os-release /tmp/previous-os-release
 
 ARG ENV_A
 ARG PORTER_ENV_A
