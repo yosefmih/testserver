@@ -1,0 +1,20 @@
+# Compiles several large Go projects from source (~10-15 min)
+FROM golang:1.22-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN CGO_ENABLED=0 go install sigs.k8s.io/kind@v0.22.0
+RUN CGO_ENABLED=0 go install github.com/derailed/k9s@v0.32.4
+RUN CGO_ENABLED=0 go install github.com/stern/stern@v1.28.0
+RUN CGO_ENABLED=0 go install github.com/grafana/loki/cmd/logcli@v2.9.4
+RUN CGO_ENABLED=0 go install github.com/prometheus/prometheus/cmd/promtool@v0.50.1
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=builder /go/bin/kind /usr/local/bin/kind
+COPY --from=builder /go/bin/k9s /usr/local/bin/k9s
+COPY --from=builder /go/bin/stern /usr/local/bin/stern
+COPY --from=builder /go/bin/logcli /usr/local/bin/logcli
+COPY --from=builder /go/bin/promtool /usr/local/bin/promtool
+CMD ["kind", "version"]

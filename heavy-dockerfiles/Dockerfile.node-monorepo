@@ -1,0 +1,47 @@
+# Simulates a large Node.js monorepo with heavy dependency install + build (~5-10 min)
+FROM node:20-bookworm AS builder
+
+WORKDIR /app
+
+RUN npm init -y && \
+    npm install --save \
+    next@15 react@19 react-dom@19 \
+    @mui/material @mui/icons-material @emotion/react @emotion/styled \
+    three @react-three/fiber @react-three/drei \
+    prisma @prisma/client \
+    typescript @types/react @types/node \
+    tailwindcss postcss autoprefixer \
+    eslint prettier \
+    webpack webpack-cli webpack-dev-server \
+    babel-loader @babel/core @babel/preset-env @babel/preset-react @babel/preset-typescript \
+    jest ts-jest @testing-library/react @testing-library/jest-dom \
+    storybook @storybook/react-webpack5 \
+    graphql @apollo/client @apollo/server \
+    zod @trpc/server @trpc/client @trpc/react-query \
+    @tanstack/react-query \
+    framer-motion \
+    recharts d3 \
+    sharp \
+    playwright
+
+RUN npx playwright install-deps && npx playwright install chromium
+
+RUN cat > tsconfig.json << 'TSEOF'
+{"compilerOptions":{"target":"es2022","module":"esnext","moduleResolution":"bundler","jsx":"react-jsx","strict":true,"outDir":"dist","rootDir":"src"},"include":["src"]}
+TSEOF
+
+RUN mkdir -p src && \
+    for i in $(seq 1 50); do \
+      echo "export const module${i} = { id: ${i}, data: Array.from({length: 1000}, (_, j) => ({ key: j, value: 'item-' + j })) };" > src/module${i}.ts; \
+    done && \
+    echo "$(for i in $(seq 1 50); do echo "import { module${i} } from './module${i}';"; done)" > src/index.ts && \
+    echo "$(for i in $(seq 1 50); do echo "console.log(module${i}.id);"; done)" >> src/index.ts
+
+RUN npx tsc
+
+FROM node:20-slim
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json .
+CMD ["node", "dist/index.js"]

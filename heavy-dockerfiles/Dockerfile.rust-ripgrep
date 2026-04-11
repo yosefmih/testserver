@@ -1,0 +1,15 @@
+# Compiles ripgrep from source with full Rust toolchain (~8-12 min)
+FROM rust:1.77-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libpcre2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN cargo install ripgrep --version 14.1.0
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpcre2-8-0 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /usr/local/cargo/bin/rg /usr/local/bin/rg
+CMD ["rg", "--version"]

@@ -1,0 +1,66 @@
+# Compiles FFmpeg from source with x264, x265, VP9, and AV1 (~20-30 min)
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    autoconf automake build-essential cmake git libtool \
+    pkg-config wget nasm yasm ca-certificates \
+    libass-dev libfreetype6-dev libgnutls28-dev \
+    libmp3lame-dev libopus-dev libvorbis-dev \
+    texinfo zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp/build
+
+RUN git clone --depth 1 https://code.videolan.org/videolan/x264.git && \
+    cd x264 && \
+    ./configure --prefix=/usr/local --enable-static --enable-pic && \
+    make -j$(nproc) && make install
+
+RUN wget -q https://bitbucket.org/multicoreware/x265_git/downloads/x265_3.5.tar.gz && \
+    tar xzf x265_3.5.tar.gz && \
+    cd x265_3.5/build/linux && \
+    cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_SHARED=OFF ../../source && \
+    make -j$(nproc) && make install
+
+RUN git clone --depth 1 https://chromium.googlesource.com/webm/libvpx.git && \
+    cd libvpx && \
+    ./configure --prefix=/usr/local --disable-examples --disable-unit-tests --enable-vp9-highbitdepth --as=yasm && \
+    make -j$(nproc) && make install
+
+RUN git clone --depth 1 --branch v3.8.0 https://gitlab.com/AOMediaCodec/SVT-AV1.git && \
+    mkdir SVT-AV1/build && cd SVT-AV1/build && \
+    cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=OFF .. && \
+    make -j$(nproc) && make install
+
+RUN wget -q https://ffmpeg.org/releases/ffmpeg-7.0.tar.bz2 && \
+    tar xjf ffmpeg-7.0.tar.bz2 && \
+    cd ffmpeg-7.0 && \
+    PKG_CONFIG_PATH="/usr/local/lib/pkgconfig" ./configure \
+      --prefix=/usr/local \
+      --pkg-config-flags="--static" \
+      --extra-cflags="-I/usr/local/include" \
+      --extra-ldflags="-L/usr/local/lib" \
+      --extra-libs="-lpthread -lm" \
+      --enable-gpl \
+      --enable-gnutls \
+      --enable-libass \
+      --enable-libfreetype \
+      --enable-libmp3lame \
+      --enable-libopus \
+      --enable-libvorbis \
+      --enable-libvpx \
+      --enable-libx264 \
+      --enable-libx265 \
+      --enable-libsvtav1 \
+      --enable-nonfree && \
+    make -j$(nproc) && make install
+
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libass9 libfreetype6 libgnutls30 libmp3lame0 libopus0 libvorbis0a \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
+CMD ["ffmpeg", "-version"]
