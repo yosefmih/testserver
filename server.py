@@ -25,6 +25,7 @@ import io
 import urllib.request
 import urllib.error
 
+
 # Load environment variables at the very beginning
 load_dotenv(".env", override=True)
 
