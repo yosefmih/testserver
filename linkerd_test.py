@@ -25,6 +25,7 @@ ERROR_RATE = 30     # Error rate to use for retry testing
 REQUESTS = 50       # Number of requests for load test
 CONCURRENCY = 5     # Concurrency level for load test
 
+
 class LinkerdTest:
     def __init__(self, server_url, output_dir=None, verbose=False, debug_mode=False, force_continue=False):
         self.server_url = server_url
