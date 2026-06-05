@@ -29,18 +29,6 @@ jobs:
                 jq '.credHelpers["992382605253.dkr.ecr.us-east-1.amazonaws.com"] = "porter"' \
                   ~/.docker/config.json > "$tmp" && mv "$tmp" ~/.docker/config.json
                 cat ~/.docker/config.json
-            - name: Pre-pull :latest so the FROM stage finds it in the local cache
-              # `porter apply`'s docker SDK BuildLocal call doesn't pass
-              # AuthConfigs (cmd/docker/builder.go), so FROM lines pull
-              # anonymously and fail on a private registry. Pulling here puts
-              # :latest into the local image cache; the build's FROM finds it
-              # locally and skips the network pull. PORTER_* env is what the
-              # cred helper reads via viper (cmd/config/config.go).
-              run: docker pull 992382605253.dkr.ecr.us-east-1.amazonaws.com/static-app:latest
-              env:
-                PORTER_HOST: https://yosefdev2.withporter.run
-                PORTER_PROJECT: "1"
-                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_2 }}
             - name: Deploy stack
               timeout-minutes: 30
               run: porter apply
