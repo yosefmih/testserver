@@ -48,9 +48,11 @@ jobs:
               # The Dockerfile's FROM ...:latest AS previous stage needs
               # :latest to point at the most recently deployed image so the
               # next build carries forward its build_latest/ (N+N-1).
+              # Porter ignores PORTER_TAG and tags images with the full
+              # commit SHA — use github.sha (full), not vars.sha_short.
               run: |
                 REPO=992382605253.dkr.ecr.us-east-1.amazonaws.com/static-app
-                SHA=${{ steps.vars.outputs.sha_short }}
+                SHA=${{ github.sha }}
                 docker tag  "$REPO:$SHA" "$REPO:latest"
                 docker push "$REPO:latest"
               env:
