@@ -41,7 +41,7 @@ cat > build/index.html <<HTML
   <title>static-app ${BUILD_ID}</title>
 </head>
 <body>
-  <h1>static-app (revision 2)</h1>
+  <h1>static-app (revision 3)</h1>
   <p>HTML build id: <code>${BUILD_ID}</code></p>
   <p>main chunk: <code>${main_file}</code></p>
   <p>vendor chunk: <code>${vendor_file}</code></p>
