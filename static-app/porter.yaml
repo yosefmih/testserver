@@ -1,0 +1,17 @@
+version: v2
+name: static-app
+services:
+  - name: web
+    type: web
+    instances: 3
+    cpuCores: 0.1
+    ramMegabytes: 256
+    port: 3000
+    terminationGracePeriodSeconds: 30
+    healthCheck:
+      enabled: true
+      httpPath: /healthz
+build:
+  context: ./
+  method: docker
+  dockerfile: Dockerfile
