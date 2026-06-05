@@ -3,11 +3,26 @@ set -eu
 
 BUILD_ID="${BUILD_ID:-dev-$(date +%s)}"
 
+# Portable 8-char sha256 prefix. alpine/busybox has sha256sum;
+# macOS only ships shasum by default.
+hash8() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | cut -c1-8
+  else
+    shasum -a 256 | cut -c1-8
+  fi
+}
+
 main_src="window.BUILD_ID=\"$BUILD_ID\";document.getElementById('out').innerText='loaded main from build '+window.BUILD_ID;"
 vendor_src="window.VENDOR_BUILD=\"$BUILD_ID\";"
 
-main_hash=$(printf "%s" "$main_src"   | shasum -a 256 | cut -c1-8)
-vendor_hash=$(printf "%s" "$vendor_src" | shasum -a 256 | cut -c1-8)
+main_hash=$(printf "%s" "$main_src"   | hash8)
+vendor_hash=$(printf "%s" "$vendor_src" | hash8)
+
+if [ -z "$main_hash" ] || [ -z "$vendor_hash" ]; then
+  echo "build.sh: empty hash (main='$main_hash' vendor='$vendor_hash'). aborting." >&2
+  exit 1
+fi
 
 main_file="main-${main_hash}.js"
 vendor_file="vendor-${vendor_hash}.js"
