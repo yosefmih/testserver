@@ -29,3 +29,22 @@ jobs:
                 # build.sh hashes asset chunks from this so every commit ships
                 # unique asset hashes — required for the 404 reproduction.
                 PORTER_BUILD_ID: ${{ steps.vars.outputs.sha_short }}
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                aws-region: us-east-1
+            - name: Retag image as latest
+              # The Dockerfile's `FROM ...:latest AS previous` stage needs :latest
+              # to point at the most recently deployed image so the next build
+              # can carry forward its build_latest/ (N+N-1 retention).
+              run: |
+                MANIFEST=$(aws ecr batch-get-image \
+                  --repository-name static-app \
+                  --image-ids imageTag=${{ steps.vars.outputs.sha_short }} \
+                  --query 'images[0].imageManifest' --output text)
+                aws ecr put-image \
+                  --repository-name static-app \
+                  --image-tag latest \
+                  --image-manifest "$MANIFEST" >/dev/null
