@@ -46,16 +46,21 @@ doesn't reproduce.
 retags the just-deployed image as `:latest` after `porter apply` so the
 *next* build sees this build as its previous.
 
-Two prerequisites:
+Auth: the workflow uses Porter's docker credential helper
+(`docker-credential-porter`, installed alongside `porter` by
+`install.porter.run`). `porter docker configure` writes the registry → helper
+mapping into `~/.docker/config.json` before `docker build` runs, so the
+FROM-line pull and the post-build retag both authenticate via Porter's API —
+no AWS keys needed in the workflow.
 
-- The workflow needs `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` GH
-  secrets with `ecr:BatchGetImage` and `ecr:PutImage` on `static-app`.
-- `:latest` must exist before the first N+N-1 build. Seed it once:
-  ```
-  MANIFEST=$(aws ecr batch-get-image --repository-name static-app \
-    --image-ids imageTag=<existing-sha> --query 'images[0].imageManifest' --output text)
-  aws ecr put-image --repository-name static-app --image-tag latest --image-manifest "$MANIFEST"
-  ```
+One-time seed: `:latest` must exist before the first N+N-1 build. Push it
+once from a machine that already has docker auth (the same helper works
+locally after `porter docker configure`):
+```
+REPO=992382605253.dkr.ecr.us-east-1.amazonaws.com/static-app
+SHA=<some-already-pushed-sha>
+docker pull "$REPO:$SHA" && docker tag "$REPO:$SHA" "$REPO:latest" && docker push "$REPO:latest"
+```
 
 The **first deploy after enabling this** still ships only N's assets — its
 `previous` image was built before `build_latest/` existed. From the **second

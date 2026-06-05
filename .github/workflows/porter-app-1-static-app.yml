@@ -14,6 +14,17 @@ jobs:
               run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
             - name: Setup porter
               uses: porter-dev/setup-porter@v0.1.0
+            - name: Configure docker auth via Porter
+              # install.porter.run installs both `porter` and
+              # `docker-credential-porter`. `porter docker configure` writes
+              # ~/.docker/config.json so the local docker daemon pulls/pushes
+              # the project's registries via the Porter credential helper —
+              # needed by the Dockerfile's FROM ...:latest AS previous stage.
+              run: porter docker configure
+              env:
+                PORTER_HOST: https://yosefdev2.withporter.run
+                PORTER_PROJECT: "1"
+                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_2 }}
             - name: Deploy stack
               timeout-minutes: 30
               run: porter apply
@@ -29,22 +40,13 @@ jobs:
                 # build.sh hashes asset chunks from this so every commit ships
                 # unique asset hashes — required for the 404 reproduction.
                 PORTER_BUILD_ID: ${{ steps.vars.outputs.sha_short }}
-            - name: Configure AWS credentials
-              uses: aws-actions/configure-aws-credentials@v4
-              with:
-                aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-                aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                aws-region: us-east-1
             - name: Retag image as latest
-              # The Dockerfile's `FROM ...:latest AS previous` stage needs :latest
+              # The Dockerfile's FROM ...:latest AS previous stage needs :latest
               # to point at the most recently deployed image so the next build
-              # can carry forward its build_latest/ (N+N-1 retention).
+              # carries forward its build_latest/ (N+N-1 retention).
               run: |
-                MANIFEST=$(aws ecr batch-get-image \
-                  --repository-name static-app \
-                  --image-ids imageTag=${{ steps.vars.outputs.sha_short }} \
-                  --query 'images[0].imageManifest' --output text)
-                aws ecr put-image \
-                  --repository-name static-app \
-                  --image-tag latest \
-                  --image-manifest "$MANIFEST" >/dev/null
+                REPO=992382605253.dkr.ecr.us-east-1.amazonaws.com/static-app
+                SHA=${{ steps.vars.outputs.sha_short }}
+                docker pull "$REPO:$SHA"
+                docker tag  "$REPO:$SHA" "$REPO:latest"
+                docker push "$REPO:latest"
