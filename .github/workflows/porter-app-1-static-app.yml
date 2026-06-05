@@ -25,3 +25,7 @@ jobs:
                 PORTER_PROJECT: "1"
                 PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
                 PORTER_TOKEN: ${{ secrets.PORTER_APP_1_2 }}
+                # Forwarded to docker build as ARG PORTER_BUILD_ID; static-app's
+                # build.sh hashes asset chunks from this so every commit ships
+                # unique asset hashes — required for the 404 reproduction.
+                PORTER_BUILD_ID: ${{ steps.vars.outputs.sha_short }}
