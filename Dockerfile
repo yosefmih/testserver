@@ -61,7 +61,7 @@ COPY server.py .
 COPY server_ws.py .
 # COPY client.py .
 # COPY linkerd_test.py .
-# COPY compute_pi.py .
+COPY compute_pi.py .
 # COPY ooms.py .
 # COPY mining_simulator.py .
 # COPY web_scraper.py .
