@@ -20,8 +20,8 @@ jobs:
               env:
                 PORTER_APP_NAME: testserver
                 PORTER_CLUSTER: "1"
-                PORTER_DEPLOYMENT_TARGET_ID: 5ef8d9ac-65cb-40f4-9af3-95ddab7d8dad
+                PORTER_DEPLOYMENT_TARGET_ID: f84fa229-7227-45bc-adbf-86684007df2e
                 PORTER_HOST: https://ben.withporter.run
                 PORTER_PROJECT: "1"
                 PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
-                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_5 }}
+                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_4 }}
