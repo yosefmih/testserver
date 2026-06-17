@@ -24,4 +24,4 @@ jobs:
                 PORTER_HOST: https://dashboard.porter.run
                 PORTER_PROJECT: "18950"
                 PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
-                PORTER_TOKEN: ${{ secrets.PORTER_APP_18950_16916 }}
+                PORTER_TOKEN: ${{ secrets.PORTER_APP_18950_16928 }}
