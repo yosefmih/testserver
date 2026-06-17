@@ -1,0 +1,17 @@
+version: v2
+name: linear-autopilot
+services:
+  - name: web
+    run: "uvicorn main:app --host 0.0.0.0 --port 8080"
+    type: web
+    instances: 1
+    cpuCores: 1
+    ramMegabytes: 2048
+    port: 8080
+env:
+  PORTER_SANDBOX_BASE_URL: "http://sandbox-api.porter-sandbox-system.svc.cluster.local:8080"
+  PORTER_SANDBOX_API_KEY: ""
+build:
+  context: ./
+  method: docker
+  dockerfile: Dockerfile
