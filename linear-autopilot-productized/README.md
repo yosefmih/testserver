@@ -135,9 +135,12 @@ cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+pip install vendor/porter_sandbox-0.0.1-py3-none-any.whl
 ```
 
-The Porter Sandbox SDK (`porter-sandbox`) is included in `requirements.txt`.
+The Porter Sandbox SDK (`porter-sandbox`) is not published to a package index,
+so it is vendored as a wheel in `backend/vendor/` and installed explicitly (the
+Dockerfile does the same). See `backend/vendor/README.md` for how to refresh it.
 
 ### 8. Install Frontend Dependencies
 

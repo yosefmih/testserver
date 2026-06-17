@@ -6,4 +6,7 @@ pyjwt[crypto]==2.10.0
 python-dotenv==1.0.1
 pydantic==2.10.0
 cryptography==44.0.0
-porter-sandbox>=0.0.1
+
+# Porter Sandbox SDK — not published to an index; installed from the vendored
+# wheel in backend/vendor/ (see Dockerfile and backend/vendor/README.md). httpx
+# and pydantic above satisfy its dependencies.

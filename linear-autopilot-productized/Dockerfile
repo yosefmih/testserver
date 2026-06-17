@@ -9,6 +9,8 @@ FROM python:3.13-slim-bookworm
 WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/vendor ./vendor
+RUN pip install --no-cache-dir vendor/porter_sandbox-0.0.1-py3-none-any.whl
 COPY backend/ .
 COPY --from=frontend /app/build ./static/
 EXPOSE 8080
