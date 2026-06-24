@@ -2,10 +2,34 @@
 import argparse
 import psycopg2
 import os
+import random
 import sys
 import time
 from datetime import datetime
 from decimal import Decimal, getcontext
+
+def inject_sporadic_failure():
+    """
+    Randomly inject failures for testing cronjob failure handling:
+      - 20% chance: exit with a random non-zero code
+      - 10% chance: exhaust memory (OOM)
+      - 10% chance: hang for 2 minutes (timeout)
+      - 60% chance: proceed normally
+    """
+    roll = random.random()
+    if roll < 0.20:
+        code = random.randint(1, 255)
+        print(f"[chaos] Exiting with random non-zero code {code}", file=sys.stderr)
+        sys.exit(code)
+    elif roll < 0.30:
+        print("[chaos] Simulating OOM by allocating memory", file=sys.stderr)
+        hog = []
+        while True:
+            hog.append(bytearray(100 * 1024 * 1024))
+    elif roll < 0.40:
+        print("[chaos] Simulating timeout by sleeping for 2 minutes", file=sys.stderr)
+        time.sleep(120)
+        sys.exit(1)
 
 def fail_after_delay(duration_seconds=60, interval_seconds=10):
     """
@@ -82,7 +106,9 @@ def main():
                       help='Simulate a failure after a 2-minute delay')
     
     args = parser.parse_args()
-    
+
+    inject_sporadic_failure()
+
     if args.fail_after_delay:
         fail_after_delay(duration_seconds=120)
         return
