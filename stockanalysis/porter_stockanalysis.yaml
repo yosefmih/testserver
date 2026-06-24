@@ -10,7 +10,7 @@ services:
   terminationGracePeriodSeconds: 30
   port: 3000
   domains:
-  - name: web-2-715a3906-tm5hfbyt.withporter.run
+  - name: spred.preview.testing.withporter.run
   healthCheck:
     enabled: true
     httpPath: /health
