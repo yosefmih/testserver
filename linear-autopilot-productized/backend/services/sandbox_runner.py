@@ -216,8 +216,11 @@ async def create_sandbox_for_run(
     if custom_tools:
         allowed_tools = f"{allowed_tools},{custom_tools}"
 
+    cred = (anthropic_api_key or "").strip()
+    claude_auth_var = "CLAUDE_CODE_OAUTH_TOKEN" if cred.startswith("sk-ant-oat") else "ANTHROPIC_API_KEY"
+
     command = _build_worker_command({
-        "CLAUDE_CODE_OAUTH_TOKEN": anthropic_api_key,
+        claude_auth_var: cred,
         "GITHUB_TOKEN": github_token,
         "LINEAR_API_KEY": linear_access_token,
         "ISSUE_PROMPT": prompt,
@@ -268,6 +271,14 @@ async def delete_sandbox(sandbox_id: str) -> None:
 
 async def delete_volume(volume_id: str) -> None:
     await porter.volumes.delete(volume_id)
+
+
+async def get_volume_phase(volume_id: str) -> str | None:
+    try:
+        volume = await porter.volumes.get(volume_id)
+    except NotFoundError:
+        return None
+    return volume.phase.value
 
 
 async def get_sandbox_logs(sandbox_id: str, limit: int = 1000, since: str = "6h") -> list[str]:

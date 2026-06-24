@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { getTicket, getRunLogs, triggerReviewNow, cancelTicket } from '$lib/api';
+	import { getTicket, getRunLogs, triggerReviewNow, cancelTicket, rerunTicket } from '$lib/api';
 	import type { Run } from '$lib/api';
 
 	type ActionEntry = {
@@ -55,6 +55,7 @@
 	});
 	let triggering = $state(false);
 	let cancelling = $state(false);
+	let rerunning = $state(false);
 	let hasActiveRun = $derived(ticket?.runs?.some((r: Run) => ACTIVE_STATUSES.includes(r.status)) ?? false);
 
 	const projectId = page.params.id;
@@ -69,6 +70,18 @@
 			alert(e.message);
 		}
 		triggering = false;
+	}
+
+	async function handleRerun() {
+		if (!confirm('Rerun this ticket? Any in-flight run is cancelled and a fresh one starts.')) return;
+		rerunning = true;
+		try {
+			await rerunTicket(projectId, ticketId);
+			await loadTicket();
+		} catch (e: any) {
+			alert(e.message);
+		}
+		rerunning = false;
 	}
 
 	async function handleCancelTicket() {
@@ -426,6 +439,15 @@
 				<h1 class="font-serif text-2xl tracking-tight">{ticket.linear_issue_title}</h1>
 			</div>
 			<div class="flex gap-3">
+				{#if !hasActiveRun}
+					<button
+						class="border border-accent/60 text-accent px-4 py-2 text-sm hover:bg-accent/10 hover:border-accent transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+						onclick={handleRerun}
+						disabled={rerunning}
+					>
+						{rerunning ? 'Rerunning...' : 'Rerun'}
+					</button>
+				{/if}
 				{#if ticket.pr_url && ticket.status === 'active'}
 					<button
 						class="border border-warm-600 text-cream-dim px-4 py-2 text-sm hover:bg-surface-raised hover:border-warm-400 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"

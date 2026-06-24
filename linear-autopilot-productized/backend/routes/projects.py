@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from config import config
 from db import get_pool
 from middleware.auth import get_current_user_id, require_project_member
-from services.sandbox_runner import delete_sandbox, delete_volume, get_sandbox_logs
+from services.sandbox_runner import delete_sandbox, delete_volume, get_sandbox_logs, get_volume_phase
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +347,72 @@ async def trigger_review(request: Request, project_id: str, ticket_id: str):
 
     logger.info("Manual review triggered for ticket %s", ticket_id)
     return {"status": "triggered"}
+
+
+@router.post("/projects/{project_id}/tickets/{ticket_id}/rerun")
+async def rerun_ticket(request: Request, project_id: str, ticket_id: str):
+    user_id = get_current_user_id(request)
+    pool = await get_pool()
+
+    await require_project_member(pool, user_id, project_id)
+    ticket_id = await _resolve_ticket_id(pool, project_id, ticket_id)
+
+    ticket = await pool.fetchrow(
+        "SELECT id, volume_id, pr_url, pr_repo, pr_number FROM tickets WHERE id = $1 AND project_id = $2",
+        ticket_id, project_id,
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    project = await pool.fetchrow(
+        "SELECT github_installation_id, anthropic_api_key FROM projects WHERE id = $1",
+        project_id,
+    )
+    if not project["github_installation_id"]:
+        raise HTTPException(status_code=400, detail="Connect GitHub in project settings before launching a run")
+    if not project["anthropic_api_key"]:
+        raise HTTPException(status_code=400, detail="Connect Claude in project settings before launching a run")
+
+    # Tear down any in-flight runs so the launch guard doesn't block the rerun.
+    active_runs = await pool.fetch(f"""
+        SELECT id, sandbox_id FROM runs
+        WHERE ticket_id = $1 AND status IN ('{RUN_STATUS_PENDING}', '{RUN_STATUS_LAUNCHING}', '{RUN_STATUS_RUNNING}')
+    """, ticket_id)
+    for run in active_runs:
+        if run["sandbox_id"]:
+            try:
+                await delete_sandbox(run["sandbox_id"])
+            except Exception as e:
+                logger.warning("Rerun: failed to delete sandbox %s: %s", run["sandbox_id"], e)
+        await pool.execute(
+            f"UPDATE runs SET status = '{RUN_STATUS_CANCELLED}', finished_at = now() WHERE id = $1",
+            str(run["id"]),
+        )
+
+    # The volume may have been deleted (e.g. on cancel) or failed; if so, provision a fresh one.
+    volume_id = ticket["volume_id"]
+    if volume_id:
+        phase = await get_volume_phase(volume_id)
+        if phase is None or phase == "failed":
+            logger.info("Rerun: volume %s for ticket %s is unusable (phase=%s); will provision a fresh one",
+                        volume_id, ticket_id, phase)
+            await pool.execute("UPDATE tickets SET volume_id = NULL WHERE id = $1", ticket_id)
+            volume_id = None
+
+    has_pr = bool(ticket["pr_url"] and ticket["pr_repo"] and ticket["pr_number"] is not None)
+    kind = "review" if (has_pr and volume_id) else "initial"
+
+    await pool.execute(
+        f"UPDATE tickets SET status = '{TICKET_STATUS_ACTIVE}', debounce_until = NULL, updated_at = now() WHERE id = $1",
+        ticket_id,
+    )
+    await pool.execute(
+        "INSERT INTO runs (ticket_id, kind, status) VALUES ($1, $2, 'pending')",
+        ticket_id, kind,
+    )
+
+    logger.info("Rerun: ticket %s re-queued (kind=%s)", ticket_id, kind)
+    return {"status": "rerunning", "kind": kind}
 
 
 @router.delete("/projects/{project_id}/tickets/{ticket_id}")

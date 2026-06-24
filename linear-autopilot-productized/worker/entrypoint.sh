@@ -11,13 +11,17 @@ cleanup() {
 trap cleanup SIGTERM SIGINT
 
 echo "=== Worker entrypoint starting ==="
-echo "CLAUDE_CODE_OAUTH_TOKEN set: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo "yes (${#CLAUDE_CODE_OAUTH_TOKEN} chars, prefix=${CLAUDE_CODE_OAUTH_TOKEN:0:7}...)" || echo "NO")"
-echo "GITHUB_TOKEN set: $([ -n "$GITHUB_TOKEN" ] && echo "yes (${#GITHUB_TOKEN} chars)" || echo "NO")"
-echo "LINEAR_API_KEY set: $([ -n "$LINEAR_API_KEY" ] && echo "yes (${#LINEAR_API_KEY} chars)" || echo "NO")"
-echo "ISSUE_PROMPT set: $([ -n "$ISSUE_PROMPT" ] && echo "yes (${#ISSUE_PROMPT} chars)" || echo "NO")"
-echo "CALLBACK_URL set: $([ -n "$CALLBACK_URL" ] && echo "yes" || echo "NO")"
-echo "CALLBACK_TOKEN set: $([ -n "$CALLBACK_TOKEN" ] && echo "yes (${#CALLBACK_TOKEN} chars)" || echo "NO")"
-echo "RUN_KIND set: $([ -n "$RUN_KIND" ] && echo "$RUN_KIND" || echo "NO")"
+# Presence only — never log secret values, lengths, or prefixes (logs go to Loki + the UI).
+claude_auth=missing
+[ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && claude_auth=CLAUDE_CODE_OAUTH_TOKEN
+[ -n "$ANTHROPIC_API_KEY" ] && claude_auth=ANTHROPIC_API_KEY
+echo "Claude auth: ${claude_auth}"
+echo "GITHUB_TOKEN: $([ -n "$GITHUB_TOKEN" ] && echo set || echo missing)"
+echo "LINEAR_API_KEY: $([ -n "$LINEAR_API_KEY" ] && echo set || echo missing)"
+echo "ISSUE_PROMPT: $([ -n "$ISSUE_PROMPT" ] && echo set || echo missing)"
+echo "CALLBACK_URL: $([ -n "$CALLBACK_URL" ] && echo set || echo missing)"
+echo "CALLBACK_TOKEN: $([ -n "$CALLBACK_TOKEN" ] && echo set || echo missing)"
+echo "RUN_KIND: ${RUN_KIND:-unset}"
 
 export HOME=/workspace
 
@@ -34,6 +38,7 @@ echo "=== Launching claude ==="
 echo "claude version: $(claude --version 2>&1 || echo 'unknown')"
 
 CLAUDE_ARGS=(
+    --model "${CLAUDE_MODEL:-claude-opus-4-8}"
     --mcp-config /tmp/mcp_config.json
     --allowedTools "${ALLOWED_TOOLS:-mcp__github__*,mcp__linear__get_issue,mcp__linear__get_issue_comments,Read,Write,Edit,Bash,Glob,Grep}"
     --output-format stream-json
