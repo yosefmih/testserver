@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: seatwatch
+      POSTGRES_PASSWORD: seatwatch
+      POSTGRES_DB: seatwatch
+    ports:
+      - "5434:5432"
+    volumes:
+      - seatwatch-pgdata:/var/lib/postgresql/data
+
+volumes:
+  seatwatch-pgdata:

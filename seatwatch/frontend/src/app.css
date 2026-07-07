@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+
+@theme {
+	--font-display: 'Bebas Neue', sans-serif;
+	--font-sans: 'Instrument Sans', sans-serif;
+	--color-ink: #0f0e0c;
+	--color-panel: #1a1815;
+	--color-panel-2: #23201b;
+	--color-line: #35302a;
+	--color-marquee: #f2b90d;
+	--color-marquee-soft: #f2b90d26;
+	--color-dim: #9a917f;
+}
+
+body {
+	background-color: var(--color-ink);
+	color: #f0ebe0;
+	font-family: var(--font-sans);
+	background-image: radial-gradient(ellipse 80% 50% at 50% -10%, #f2b90d14, transparent);
+	min-height: 100vh;
+}
+
+::selection {
+	background: var(--color-marquee);
+	color: var(--color-ink);
+}
