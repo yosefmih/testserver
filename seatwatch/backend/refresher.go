@@ -46,11 +46,18 @@ func (r *Refresher) Run(ctx context.Context) {
 }
 
 func (r *Refresher) Sweep(ctx context.Context) error {
+	log.Printf("sweep: scanning showtimes (up to %d days ahead)", r.maxLookaheadDays)
+	scanStart := time.Now()
 	showtimes, err := r.scanShowtimes(ctx)
 	if err != nil {
 		return err
 	}
 	r.cache.SetShowtimes(showtimes)
+	lastDay := ""
+	if len(showtimes) > 0 {
+		lastDay = showtimes[len(showtimes)-1].ShowAt.In(r.theatreTZ).Format("2006-01-02")
+	}
+	log.Printf("sweep: %d screenings listed through %s (%s)", len(showtimes), lastDay, time.Since(scanStart).Round(time.Second))
 
 	watched, err := r.store.ActiveWatches(ctx)
 	if err != nil {
@@ -88,9 +95,10 @@ func (r *Refresher) Sweep(ctx context.Context) error {
 		}
 	}
 
+	log.Printf("sweep: fetching %d seat maps (%d cached and still fresh; watched movies first)", len(ids), skippedFresh)
 	sem := make(chan struct{}, layoutFetchConcurrency)
 	var wg sync.WaitGroup
-	var failed atomic.Int64
+	var failed, done atomic.Int64
 	for _, id := range ids {
 		wg.Add(1)
 		go func(id int64) {
@@ -101,21 +109,43 @@ func (r *Refresher) Sweep(ctx context.Context) error {
 			if err != nil {
 				failed.Add(1)
 				log.Printf("seat map for showtime %d: %v", id, err)
-				return
+			} else {
+				r.cache.SetLayout(id, layout)
 			}
-			r.cache.SetLayout(id, layout)
+			if n := done.Add(1); n%50 == 0 {
+				log.Printf("sweep: seat maps %d/%d", n, len(ids))
+			}
 		}(id)
 	}
 	wg.Wait()
 	r.cache.Prune(upcoming)
-	log.Printf("sweep fetched %d seat maps (%d failed, %d still fresh and skipped)", len(ids), failed.Load(), skippedFresh)
+	log.Printf("sweep: fetched %d seat maps (%d failed, %d skipped as fresh)", len(ids), failed.Load(), skippedFresh)
 
+	if len(watched) > 0 {
+		log.Printf("sweep: evaluating %d watches", len(watched))
+	}
 	for _, watch := range watched {
 		if _, err := r.EvaluateWatch(ctx, watch); err != nil {
 			log.Printf("evaluating watch %d (%s / %s): %v", watch.ID, watch.MovieTitle, watch.Email, err)
 		}
 	}
 	return nil
+}
+
+// FetchLayoutNow serves a seat map from cache, or — during the warmup window
+// before the sweep has reached this screening — fetches it from AMC on the
+// spot so a user's first click never waits for the whole sweep.
+func (r *Refresher) FetchLayoutNow(ctx context.Context, showtimeID int64) (amc.SeatingLayout, error) {
+	if layout, ok := r.cache.Layout(showtimeID); ok {
+		return layout, nil
+	}
+	log.Printf("seat map %d not swept yet, fetching on demand", showtimeID)
+	layout, err := r.client.SeatingLayout(ctx, showtimeID)
+	if err != nil {
+		return amc.SeatingLayout{}, err
+	}
+	r.cache.SetLayout(showtimeID, layout)
+	return layout, nil
 }
 
 // scanShowtimes walks forward in week-sized parallel batches until AMC lists

@@ -24,6 +24,7 @@
 	let layout = $state<SeatingLayout | null>(null);
 	let layoutShowtime = $state<Showtime | null>(null);
 	let layoutLoading = $state(false);
+	let layoutStatus = $state('');
 	let selectedSeats = $state(new Set<string>());
 	let numSeats = $state(2);
 	let dateFrom = $state('');
@@ -206,13 +207,15 @@
 		if (!candidates || candidates.length === 0) return;
 		layoutShowtime = candidates[0];
 		layoutLoading = true;
+		layoutStatus = '';
 		try {
 			for (let attempt = 0; ; attempt++) {
 				try {
 					layout = await api.seatMap(candidates[0].id);
 					return;
 				} catch (e) {
-					if (!/warming up/.test((e as Error).message) || attempt >= 40) throw e;
+					if (!/warming up|not scanned yet/.test((e as Error).message) || attempt >= 100) throw e;
+					layoutStatus = `The server is still scanning AMC and hasn't reached this screening's seat map yet — this takes a few minutes after a fresh deploy. Retrying automatically (${(attempt + 1) * 3}s)…`;
 					await new Promise((r) => setTimeout(r, 3000));
 				}
 			}
@@ -220,6 +223,7 @@
 			evalError = `couldn't load the seat map: ${(e as Error).message}`;
 		} finally {
 			layoutLoading = false;
+			layoutStatus = '';
 		}
 	}
 
@@ -324,7 +328,12 @@
 		</p>
 
 		{#if layoutLoading}
-			<p class="animate-pulse py-12 text-center text-dim">Loading the auditorium…</p>
+			<div class="py-12 text-center">
+				<p class="animate-pulse text-dim">Loading the auditorium…</p>
+				{#if layoutStatus}
+					<p class="mx-auto mt-3 max-w-md text-xs text-dim/80">{layoutStatus}</p>
+				{/if}
+			</div>
 		{:else if layout}
 			<div class="rounded-xl border border-line bg-panel p-6">
 				<SeatMap {layout} selected={selectedSeats} onChange={onSeatsChange} highlighted={highlightedSeats} preview={previewSeats} />

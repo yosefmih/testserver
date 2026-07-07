@@ -35,7 +35,30 @@ func (s *Server) Routes() http.Handler {
 	if s.staticDir != "" {
 		mux.Handle("/", spaHandler(s.staticDir))
 	}
-	return cors(mux)
+	return cors(logAPIRequests(mux))
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func logAPIRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		log.Printf("%s %s -> %d (%s)", r.Method, r.URL.Path, rec.status, time.Since(start).Round(time.Millisecond))
+	})
 }
 
 func (s *Server) handleShowtimes(w http.ResponseWriter, r *http.Request) {
@@ -53,11 +76,12 @@ func (s *Server) handleSeatMap(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, "invalid showtime id")
 		return
 	}
-	if layout, ok := s.cache.Layout(id); ok {
-		writeJSON(w, layout)
+	layout, err := s.refresher.FetchLayoutNow(r.Context(), id)
+	if err != nil {
+		httpError(w, http.StatusBadGateway, "fetching seat map: "+err.Error())
 		return
 	}
-	httpError(w, http.StatusServiceUnavailable, "seat map not scanned yet — the background refresh is still warming up")
+	writeJSON(w, layout)
 }
 
 type evaluateRequest struct {
