@@ -7,6 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"seatwatch/amc"
 )
 
 type Store struct {
@@ -41,6 +43,18 @@ ALTER TABLE screening_matches ADD COLUMN IF NOT EXISTS open_seats INT NOT NULL D
 ALTER TABLE screening_matches ADD COLUMN IF NOT EXISTS group_count INT NOT NULL DEFAULT 0;
 ALTER TABLE watches ADD COLUMN IF NOT EXISTS date_from TEXT NOT NULL DEFAULT '';
 ALTER TABLE watches ADD COLUMN IF NOT EXISTS date_to TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS scraped_showtimes (
+	id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+	data JSONB NOT NULL,
+	refreshed_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS scraped_layouts (
+	showtime_id BIGINT PRIMARY KEY,
+	data JSONB NOT NULL,
+	fetched_at TIMESTAMPTZ NOT NULL
+);
 `
 
 func (s *Store) InitSchema(ctx context.Context) error {
@@ -167,6 +181,76 @@ func (s *Store) matchesForWatch(ctx context.Context, watchID int64) ([]Screening
 		matches = append(matches, m)
 	}
 	return matches, rows.Err()
+}
+
+func (s *Store) SaveShowtimes(ctx context.Context, showtimes []amc.Showtime, refreshedAt time.Time) error {
+	data, err := json.Marshal(showtimes)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx,
+		`INSERT INTO scraped_showtimes (id, data, refreshed_at) VALUES (1, $1, $2)
+		 ON CONFLICT (id) DO UPDATE SET data = $1, refreshed_at = $2`, data, refreshedAt)
+	return err
+}
+
+func (s *Store) LoadShowtimes(ctx context.Context) ([]amc.Showtime, time.Time, error) {
+	var data []byte
+	var refreshedAt time.Time
+	err := s.pool.QueryRow(ctx, `SELECT data, refreshed_at FROM scraped_showtimes WHERE id = 1`).Scan(&data, &refreshedAt)
+	if err == pgx.ErrNoRows {
+		return nil, time.Time{}, nil
+	}
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	var showtimes []amc.Showtime
+	if err := json.Unmarshal(data, &showtimes); err != nil {
+		return nil, time.Time{}, err
+	}
+	return showtimes, refreshedAt, nil
+}
+
+func (s *Store) SaveLayout(ctx context.Context, showtimeID int64, layout amc.SeatingLayout, fetchedAt time.Time) error {
+	data, err := json.Marshal(layout)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx,
+		`INSERT INTO scraped_layouts (showtime_id, data, fetched_at) VALUES ($1, $2, $3)
+		 ON CONFLICT (showtime_id) DO UPDATE SET data = $2, fetched_at = $3`, showtimeID, data, fetchedAt)
+	return err
+}
+
+func (s *Store) LoadLayouts(ctx context.Context) (map[int64]amc.SeatingLayout, map[int64]time.Time, error) {
+	rows, err := s.pool.Query(ctx, `SELECT showtime_id, data, fetched_at FROM scraped_layouts`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	layouts := map[int64]amc.SeatingLayout{}
+	fetchedAt := map[int64]time.Time{}
+	for rows.Next() {
+		var id int64
+		var data []byte
+		var at time.Time
+		if err := rows.Scan(&id, &data, &at); err != nil {
+			return nil, nil, err
+		}
+		var layout amc.SeatingLayout
+		if err := json.Unmarshal(data, &layout); err != nil {
+			return nil, nil, err
+		}
+		layouts[id] = layout
+		fetchedAt[id] = at
+	}
+	return layouts, fetchedAt, rows.Err()
+}
+
+func (s *Store) PruneLayouts(ctx context.Context, keep []int64) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM scraped_layouts WHERE NOT (showtime_id = ANY($1))`, keep)
+	return err
 }
 
 func scanWatches(rows pgx.Rows) ([]Watch, error) {

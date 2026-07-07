@@ -45,6 +45,7 @@ func main() {
 		staleAfter:       envDurationOr("LAYOUT_STALE_AFTER", 30*time.Minute),
 		maxLookaheadDays: envIntOr("MAX_LOOKAHEAD_DAYS", 120),
 	}
+	refresher.RestoreFromDB(ctx)
 	go refresher.Run(ctx)
 
 	server := &Server{store: store, cache: cache, refresher: refresher, alertsEnabled: alertsEnabled, staticDir: os.Getenv("STATIC_DIR")}

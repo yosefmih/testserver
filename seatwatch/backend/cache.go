@@ -37,10 +37,14 @@ func (c *Cache) ShowtimesRefreshedAt() time.Time {
 }
 
 func (c *Cache) SetShowtimes(showtimes []amc.Showtime) {
+	c.RestoreShowtimes(showtimes, time.Now())
+}
+
+func (c *Cache) RestoreShowtimes(showtimes []amc.Showtime, refreshedAt time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.showtimes = showtimes
-	c.showtimesAt = time.Now()
+	c.showtimesAt = refreshedAt
 }
 
 func (c *Cache) Layout(showtimeID int64) (amc.SeatingLayout, bool) {
@@ -51,10 +55,14 @@ func (c *Cache) Layout(showtimeID int64) (amc.SeatingLayout, bool) {
 }
 
 func (c *Cache) SetLayout(showtimeID int64, layout amc.SeatingLayout) {
+	c.RestoreLayout(showtimeID, layout, time.Now())
+}
+
+func (c *Cache) RestoreLayout(showtimeID int64, layout amc.SeatingLayout, fetchedAt time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.layouts[showtimeID] = layout
-	c.layoutsAt[showtimeID] = time.Now()
+	c.layoutsAt[showtimeID] = fetchedAt
 }
 
 func (c *Cache) LayoutCount() int {

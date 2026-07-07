@@ -29,6 +29,29 @@ type Refresher struct {
 	maxLookaheadDays int
 }
 
+// RestoreFromDB loads the last persisted sweep so a fresh pod serves
+// immediately instead of starting with an empty cache.
+func (r *Refresher) RestoreFromDB(ctx context.Context) {
+	showtimes, refreshedAt, err := r.store.LoadShowtimes(ctx)
+	if err != nil {
+		log.Printf("restoring showtimes from db: %v", err)
+	} else if len(showtimes) > 0 {
+		r.cache.RestoreShowtimes(showtimes, refreshedAt)
+	}
+	layouts, fetchedAt, err := r.store.LoadLayouts(ctx)
+	if err != nil {
+		log.Printf("restoring seat maps from db: %v", err)
+	} else {
+		for id, layout := range layouts {
+			r.cache.RestoreLayout(id, layout, fetchedAt[id])
+		}
+	}
+	if len(showtimes) > 0 || len(layouts) > 0 {
+		log.Printf("restored %d screenings and %d seat maps from db (as of %s ago)",
+			len(showtimes), len(layouts), time.Since(refreshedAt).Round(time.Second))
+	}
+}
+
 func (r *Refresher) Run(ctx context.Context) {
 	for {
 		start := time.Now()
@@ -53,6 +76,9 @@ func (r *Refresher) Sweep(ctx context.Context) error {
 		return err
 	}
 	r.cache.SetShowtimes(showtimes)
+	if err := r.store.SaveShowtimes(ctx, showtimes, time.Now()); err != nil {
+		log.Printf("persisting showtimes: %v", err)
+	}
 	lastDay := ""
 	if len(showtimes) > 0 {
 		lastDay = showtimes[len(showtimes)-1].ShowAt.In(r.theatreTZ).Format("2006-01-02")
@@ -111,6 +137,9 @@ func (r *Refresher) Sweep(ctx context.Context) error {
 				log.Printf("seat map for showtime %d: %v", id, err)
 			} else {
 				r.cache.SetLayout(id, layout)
+				if err := r.store.SaveLayout(ctx, id, layout, time.Now()); err != nil {
+					log.Printf("persisting seat map %d: %v", id, err)
+				}
 			}
 			if n := done.Add(1); n%50 == 0 {
 				log.Printf("sweep: seat maps %d/%d", n, len(ids))
@@ -119,6 +148,13 @@ func (r *Refresher) Sweep(ctx context.Context) error {
 	}
 	wg.Wait()
 	r.cache.Prune(upcoming)
+	keep := make([]int64, 0, len(upcoming))
+	for id := range upcoming {
+		keep = append(keep, id)
+	}
+	if err := r.store.PruneLayouts(ctx, keep); err != nil {
+		log.Printf("pruning persisted seat maps: %v", err)
+	}
 	log.Printf("sweep: fetched %d seat maps (%d failed, %d skipped as fresh)", len(ids), failed.Load(), skippedFresh)
 
 	if len(watched) > 0 {
@@ -145,6 +181,9 @@ func (r *Refresher) FetchLayoutNow(ctx context.Context, showtimeID int64) (amc.S
 		return amc.SeatingLayout{}, err
 	}
 	r.cache.SetLayout(showtimeID, layout)
+	if err := r.store.SaveLayout(ctx, showtimeID, layout, time.Now()); err != nil {
+		log.Printf("persisting seat map %d: %v", showtimeID, err)
+	}
 	return layout, nil
 }
 

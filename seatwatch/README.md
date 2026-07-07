@@ -72,6 +72,11 @@ database URL is read from `SEAT_WATCHER_DB_DB_URL` (falls back to
 `DATABASE_URL`). Run a single replica — each instance runs its own AMC
 refresher, so replicas would multiply scraping traffic.
 
+Scraped data (showtimes + seat maps) is persisted to postgres as each sweep
+lands (`scraped_showtimes`, `scraped_layouts`), so a fresh pod restores the
+last sweep on boot and serves immediately instead of starting cold; the
+background sweep then refreshes anything stale.
+
 ```bash
 docker build -t seatwatch .
 docker run -p 8095:8095 -e SEAT_WATCHER_DB_DB_URL=postgres://... seatwatch
