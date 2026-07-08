@@ -12,7 +12,11 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
+
+var tracer = otel.Tracer("seatwatch/amc")
 
 const DefaultTheatrePath = "/movie-theatres/new-york-city/amc-lincoln-square-13"
 
@@ -43,21 +47,51 @@ func NewClient(theatrePath string, minInterval time.Duration) *Client {
 }
 
 func (c *Client) Showtimes(ctx context.Context, date time.Time) ([]Showtime, error) {
+	ctx, span := tracer.Start(ctx, "amc.Showtimes")
+	defer span.End()
+	span.SetAttributes(attribute.String("date", date.Format("2006-01-02")))
+
 	url := fmt.Sprintf("%s%s/showtimes?date=%s", c.baseURL, c.theatrePath, date.Format("2006-01-02"))
 	html, err := c.get(ctx, url)
 	if err != nil {
 		return nil, err
 	}
-	return ParseShowtimes(html)
+	showtimes, err := parseShowtimesTraced(ctx, html)
+	if err == nil {
+		span.SetAttributes(attribute.Int("showtimes_parsed", len(showtimes)))
+	}
+	return showtimes, err
 }
 
 func (c *Client) SeatingLayout(ctx context.Context, showtimeID int64) (SeatingLayout, error) {
+	ctx, span := tracer.Start(ctx, "amc.SeatingLayout")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("showtime_id", showtimeID))
+
 	url := fmt.Sprintf("%s/showtimes/%d/seats", c.baseURL, showtimeID)
 	html, err := c.get(ctx, url)
 	if err != nil {
 		return SeatingLayout{}, err
 	}
-	return ParseSeatingLayout(html)
+	return parseSeatingLayoutTraced(ctx, html)
+}
+
+func parseShowtimesTraced(ctx context.Context, html string) ([]Showtime, error) {
+	_, span := tracer.Start(ctx, "ParseShowtimes")
+	defer span.End()
+	span.SetAttributes(attribute.Int("html_bytes", len(html)))
+	return ParseShowtimes(html)
+}
+
+func parseSeatingLayoutTraced(ctx context.Context, html string) (SeatingLayout, error) {
+	_, span := tracer.Start(ctx, "ParseSeatingLayout")
+	defer span.End()
+	span.SetAttributes(attribute.Int("html_bytes", len(html)))
+	layout, err := ParseSeatingLayout(html)
+	if err == nil {
+		span.SetAttributes(attribute.Int("seats_parsed", len(layout.Seats)))
+	}
+	return layout, err
 }
 
 func (c *Client) get(ctx context.Context, url string) (string, error) {
@@ -132,6 +166,9 @@ func (c *Client) waitTurn(ctx context.Context) error {
 	if wait <= 0 {
 		return nil
 	}
+	_, span := tracer.Start(ctx, "rate-limit-wait")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("wait_ms", wait.Milliseconds()))
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

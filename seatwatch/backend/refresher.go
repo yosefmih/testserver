@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"seatwatch/amc"
 )
@@ -127,6 +128,36 @@ func (r *Refresher) Sweep(ctx context.Context) error {
 		}
 	}
 
+	if err := r.fetchLayouts(ctx, ids, skippedFresh); err != nil {
+		return err
+	}
+	r.cache.Prune(upcoming)
+	keep := make([]int64, 0, len(upcoming))
+	for id := range upcoming {
+		keep = append(keep, id)
+	}
+	if err := r.store.PruneLayouts(ctx, keep); err != nil {
+		log.Printf("pruning persisted seat maps: %v", err)
+	}
+
+	if len(watched) > 0 {
+		log.Printf("sweep: evaluating %d watches", len(watched))
+	}
+	for _, watch := range watched {
+		if _, err := r.EvaluateWatch(ctx, watch); err != nil {
+			log.Printf("evaluating watch %d (%s / %s): %v", watch.ID, watch.MovieTitle, watch.Email, err)
+		}
+	}
+	return nil
+}
+
+// fetchLayouts fetches every given showtime's seat map from AMC (bounded
+// concurrency) and stores each into the cache and DB as it lands.
+func (r *Refresher) fetchLayouts(ctx context.Context, ids []int64, skippedFresh int) error {
+	ctx, span := NewSpan(ctx, "fetchLayouts")
+	defer span.End()
+	span.SetAttributes(attribute.Int("to_fetch", len(ids)), attribute.Int("skipped_fresh", skippedFresh))
+
 	log.Printf("sweep: fetching %d seat maps (%d cached and still fresh; watched movies first)", len(ids), skippedFresh)
 	sem := make(chan struct{}, layoutFetchConcurrency)
 	var wg sync.WaitGroup
@@ -153,24 +184,8 @@ func (r *Refresher) Sweep(ctx context.Context) error {
 		}(id)
 	}
 	wg.Wait()
-	r.cache.Prune(upcoming)
-	keep := make([]int64, 0, len(upcoming))
-	for id := range upcoming {
-		keep = append(keep, id)
-	}
-	if err := r.store.PruneLayouts(ctx, keep); err != nil {
-		log.Printf("pruning persisted seat maps: %v", err)
-	}
+	span.SetAttributes(attribute.Int64("failed", failed.Load()))
 	log.Printf("sweep: fetched %d seat maps (%d failed, %d skipped as fresh)", len(ids), failed.Load(), skippedFresh)
-
-	if len(watched) > 0 {
-		log.Printf("sweep: evaluating %d watches", len(watched))
-	}
-	for _, watch := range watched {
-		if _, err := r.EvaluateWatch(ctx, watch); err != nil {
-			log.Printf("evaluating watch %d (%s / %s): %v", watch.ID, watch.MovieTitle, watch.Email, err)
-		}
-	}
 	return nil
 }
 
@@ -178,9 +193,15 @@ func (r *Refresher) Sweep(ctx context.Context) error {
 // before the sweep has reached this screening — fetches it from AMC on the
 // spot so a user's first click never waits for the whole sweep.
 func (r *Refresher) FetchLayoutNow(ctx context.Context, showtimeID int64) (amc.SeatingLayout, error) {
+	ctx, span := NewSpan(ctx, "FetchLayoutNow")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("showtime_id", showtimeID))
+
 	if layout, ok := r.cache.Layout(showtimeID); ok {
+		span.SetAttributes(attribute.Bool("cache_hit", true))
 		return layout, nil
 	}
+	span.SetAttributes(attribute.Bool("cache_hit", false))
 	log.Printf("seat map %d not swept yet, fetching on demand", showtimeID)
 	layout, err := r.client.SeatingLayout(ctx, showtimeID)
 	if err != nil {
@@ -197,6 +218,8 @@ func (r *Refresher) FetchLayoutNow(ctx context.Context, showtimeID int64) (amc.S
 // nothing for a whole week, so far-future releases (e.g. IMAX 70mm events that
 // sell months ahead) are covered without a fixed horizon.
 func (r *Refresher) scanShowtimes(ctx context.Context) ([]amc.Showtime, error) {
+	ctx, span := NewSpan(ctx, "scanShowtimes")
+	defer span.End()
 	const batchDays = 7
 	type dayResult struct {
 		day       int
@@ -248,6 +271,7 @@ func (r *Refresher) scanShowtimes(ctx context.Context) ([]amc.Showtime, error) {
 		}
 	}
 	sort.Slice(deduped, func(i, j int) bool { return deduped[i].ShowAt.Before(deduped[j].ShowAt) })
+	span.SetAttributes(attribute.Int("showtimes_found", len(deduped)))
 	return deduped, nil
 }
 
@@ -285,8 +309,34 @@ type Selection struct {
 // EvaluateSelection computes, purely from cache, which upcoming screenings of
 // a movie have NumSeats adjacent available seats within the tolerable set.
 // Screenings whose seat map is not cached yet are counted as pending.
-func (r *Refresher) EvaluateSelection(sel Selection) EvaluateResponse {
-	resp := EvaluateResponse{Results: []ScreeningResult{}, RefreshedAt: r.cache.ShowtimesRefreshedAt()}
+func (r *Refresher) EvaluateSelection(ctx context.Context, sel Selection) EvaluateResponse {
+	ctx, span := NewSpan(ctx, "EvaluateSelection")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("movie_slug", sel.MovieSlug),
+		attribute.String("format", sel.Format),
+		attribute.Int("num_seats", sel.NumSeats),
+		attribute.Int("tolerable_seats", len(sel.Seats)),
+	)
+
+	candidates := r.filterShowtimes(ctx, sel)
+	span.SetAttributes(attribute.Int("candidate_screenings", len(candidates)))
+
+	resp := r.matchScreenings(ctx, candidates, sel)
+	span.SetAttributes(
+		attribute.Int("matched_screenings", countMatched(resp.Results)),
+		attribute.Int("pending_screenings", resp.Pending),
+	)
+	return resp
+}
+
+// filterShowtimes narrows the full cached showtime list down to candidates
+// for a selection: same movie/format, upcoming, inside the date window.
+func (r *Refresher) filterShowtimes(ctx context.Context, sel Selection) []amc.Showtime {
+	_, span := NewSpan(ctx, "filterShowtimes")
+	defer span.End()
+
+	var candidates []amc.Showtime
 	for _, st := range r.cache.Showtimes() {
 		if st.MovieSlug != sel.MovieSlug {
 			continue
@@ -304,6 +354,20 @@ func (r *Refresher) EvaluateSelection(sel Selection) EvaluateResponse {
 		if sel.DateTo != "" && showDate > sel.DateTo {
 			continue
 		}
+		candidates = append(candidates, st)
+	}
+	return candidates
+}
+
+// matchScreenings runs the seat matcher for every candidate screening against
+// a selection. One span covers the whole batch (rather than one per
+// screening) since a popular movie can have hundreds of candidates.
+func (r *Refresher) matchScreenings(ctx context.Context, candidates []amc.Showtime, sel Selection) EvaluateResponse {
+	_, span := NewSpan(ctx, "matchScreenings")
+	defer span.End()
+
+	resp := EvaluateResponse{Results: []ScreeningResult{}, RefreshedAt: r.cache.ShowtimesRefreshedAt()}
+	for _, st := range candidates {
 		layout, ok := r.cache.Layout(st.ID)
 		if !ok {
 			resp.Pending++
@@ -325,13 +389,28 @@ func (r *Refresher) EvaluateSelection(sel Selection) EvaluateResponse {
 			SeatGroups: examples,
 		})
 	}
+	span.SetAttributes(attribute.Int("screenings_matched", len(resp.Results)))
 	return resp
+}
+
+func countMatched(results []ScreeningResult) int {
+	n := 0
+	for _, r := range results {
+		if r.Matched {
+			n++
+		}
+	}
+	return n
 }
 
 // EvaluateWatch runs EvaluateSelection for a stored watch, records results,
 // and emails the watcher about newly matched screenings.
 func (r *Refresher) EvaluateWatch(ctx context.Context, watch Watch) (EvaluateResponse, error) {
-	resp := r.EvaluateSelection(Selection{
+	ctx, span := NewSpan(ctx, "EvaluateWatch")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("watch_id", watch.ID), attribute.String("email", watch.Email))
+
+	resp := r.EvaluateSelection(ctx, Selection{
 		MovieSlug: watch.MovieSlug,
 		Format:    watch.Format,
 		Seats:     watch.Seats,
@@ -340,29 +419,50 @@ func (r *Refresher) EvaluateWatch(ctx context.Context, watch Watch) (EvaluateRes
 		DateTo:    watch.DateTo,
 	})
 
-	var newlyMatched []ScreeningResult
-	for _, res := range resp.Results {
-		firstMatch, err := r.store.RecordMatchState(ctx, watch.ID, res)
-		if err != nil {
+	newlyMatched, err := r.recordMatchStates(ctx, watch.ID, resp.Results)
+	if err != nil {
+		return resp, err
+	}
+	span.SetAttributes(attribute.Int("newly_matched", len(newlyMatched)))
+
+	if len(newlyMatched) > 0 && r.alertsEnabled {
+		if err := r.sendAlert(ctx, watch, newlyMatched); err != nil {
 			return resp, err
+		}
+	}
+	return resp, nil
+}
+
+// recordMatchStates persists each screening's match result for a watch and
+// reports which ones newly matched (not yet alerted).
+func (r *Refresher) recordMatchStates(ctx context.Context, watchID int64, results []ScreeningResult) ([]ScreeningResult, error) {
+	ctx, span := NewSpan(ctx, "recordMatchStates")
+	defer span.End()
+
+	var newlyMatched []ScreeningResult
+	for _, res := range results {
+		firstMatch, err := r.store.RecordMatchState(ctx, watchID, res)
+		if err != nil {
+			return nil, err
 		}
 		if res.Matched && firstMatch {
 			newlyMatched = append(newlyMatched, res)
 		}
 	}
+	return newlyMatched, nil
+}
 
-	if len(newlyMatched) > 0 && r.alertsEnabled {
-		if err := r.mailer.SendMatchAlert(watch, newlyMatched); err != nil {
-			log.Printf("sending alert for watch %d: %v", watch.ID, err)
-		} else {
-			ids := make([]int64, len(newlyMatched))
-			for i, m := range newlyMatched {
-				ids[i] = m.ShowtimeID
-			}
-			if err := r.store.MarkAlerted(ctx, watch.ID, ids); err != nil {
-				return resp, err
-			}
-		}
+func (r *Refresher) sendAlert(ctx context.Context, watch Watch, newlyMatched []ScreeningResult) error {
+	_, span := NewSpan(ctx, "sendAlert")
+	defer span.End()
+
+	if err := r.mailer.SendMatchAlert(watch, newlyMatched); err != nil {
+		log.Printf("sending alert for watch %d: %v", watch.ID, err)
+		return nil
 	}
-	return resp, nil
+	ids := make([]int64, len(newlyMatched))
+	for i, m := range newlyMatched {
+		ids[i] = m.ShowtimeID
+	}
+	return r.store.MarkAlerted(ctx, watch.ID, ids)
 }

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"seatwatch/amc"
@@ -58,10 +59,14 @@ func main() {
 }
 
 func connectWithRetry(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithTrimSQLInSpanName())
 	var pool *pgxpool.Pool
-	var err error
 	for attempt := 0; attempt < 10; attempt++ {
-		pool, err = pgxpool.New(ctx, dbURL)
+		pool, err = pgxpool.NewWithConfig(ctx, cfg)
 		if err == nil {
 			if err = pool.Ping(ctx); err == nil {
 				return pool, nil

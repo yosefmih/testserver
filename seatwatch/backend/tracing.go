@@ -11,7 +11,17 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	"go.opentelemetry.io/otel/trace"
 )
+
+// NewSpan starts a child span on the current trace; use at the top of any
+// method worth seeing in a request's timing breakdown:
+//
+//	ctx, span := NewSpan(ctx, "evaluate-selection")
+//	defer span.End()
+func NewSpan(ctx context.Context, name string) (context.Context, trace.Span) {
+	return otel.Tracer("seatwatch").Start(ctx, name)
+}
 
 // initTracing wires the OTel SDK when OTEL_EXPORTER_OTLP_ENDPOINT is set
 // (e.g. http://otel-collector.telemetry.svc:4318) and is a no-op otherwise,

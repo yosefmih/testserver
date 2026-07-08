@@ -133,7 +133,7 @@ func (s *Server) handleEvaluate(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, s.refresher.EvaluateSelection(Selection{
+	writeJSON(w, s.refresher.EvaluateSelection(r.Context(), Selection{
 		MovieSlug: req.MovieSlug,
 		Format:    req.Format,
 		Seats:     req.Seats,
