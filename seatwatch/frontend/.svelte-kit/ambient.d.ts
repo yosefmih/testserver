@@ -47,7 +47,6 @@ declare module '$env/static/private' {
 	export const NODE: string;
 	export const FNM_LOGLEVEL: string;
 	export const INIT_CWD: string;
-	export const CLAUDE_CODE_BRIDGE_SESSION_ID: string;
 	export const SHELL: string;
 	export const TERM: string;
 	export const DOCKER_HTTPS_PROXY: string;
@@ -270,7 +269,6 @@ declare module '$env/dynamic/private' {
 		NODE: string;
 		FNM_LOGLEVEL: string;
 		INIT_CWD: string;
-		CLAUDE_CODE_BRIDGE_SESSION_ID: string;
 		SHELL: string;
 		TERM: string;
 		DOCKER_HTTPS_PROXY: string;
