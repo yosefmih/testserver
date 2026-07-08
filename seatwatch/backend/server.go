@@ -10,6 +10,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Server struct {
@@ -35,7 +39,22 @@ func (s *Server) Routes() http.Handler {
 	if s.staticDir != "" {
 		mux.Handle("/", spaHandler(s.staticDir))
 	}
-	return cors(logAPIRequests(mux))
+	handler := otelhttp.NewHandler(cors(tagRequestID(logAPIRequests(mux))), "http.server",
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			return r.Method + " " + r.URL.Path
+		}))
+	return handler
+}
+
+// tagRequestID records ingress-nginx's request id on the active span so
+// traces are searchable by the request_id that appears in access logs.
+func tagRequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if id := r.Header.Get("X-Request-Id"); id != "" {
+			trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("request.id", id))
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 type statusRecorder struct {
@@ -57,7 +76,14 @@ func logAPIRequests(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		log.Printf("%s %s -> %d (%s)", r.Method, r.URL.Path, rec.status, time.Since(start).Round(time.Millisecond))
+		ids := ""
+		if reqID := r.Header.Get("X-Request-Id"); reqID != "" {
+			ids = " request_id=" + reqID
+		}
+		if sc := trace.SpanFromContext(r.Context()).SpanContext(); sc.HasTraceID() {
+			ids += " trace_id=" + sc.TraceID().String()
+		}
+		log.Printf("%s %s -> %d (%s)%s", r.Method, r.URL.Path, rec.status, time.Since(start).Round(time.Millisecond), ids)
 	})
 }
 

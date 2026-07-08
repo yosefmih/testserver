@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel"
+
 	"seatwatch/amc"
 )
 
@@ -68,7 +70,11 @@ func (r *Refresher) Run(ctx context.Context) {
 	}
 }
 
+// Sweep runs under its own root span so the hundreds of AMC fetches per cycle
+// nest into one sweep trace instead of appearing as orphan roots.
 func (r *Refresher) Sweep(ctx context.Context) error {
+	ctx, span := otel.Tracer("seatwatch").Start(ctx, "sweep")
+	defer span.End()
 	log.Printf("sweep: scanning showtimes (up to %d days ahead)", r.maxLookaheadDays)
 	scanStart := time.Now()
 	showtimes, err := r.scanShowtimes(ctx)

@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 const DefaultTheatrePath = "/movie-theatres/new-york-city/amc-lincoln-square-13"
@@ -33,7 +35,7 @@ func NewClient(theatrePath string, minInterval time.Duration) *Client {
 	// anonymous session and gets rate-limited almost immediately.
 	jar, _ := cookiejar.New(nil)
 	return &Client{
-		httpClient:  &http.Client{Timeout: 30 * time.Second, Jar: jar},
+		httpClient:  &http.Client{Timeout: 30 * time.Second, Jar: jar, Transport: otelhttp.NewTransport(nil)},
 		baseURL:     "https://www.amctheatres.com",
 		theatrePath: theatrePath,
 		minInterval: minInterval,
