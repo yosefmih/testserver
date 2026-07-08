@@ -8,27 +8,15 @@
 	});
 </script>
 
-<div class="mx-auto max-w-4xl px-4 pb-24">
-	<header class="flex items-baseline justify-between py-8">
-		<a href="/" class="font-display text-4xl tracking-wide text-marquee">SEATWATCH</a>
-		<nav class="flex items-baseline gap-6 text-sm text-dim">
-			<span class="hidden sm:inline">AMC Lincoln Square 13 · New York</span>
-			{#if alertsEnabled}
-				<a href="/watches" class="border-b border-dotted border-dim hover:text-marquee">my watches</a>
-			{/if}
-		</nav>
-	</header>
-	{@render children()}
-
-	<footer class="mt-16 flex justify-center pb-4">
-		<a
-			href="https://www.porter.run/"
-			target="_blank"
-			rel="noreferrer"
-			class="flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-xs text-dim transition-colors hover:border-marquee/50 hover:text-current"
-		>
-			<span>Powered by</span>
-			<svg viewBox="0 0 312 52" class="h-3 w-auto" aria-label="Porter">
+<div class="w-full border-b border-line bg-black/30">
+	<a
+		href="https://www.porter.run/"
+		target="_blank"
+		rel="noreferrer"
+		class="flex items-center justify-center gap-3 py-3 text-sm text-dim transition-colors hover:text-current"
+	>
+		<span>Powered by</span>
+		<svg viewBox="0 0 312 52" class="h-6 w-auto" aria-label="Porter">
 				<rect width="312" height="52" fill="#FFFBE1" />
 				<path
 					d="M7.28003 52V0H27.7223C38.3547 0 44.72 5.34868 44.72 14.8574C44.72 24.2914 38.3552 29.7144 27.7223 29.7144H14.7675V52H7.28003ZM14.7675 23.4H27.7218C34.2358 23.4 37.231 20.2056 37.231 14.8569C37.231 9.43396 34.2358 6.3139 27.7218 6.3139H14.7675V23.4Z"
@@ -75,6 +63,18 @@
 					fill="black"
 				/>
 			</svg>
-		</a>
-	</footer>
+	</a>
+</div>
+
+<div class="mx-auto max-w-4xl px-4 pb-24">
+	<header class="flex items-baseline justify-between py-8">
+		<a href="/" class="font-display text-4xl tracking-wide text-marquee">SEATWATCH</a>
+		<nav class="flex items-baseline gap-6 text-sm text-dim">
+			<span class="hidden sm:inline">AMC Lincoln Square 13 · New York</span>
+			{#if alertsEnabled}
+				<a href="/watches" class="border-b border-dotted border-dim hover:text-marquee">my watches</a>
+			{/if}
+		</nav>
+	</header>
+	{@render children()}
 </div>
