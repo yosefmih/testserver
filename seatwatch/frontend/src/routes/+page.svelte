@@ -345,55 +345,69 @@
 				{/if}
 			</div>
 
-			<div class="mt-6 flex flex-wrap items-center gap-x-8 gap-y-4">
-				<div class="flex items-center gap-3">
-					<span class="text-sm text-dim">tickets:</span>
-					<div class="flex items-center rounded-lg border border-line">
+			<div class="mt-4 flex flex-wrap items-end gap-x-10 gap-y-5 rounded-xl border border-line bg-panel px-5 py-4">
+				<div>
+					<div class="mb-2 text-[10px] uppercase tracking-[0.2em] text-dim">tickets · seated together</div>
+					<div class="flex h-10 items-center rounded-lg border border-line bg-panel-2">
 						<button
 							type="button"
-							class="px-3 py-1.5 text-lg text-dim hover:text-marquee disabled:opacity-30"
+							aria-label="Fewer tickets"
+							class="h-full w-10 text-lg text-dim hover:text-marquee disabled:opacity-30"
 							disabled={numSeats <= 1}
 							onclick={() => (numSeats -= 1)}>−</button
 						>
-						<span class="w-8 text-center font-semibold">{numSeats}</span>
+						<span class="flex-1 border-x border-line text-center font-display text-2xl leading-10">{numSeats}</span>
 						<button
 							type="button"
-							class="px-3 py-1.5 text-lg text-dim hover:text-marquee disabled:opacity-30"
+							aria-label="More tickets"
+							class="h-full w-10 text-lg text-dim hover:text-marquee disabled:opacity-30"
 							disabled={numSeats >= 10}
 							onclick={() => (numSeats += 1)}>+</button
 						>
 					</div>
-					<span class="text-xs text-dim">seated together</span>
 				</div>
-				<div class="flex flex-wrap items-center gap-2">
-					<span class="text-sm text-dim">dates:</span>
-					<input
-						type="date"
-						bind:value={dateFrom}
-						max={dateTo || undefined}
-						class="w-[8.6rem] rounded-lg border border-line bg-panel px-2 py-1.5 text-sm [color-scheme:dark] focus:border-marquee focus:outline-none"
-					/>
-					<span class="text-dim">–</span>
-					<input
-						type="date"
-						bind:value={dateTo}
-						min={dateFrom || undefined}
-						class="w-[8.6rem] rounded-lg border border-line bg-panel px-2 py-1.5 text-sm [color-scheme:dark] focus:border-marquee focus:outline-none"
-					/>
-					{#if dateFrom || dateTo}
-						<button
-							type="button"
-							onclick={() => {
-								dateFrom = '';
-								dateTo = '';
-							}}
-							class="text-xs text-dim underline-offset-4 hover:text-marquee hover:underline">any date</button
-						>
-					{:else}
-						<span class="text-xs text-dim/70">all upcoming</span>
-					{/if}
+
+				<div>
+					<div class="mb-2 text-[10px] uppercase tracking-[0.2em] text-dim">
+						dates{#if !dateFrom && !dateTo}<span class="text-dim/50"> · all upcoming</span>{/if}
+					</div>
+					<div class="flex flex-wrap items-center gap-2">
+						<input
+							type="date"
+							bind:value={dateFrom}
+							max={dateTo || undefined}
+							class="h-10 w-[8.6rem] rounded-lg border border-line bg-panel-2 px-2.5 text-sm text-dim [color-scheme:dark] focus:border-marquee focus:text-current focus:outline-none"
+						/>
+						<span class="text-dim/60">→</span>
+						<input
+							type="date"
+							bind:value={dateTo}
+							min={dateFrom || undefined}
+							class="h-10 w-[8.6rem] rounded-lg border border-line bg-panel-2 px-2.5 text-sm text-dim [color-scheme:dark] focus:border-marquee focus:text-current focus:outline-none"
+						/>
+						{#if dateFrom || dateTo}
+							<button
+								type="button"
+								onclick={() => {
+									dateFrom = '';
+									dateTo = '';
+								}}
+								class="flex h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-xs text-dim hover:border-marquee hover:text-marquee"
+								>✕ any date</button
+							>
+						{/if}
+					</div>
 				</div>
-				<div class="text-sm text-dim">{selectedSeats.size} seat{selectedSeats.size === 1 ? '' : 's'} marked</div>
+
+				<div class="ml-auto text-right">
+					<div class="mb-2 text-[10px] uppercase tracking-[0.2em] text-dim">seats marked</div>
+					<div class="flex h-10 items-baseline justify-end gap-1.5">
+						<span class="font-display text-3xl leading-10 {selectedSeats.size >= numSeats ? 'text-marquee' : 'text-dim'}">{selectedSeats.size}</span>
+						{#if selectedSeats.size > 0 && selectedSeats.size < numSeats}
+							<span class="text-xs text-dim">mark ≥ {numSeats}</span>
+						{/if}
+					</div>
+				</div>
 			</div>
 		{/if}
 	</section>
