@@ -365,20 +365,20 @@
 					</div>
 					<span class="text-xs text-dim">seated together</span>
 				</div>
-				<div class="flex items-center gap-2">
+				<div class="flex flex-wrap items-center gap-2">
 					<span class="text-sm text-dim">dates:</span>
 					<input
 						type="date"
 						bind:value={dateFrom}
 						max={dateTo || undefined}
-						class="rounded-lg border border-line bg-panel px-2.5 py-1.5 text-sm [color-scheme:dark] focus:border-marquee focus:outline-none"
+						class="w-[8.6rem] rounded-lg border border-line bg-panel px-2 py-1.5 text-sm [color-scheme:dark] focus:border-marquee focus:outline-none"
 					/>
 					<span class="text-dim">–</span>
 					<input
 						type="date"
 						bind:value={dateTo}
 						min={dateFrom || undefined}
-						class="rounded-lg border border-line bg-panel px-2.5 py-1.5 text-sm [color-scheme:dark] focus:border-marquee focus:outline-none"
+						class="w-[8.6rem] rounded-lg border border-line bg-panel px-2 py-1.5 text-sm [color-scheme:dark] focus:border-marquee focus:outline-none"
 					/>
 					{#if dateFrom || dateTo}
 						<button
