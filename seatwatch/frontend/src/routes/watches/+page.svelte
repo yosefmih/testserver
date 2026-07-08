@@ -100,7 +100,7 @@
 								<li class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-panel-2 px-4 py-2.5">
 									<div class="text-sm">
 										<span class="font-semibold text-marquee">● {fmtShowtime(match.showAt)}</span>
-										<span class="ml-2 text-xs text-dim">e.g. {match.seatGroups[0].join(', ')}</span>
+										<span class="ml-2 text-xs text-dim">best: {match.seatGroups[0].join(', ')}</span>
 									</div>
 									<a
 										href={amcBookingURL(match.showtimeId)}

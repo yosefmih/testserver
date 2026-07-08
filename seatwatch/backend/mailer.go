@@ -62,7 +62,7 @@ func (m *Mailer) composeBody(watch Watch, matches []ScreeningResult) string {
 		b.WriteString("\n")
 		fmt.Fprintf(&b, "    %d of your seats open, %d ways to sit %d together\n", match.OpenSeats, match.GroupCount, watch.NumSeats)
 		for _, group := range match.SeatGroups {
-			fmt.Fprintf(&b, "    e.g. seats %s\n", strings.Join(group, ", "))
+			fmt.Fprintf(&b, "    best seats: %s\n", strings.Join(group, ", "))
 		}
 		fmt.Fprintf(&b, "    book: https://www.amctheatres.com/showtimes/%d/seats\n\n", match.ShowtimeID)
 	}

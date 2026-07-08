@@ -443,7 +443,7 @@
 										<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-dim">
 											{#if r.format}<span>{r.format} ·</span>{/if}
 											<span class="text-marquee">{r.openSeats} of your seats open</span>
-											<span>· {r.groupCount} way{r.groupCount === 1 ? '' : 's'} to sit {numSeats} together ·</span>
+											<span>· {r.groupCount} way{r.groupCount === 1 ? '' : 's'} to sit {numSeats} together · best:</span>
 											{#each r.seatGroups as group (group.join())}
 												<button
 													type="button"
