@@ -51,6 +51,7 @@ export type Watch = {
 	dateFrom: string;
 	dateTo: string;
 	createdAt: string;
+	token: string;
 	matches?: ScreeningResult[];
 };
 
@@ -96,8 +97,11 @@ export const api = {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body)
 		}),
-	listWatches: (email: string) => request<Watch[]>(`/api/watches?email=${encodeURIComponent(email)}`),
-	deleteWatch: (id: number) => request<void>(`/api/watches/${id}`, { method: 'DELETE' })
+	// Watches are looked up and managed by their private token only — never
+	// by email, since an email address is often known or guessable and that
+	// would let anyone view or delete someone else's watch.
+	getWatch: (token: string) => request<Watch>(`/api/watch?token=${encodeURIComponent(token)}`),
+	deleteWatch: (token: string) => request<void>(`/api/watch?token=${encodeURIComponent(token)}`, { method: 'DELETE' })
 };
 
 export function fmtShowtime(iso: string): string {
@@ -116,4 +120,28 @@ export function amcBookingURL(showtimeId: number): string {
 
 export function localDate(iso: string): string {
 	return new Date(iso).toLocaleDateString('en-CA');
+}
+
+// Remembers which watches this browser created, by their private token, so
+// "my watches" can show them without ever asking for or looking up by email.
+const TOKENS_KEY = 'seatwatch-watch-tokens';
+
+export function getStoredWatchTokens(): string[] {
+	try {
+		const tokens = JSON.parse(localStorage.getItem(TOKENS_KEY) ?? '[]');
+		return Array.isArray(tokens) ? tokens : [];
+	} catch {
+		return [];
+	}
+}
+
+export function addStoredWatchToken(token: string): void {
+	const tokens = getStoredWatchTokens();
+	if (!tokens.includes(token)) {
+		localStorage.setItem(TOKENS_KEY, JSON.stringify([token, ...tokens]));
+	}
+}
+
+export function removeStoredWatchToken(token: string): void {
+	localStorage.setItem(TOKENS_KEY, JSON.stringify(getStoredWatchTokens().filter((t) => t !== token)));
 }

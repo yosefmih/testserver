@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"time"
 
@@ -10,6 +12,18 @@ import (
 
 	"seatwatch/amc"
 )
+
+// generateWatchToken returns an unguessable per-watch secret. Watches are
+// looked up and managed by this token, never by email — an email address is
+// often known or guessable, so using it as a lookup key would let anyone view
+// or delete someone else's watch.
+func generateWatchToken() (string, error) {
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
 
 type Store struct {
 	pool *pgxpool.Pool
@@ -43,6 +57,8 @@ ALTER TABLE screening_matches ADD COLUMN IF NOT EXISTS open_seats INT NOT NULL D
 ALTER TABLE screening_matches ADD COLUMN IF NOT EXISTS group_count INT NOT NULL DEFAULT 0;
 ALTER TABLE watches ADD COLUMN IF NOT EXISTS date_from TEXT NOT NULL DEFAULT '';
 ALTER TABLE watches ADD COLUMN IF NOT EXISTS date_to TEXT NOT NULL DEFAULT '';
+ALTER TABLE watches ADD COLUMN IF NOT EXISTS token TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS watches_token_idx ON watches (token) WHERE token != '';
 
 CREATE TABLE IF NOT EXISTS scraped_showtimes (
 	id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -73,10 +89,15 @@ type Watch struct {
 	DateFrom   string            `json:"dateFrom"`
 	DateTo     string            `json:"dateTo"`
 	CreatedAt  time.Time         `json:"createdAt"`
+	Token      string            `json:"token"`
 	Matches    []ScreeningResult `json:"matches,omitempty"`
 }
 
 func (s *Store) CreateWatch(ctx context.Context, req createWatchRequest) (Watch, error) {
+	token, err := generateWatchToken()
+	if err != nil {
+		return Watch{}, err
+	}
 	watch := Watch{
 		Email:      req.Email,
 		MovieSlug:  req.MovieSlug,
@@ -86,18 +107,19 @@ func (s *Store) CreateWatch(ctx context.Context, req createWatchRequest) (Watch,
 		Seats:      req.Seats,
 		DateFrom:   req.DateFrom,
 		DateTo:     req.DateTo,
+		Token:      token,
 	}
-	err := s.pool.QueryRow(ctx,
-		`INSERT INTO watches (email, movie_slug, movie_title, format, num_seats, seats, date_from, date_to)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, created_at`,
-		req.Email, req.MovieSlug, req.MovieTitle, req.Format, req.NumSeats, req.Seats, req.DateFrom, req.DateTo,
+	err = s.pool.QueryRow(ctx,
+		`INSERT INTO watches (email, movie_slug, movie_title, format, num_seats, seats, date_from, date_to, token)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, created_at`,
+		req.Email, req.MovieSlug, req.MovieTitle, req.Format, req.NumSeats, req.Seats, req.DateFrom, req.DateTo, token,
 	).Scan(&watch.ID, &watch.CreatedAt)
 	return watch, err
 }
 
 func (s *Store) ActiveWatches(ctx context.Context) ([]Watch, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, email, movie_slug, movie_title, format, num_seats, seats, date_from, date_to, created_at
+		`SELECT id, email, movie_slug, movie_title, format, num_seats, seats, date_from, date_to, created_at, token
 		 FROM watches WHERE active ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -106,31 +128,42 @@ func (s *Store) ActiveWatches(ctx context.Context) ([]Watch, error) {
 	return scanWatches(rows)
 }
 
-func (s *Store) ListWatches(ctx context.Context, email string) ([]Watch, error) {
+// GetWatchByToken looks up exactly one watch by its unguessable token — the
+// only supported way to read back a watch after creation.
+func (s *Store) GetWatchByToken(ctx context.Context, token string) (Watch, error) {
+	if token == "" {
+		return Watch{}, pgx.ErrNoRows
+	}
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, email, movie_slug, movie_title, format, num_seats, seats, date_from, date_to, created_at
-		 FROM watches WHERE active AND email = $1 ORDER BY id DESC`, email)
+		`SELECT id, email, movie_slug, movie_title, format, num_seats, seats, date_from, date_to, created_at, token
+		 FROM watches WHERE active AND token = $1`, token)
 	if err != nil {
-		return nil, err
+		return Watch{}, err
 	}
 	defer rows.Close()
 	watches, err := scanWatches(rows)
 	if err != nil {
-		return nil, err
+		return Watch{}, err
 	}
-	for i := range watches {
-		matches, err := s.matchesForWatch(ctx, watches[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		watches[i].Matches = matches
+	if len(watches) == 0 {
+		return Watch{}, pgx.ErrNoRows
 	}
-	return watches, nil
+	watch := watches[0]
+	watch.Matches, err = s.matchesForWatch(ctx, watch.ID)
+	return watch, err
 }
 
-func (s *Store) DeleteWatch(ctx context.Context, id int64) error {
-	_, err := s.pool.Exec(ctx, `UPDATE watches SET active = FALSE WHERE id = $1`, id)
-	return err
+// DeleteWatchByToken deactivates a watch only if the token matches, so
+// deleting requires the same secret the owner was given at creation.
+func (s *Store) DeleteWatchByToken(ctx context.Context, token string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE watches SET active = FALSE WHERE token = $1 AND token != ''`, token)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 // RecordMatchState upserts the match result for a (watch, showtime) pair and
@@ -257,7 +290,7 @@ func scanWatches(rows pgx.Rows) ([]Watch, error) {
 	var watches []Watch
 	for rows.Next() {
 		var w Watch
-		if err := rows.Scan(&w.ID, &w.Email, &w.MovieSlug, &w.MovieTitle, &w.Format, &w.NumSeats, &w.Seats, &w.DateFrom, &w.DateTo, &w.CreatedAt); err != nil {
+		if err := rows.Scan(&w.ID, &w.Email, &w.MovieSlug, &w.MovieTitle, &w.Format, &w.NumSeats, &w.Seats, &w.DateFrom, &w.DateTo, &w.CreatedAt, &w.Token); err != nil {
 			return nil, err
 		}
 		watches = append(watches, w)

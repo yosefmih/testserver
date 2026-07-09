@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, fmtShowtime, amcBookingURL, localDate } from '$lib/api';
+	import { api, fmtShowtime, amcBookingURL, localDate, addStoredWatchToken } from '$lib/api';
 	import type { Showtime, SeatingLayout, ScreeningResult, Watch } from '$lib/api';
 	import SeatMap from '$lib/SeatMap.svelte';
 
@@ -248,6 +248,7 @@
 				dateTo
 			});
 			createdWatch = res.watch;
+			addStoredWatchToken(res.watch.token);
 		} catch (e) {
 			submitError = (e as Error).message;
 		} finally {
@@ -520,7 +521,9 @@
 					<span class="text-sm text-dim">
 						We'll email {createdWatch.email} about {createdWatch.movieTitle}
 						{#if createdWatch.format}({createdWatch.format}){/if}.
-						<a href="/watches" class="text-marquee underline-offset-4 hover:underline">manage watches</a>
+						<a href="/watches?token={createdWatch.token}" class="text-marquee underline-offset-4 hover:underline"
+						>manage watches</a
+					>
 					</span>
 				</div>
 			{:else}

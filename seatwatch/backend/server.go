@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -34,8 +35,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/seatmap/{showtimeID}", s.handleSeatMap)
 	mux.HandleFunc("POST /api/evaluate", s.handleEvaluate)
 	mux.HandleFunc("POST /api/watches", s.handleCreateWatch)
-	mux.HandleFunc("GET /api/watches", s.handleListWatches)
-	mux.HandleFunc("DELETE /api/watches/{id}", s.handleDeleteWatch)
+	mux.HandleFunc("GET /api/watch", s.handleGetWatch)
+	mux.HandleFunc("DELETE /api/watch", s.handleDeleteWatch)
 	if s.staticDir != "" {
 		mux.Handle("/", spaHandler(s.staticDir))
 	}
@@ -213,27 +214,37 @@ func (s *Server) handleCreateWatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"watch": watch, "evaluation": resp})
 }
 
-func (s *Server) handleListWatches(w http.ResponseWriter, r *http.Request) {
-	email := r.URL.Query().Get("email")
-	if email == "" {
-		httpError(w, http.StatusBadRequest, "email query param is required")
+// handleGetWatch looks up a single watch by its unguessable token. There is
+// deliberately no way to list watches by email — that would let anyone view
+// another person's watches just by knowing or guessing their address.
+func (s *Server) handleGetWatch(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		httpError(w, http.StatusBadRequest, "token query param is required")
 		return
 	}
-	watches, err := s.store.ListWatches(r.Context(), email)
+	watch, err := s.store.GetWatchByToken(r.Context(), token)
+	if err == pgx.ErrNoRows {
+		httpError(w, http.StatusNotFound, "no watch found for that token")
+		return
+	}
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, watches)
+	writeJSON(w, watch)
 }
 
 func (s *Server) handleDeleteWatch(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		httpError(w, http.StatusBadRequest, "invalid watch id")
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		httpError(w, http.StatusBadRequest, "token query param is required")
 		return
 	}
-	if err := s.store.DeleteWatch(r.Context(), id); err != nil {
+	if err := s.store.DeleteWatchByToken(r.Context(), token); err == pgx.ErrNoRows {
+		httpError(w, http.StatusNotFound, "no watch found for that token")
+		return
+	} else if err != nil {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

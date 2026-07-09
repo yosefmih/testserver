@@ -38,14 +38,16 @@ func NewMailerFromEnv() *Mailer {
 	}
 }
 
-// watchesURL links to the watcher's own results page, deep-linked with their
-// email, rather than a specific screening: seats sell out the moment someone
-// else books, so the email should point at a live page, not a stale snapshot.
-func (m *Mailer) watchesURL(email string) string {
-	if m.publicBaseURL == "" {
+// watchesURL links to the watcher's own results page, deep-linked with this
+// watch's private token, rather than a specific screening: seats sell out the
+// moment someone else books, so the email should point at a live page, not a
+// stale snapshot. The token (not the email) is what grants access, since an
+// email address is often known or guessable.
+func (m *Mailer) watchesURL(token string) string {
+	if m.publicBaseURL == "" || token == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s/watches?email=%s", m.publicBaseURL, url.QueryEscape(email))
+	return fmt.Sprintf("%s/watches?token=%s", m.publicBaseURL, url.QueryEscape(token))
 }
 
 func (m *Mailer) SendMatchAlert(watch Watch, matches []ScreeningResult) error {
@@ -96,7 +98,7 @@ func (m *Mailer) composeText(watch Watch, matches []ScreeningResult) string {
 		fmt.Fprintf(&b, " — %d open, %d ways to sit %d together\n", match.OpenSeats, match.GroupCount, watch.NumSeats)
 	}
 	b.WriteString("\n")
-	if link := m.watchesURL(watch.Email); link != "" {
+	if link := m.watchesURL(watch.Token); link != "" {
 		fmt.Fprintf(&b, "See live seats and book: %s\n\n", link)
 	}
 	b.WriteString("Seats sell fast — check soon, availability may have changed since this email was sent.\n")
@@ -133,7 +135,7 @@ func (m *Mailer) composeHTML(watch Watch, matches []ScreeningResult) string {
 	}
 
 	ctaButton := ""
-	if link := m.watchesURL(watch.Email); link != "" {
+	if link := m.watchesURL(watch.Token); link != "" {
 		ctaButton = fmt.Sprintf(`
 			<tr>
 				<td style="padding:24px 0 4px;text-align:center;">
