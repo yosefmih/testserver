@@ -524,6 +524,9 @@
 					</span>
 				</div>
 			{:else}
+				{@const notEnoughSeats = selectedSeats.size < numSeats}
+				{@const alreadyBookable = !notEnoughSeats && openNow.length > 0}
+				{@const formDisabled = submitting || !email || notEnoughSeats || alreadyBookable}
 				<form
 					class="flex max-w-md flex-wrap gap-3"
 					onsubmit={(e) => {
@@ -534,20 +537,27 @@
 					<input
 						type="email"
 						required
+						disabled={alreadyBookable}
 						placeholder="you@example.com"
 						bind:value={email}
-						class="min-w-64 flex-1 rounded-lg border border-line bg-panel px-4 py-2.5 placeholder:text-dim/50 focus:border-marquee focus:outline-none"
+						class="min-w-64 flex-1 rounded-lg border border-line bg-panel px-4 py-2.5 placeholder:text-dim/50 focus:border-marquee focus:outline-none disabled:opacity-40"
 					/>
 					<button
 						type="submit"
-						disabled={submitting || !email || selectedSeats.size < numSeats}
+						disabled={formDisabled}
 						class="rounded-lg bg-marquee px-6 py-2.5 font-semibold text-ink transition hover:brightness-110 disabled:opacity-40"
 					>
 						{submitting ? 'saving…' : 'Alert me'}
 					</button>
 				</form>
-				{#if selectedSeats.size < numSeats}
+				{#if notEnoughSeats}
 					<p class="mt-2 text-xs text-dim">mark at least {numSeats} seats first</p>
+				{:else if alreadyBookable}
+					<p class="mt-2 text-xs text-dim">
+						You've already got {openNow.length} option{openNow.length === 1 ? '' : 's'} to book above —
+						alerts unlock once none of your marked seats are available, so you're never stuck settling
+						for a screening you don't actually want.
+					</p>
 				{/if}
 				{#if submitError}
 					<p class="mt-3 text-sm text-red-400">{submitError}</p>
