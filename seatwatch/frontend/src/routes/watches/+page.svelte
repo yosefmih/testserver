@@ -2,7 +2,9 @@
 	import { api, fmtShowtime, amcBookingURL } from '$lib/api';
 	import type { Watch } from '$lib/api';
 
-	let email = $state(localStorage.getItem('seatwatch-email') ?? '');
+	let email = $state(
+		new URLSearchParams(location.search).get('email') ?? localStorage.getItem('seatwatch-email') ?? ''
+	);
 	let watches = $state<Watch[] | null>(null);
 	let error = $state('');
 	let loading = $state(false);

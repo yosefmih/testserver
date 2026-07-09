@@ -47,6 +47,7 @@ declare module '$env/static/private' {
 	export const NODE: string;
 	export const FNM_LOGLEVEL: string;
 	export const INIT_CWD: string;
+	export const CLAUDE_CODE_BRIDGE_SESSION_ID: string;
 	export const SHELL: string;
 	export const TERM: string;
 	export const DOCKER_HTTPS_PROXY: string;
@@ -167,11 +168,13 @@ declare module '$env/static/private' {
 	export const INFOPATH: string;
 	export const grpc_proxy: string;
 	export const CLAUDECODE: string;
+	export const PORTER_CONFIG: string;
 	export const SECURITYSESSIONID: string;
 	export const VIRTUAL_ENV_PROMPT: string;
 	export const npm_node_execpath: string;
 	export const npm_config_prefix: string;
 	export const COLORTERM: string;
+	export const PCTX: string;
 	export const GVM_PATH_BACKUP: string;
 	export const NODE_ENV: string;
 }
@@ -269,6 +272,7 @@ declare module '$env/dynamic/private' {
 		NODE: string;
 		FNM_LOGLEVEL: string;
 		INIT_CWD: string;
+		CLAUDE_CODE_BRIDGE_SESSION_ID: string;
 		SHELL: string;
 		TERM: string;
 		DOCKER_HTTPS_PROXY: string;
@@ -389,11 +393,13 @@ declare module '$env/dynamic/private' {
 		INFOPATH: string;
 		grpc_proxy: string;
 		CLAUDECODE: string;
+		PORTER_CONFIG: string;
 		SECURITYSESSIONID: string;
 		VIRTUAL_ENV_PROMPT: string;
 		npm_node_execpath: string;
 		npm_config_prefix: string;
 		COLORTERM: string;
+		PCTX: string;
 		GVM_PATH_BACKUP: string;
 		NODE_ENV: string;
 		[key: `PUBLIC_${string}`]: undefined;
