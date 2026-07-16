@@ -1,0 +1,27 @@
+"on":
+    push:
+        branches:
+            - main
+name: Deploy to tss
+jobs:
+    porter-deploy:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+            - name: Set Github tag
+              id: vars
+              run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+            - name: Setup porter
+              uses: porter-dev/setup-porter@v0.1.0
+            - name: Deploy stack
+              timeout-minutes: 30
+              run: porter apply
+              env:
+                PORTER_APP_NAME: tss
+                PORTER_CLUSTER: "3"
+                PORTER_DEPLOYMENT_TARGET_ID: 8ec8cecd-31e9-4fb0-91c0-4aa9b583ad1b
+                PORTER_HOST: https://yosefdev2.withporter.run
+                PORTER_PROJECT: "1"
+                PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
+                PORTER_TOKEN: ${{ secrets.PORTER_APP_1_3 }}
