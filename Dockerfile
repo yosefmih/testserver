@@ -94,11 +94,6 @@ RUN echo "=== BUILD ARG TEST RESULTS ===" && \
     echo "VARIABLES_FLAG_VAR=${VARIABLES_FLAG_VAR:-NOT SET}" && \
     echo "=== END TEST RESULTS ==="
 
-# CMD specifies the default command to run when the container starts.
-# This is set to run server.py.
-# If you want to run audio_worker.py, you'd typically:
-# 1. Build two different images from this Dockerfile using the RUN_FILE ARG and change CMD to use it:
-#    CMD ["python", "${RUN_FILE:-server.py}"]
-#    Then build with: docker build --build-arg RUN_FILE=audio_worker.py -t myapp-worker .
-# 2. Or, use a process manager like 'supervisor' if both must run in one container (less common for scaling).
-CMD ["python", "server.py"]
+# Default is the Flask test server; set RUN_FILE=server_ws.py (env var at deploy
+# time, or `run:` in porter.yaml) to serve the websocket experiment server instead.
+CMD ["sh", "-c", "python ${RUN_FILE:-server.py}"]
