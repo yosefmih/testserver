@@ -13,7 +13,8 @@ import traceback
 import subprocess
 import shutil
 import multiprocessing
-from urllib.parse import urlparse, parse_qs
+import re
+from urllib.parse import urlparse, parse_qs, parse_qsl
 import decimal
 import math
 import redis
@@ -1366,7 +1367,23 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.send_json_response(500, {'status': 'error', 'message': 'Injected failure for testing'})
             self.log_request_info(500, time.time() - start_time)
             return
-            
+
+        # Echo back exactly what the server parsed from a form body, byte for byte.
+        # Used to observe how a backend parser handles a request body independently
+        # of any upstream web application firewall.
+        if self.path == '/echo-form':
+            length = int(self.headers.get('Content-Length', 0))
+            raw_body = self.rfile.read(length) if length > 0 else b''
+            fields = self._parse_form_body(raw_body, self.headers.get('Content-Type', ''))
+            status_code = self.send_json_response(200, {
+                'status': 'success',
+                'content_type': self.headers.get('Content-Type', ''),
+                'fields': fields,
+                'hostname': HOSTNAME
+            })
+            self.log_request_info(status_code, time.time() - start_time)
+            return
+
         # Get request content
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
@@ -1573,8 +1590,44 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 'status': 'error',
                 'message': 'Invalid JSON format'
             })
-            
+
         self.log_request_info(status_code, time.time() - start_time)
+
+    def _parse_form_body(self, raw_body, content_type):
+        """Parse a urlencoded or multipart form body, preserving each field value's bytes exactly as received."""
+        def describe(name, value_bytes):
+            return {
+                'name': name,
+                'value_repr': repr(value_bytes.decode('utf-8', 'replace')),
+                'byte_length': len(value_bytes),
+                'contains_crlf': b'\r\n' in value_bytes,
+                'contains_lf': b'\n' in value_bytes,
+                'hex': value_bytes.hex(),
+            }
+
+        ctype = content_type.lower()
+        if ctype.startswith('multipart/form-data'):
+            boundary_match = re.search(r'boundary=([^;]+)', content_type)
+            if not boundary_match:
+                return []
+            delimiter = b'--' + boundary_match.group(1).strip().strip('"').encode('latin-1')
+            fields = []
+            for segment in raw_body.split(delimiter):
+                segment = segment[2:] if segment.startswith(b'\r\n') else segment
+                header_blob, sep, value = segment.partition(b'\r\n\r\n')
+                if not sep:
+                    continue
+                if value.endswith(b'\r\n'):
+                    value = value[:-2]
+                name_match = re.search(rb'name="([^"]*)"', header_blob)
+                fields.append(describe(name_match.group(1).decode('latin-1') if name_match else None, value))
+            return fields
+
+        if ctype.startswith('application/x-www-form-urlencoded'):
+            return [describe(name, value.encode('latin-1'))
+                    for name, value in parse_qsl(raw_body.decode('latin-1'), keep_blank_values=True)]
+
+        return []
 
 class MetricsServer(HTTPServer):
     def __init__(self, metrics_collector, server_address, handler_class):
