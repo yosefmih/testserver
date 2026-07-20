@@ -20,7 +20,7 @@ jobs:
               env:
                 PORTER_APP_NAME: tss
                 PORTER_CLUSTER: "1"
-                PORTER_DEPLOYMENT_TARGET_ID: f43e637e-6fd8-4730-8dfd-ca9991f6cc1f
+                PORTER_DEPLOYMENT_TARGET_ID: ba57e002-79b6-4c61-9971-561ccb9a3aef
                 PORTER_HOST: https://yosefdev2.withporter.run
                 PORTER_PROJECT: "1"
                 PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
