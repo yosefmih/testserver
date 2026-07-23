@@ -1,14 +1,44 @@
 version: v2
-name: testserver
+name: tss
 services:
 - name: web
-  run: "python server.py"
+  run: ""
   type: web
   instances: 1
   cpuCores: 0.1
   ramMegabytes: 400
   terminationGracePeriodSeconds: 30
   port: 3000
+  domains:
+  - name: web-1-ba57e002-xc5p2zol.withporter.run
+  sleep: false
+  nodeGroup: 8bf15602-b7e5-45d0-9475-599b8eb67c56
+- name: job3
+  run: python compute_pi.py
+  type: job
+  cpuCores: 0.1
+  ramMegabytes: 512
+  terminationGracePeriodSeconds: 30
+  suspendCron: true
+  timeoutSeconds: 60
+- name: testjob
+  run: python compute_pi.py
+  type: job
+  cpuCores: 0.1
+  ramMegabytes: 200
+  terminationGracePeriodSeconds: 30
+  allowConcurrent: true
+  suspendCron: true
+  timeoutSeconds: 60
+- name: testjob2
+  run: python compute_pi.py
+  type: job
+  cpuCores: 0.1
+  ramMegabytes: 512
+  terminationGracePeriodSeconds: 30
+  allowConcurrent: true
+  suspendCron: true
+  timeoutSeconds: 60
 build:
   context: ./
   method: docker
