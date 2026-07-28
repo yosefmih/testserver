@@ -22,6 +22,7 @@ type Server struct {
 	cache         *Cache
 	refresher     *Refresher
 	alertsEnabled bool
+	debugEnabled  bool
 	staticDir     string
 }
 
@@ -37,6 +38,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/watches", s.handleCreateWatch)
 	mux.HandleFunc("GET /api/watch", s.handleGetWatch)
 	mux.HandleFunc("DELETE /api/watch", s.handleDeleteWatch)
+	if s.debugEnabled {
+		mux.HandleFunc("POST /api/debug/force-seat-open", s.handleForceSeatOpen)
+	}
 	if s.staticDir != "" {
 		mux.Handle("/", spaHandler(s.staticDir))
 	}
@@ -249,6 +253,50 @@ func (s *Server) handleDeleteWatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type forceSeatOpenRequest struct {
+	Token      string `json:"token"`
+	ShowtimeID int64  `json:"showtimeId"`
+	Seat       string `json:"seat"`
+}
+
+// handleForceSeatOpen is a test-only escape hatch (gated by DEBUG_ENDPOINTS_ENABLED)
+// for exercising the alert path without waiting on real AMC availability: it
+// flips one seat to available in the in-memory cache, then immediately
+// re-evaluates the given watch, so a real alert email fires synchronously
+// instead of waiting for the next sweep.
+func (s *Server) handleForceSeatOpen(w http.ResponseWriter, r *http.Request) {
+	var req forceSeatOpenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.Token == "" || req.ShowtimeID == 0 || req.Seat == "" {
+		httpError(w, http.StatusBadRequest, "token, showtimeId and seat are required")
+		return
+	}
+
+	watch, err := s.store.GetWatchByToken(r.Context(), req.Token)
+	if err == pgx.ErrNoRows {
+		httpError(w, http.StatusNotFound, "no watch found for that token")
+		return
+	} else if err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if !s.cache.ForceSeatAvailable(req.ShowtimeID, req.Seat) {
+		httpError(w, http.StatusNotFound, "showtime or seat not found in cache")
+		return
+	}
+
+	resp, err := s.refresher.EvaluateWatch(r.Context(), watch)
+	if err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, resp)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

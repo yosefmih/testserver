@@ -64,6 +64,23 @@ e.g. `2m`), `MAX_LOOKAHEAD_DAYS`, `AMC_REQUEST_INTERVAL` (rate-limit spacing),
 `THEATRE_PATH` (any AMC theatre's site path), `STATIC_DIR` (serve the built
 frontend from the backend).
 
+### Testing the alert email end-to-end
+
+Real AMC availability can't be triggered on demand, so `DEBUG_ENDPOINTS_ENABLED=true`
+turns on `POST /api/debug/force-seat-open`, which flips one seat to available
+in the in-memory cache (never persisted) and immediately re-evaluates a watch,
+sending a real alert through the configured mailer if it now matches:
+
+```bash
+curl -X POST localhost:8095/api/debug/force-seat-open \
+  -H 'Content-Type: application/json' \
+  -d '{"token": "<your watch token>", "showtimeId": 123456, "seat": "H12"}'
+```
+
+Create a watch for a movie/seat you know is currently unavailable, grab its
+token from the confirmation link or `localStorage['seatwatch-watch-tokens']`,
+then call this with that showtime's id and one of the seats you're watching.
+
 ## Docker / Porter
 
 `Dockerfile` builds everything into one image (~25MB): SvelteKit static build +

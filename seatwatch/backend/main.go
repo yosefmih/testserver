@@ -52,7 +52,8 @@ func main() {
 	refresher.RestoreFromDB(ctx)
 	go refresher.Run(ctx)
 
-	server := &Server{store: store, cache: cache, refresher: refresher, alertsEnabled: alertsEnabled, staticDir: os.Getenv("STATIC_DIR")}
+	debugEnabled := os.Getenv("DEBUG_ENDPOINTS_ENABLED") == "true"
+	server := &Server{store: store, cache: cache, refresher: refresher, alertsEnabled: alertsEnabled, debugEnabled: debugEnabled, staticDir: os.Getenv("STATIC_DIR")}
 	addr := ":" + envOr("PORT", "8095")
 	log.Printf("seatwatch backend listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, server.Routes()))

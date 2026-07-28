@@ -78,6 +78,27 @@ func (c *Cache) LayoutFetchedAt(showtimeID int64) (time.Time, bool) {
 	return at, ok
 }
 
+// ForceSeatAvailable overrides a single seat's availability in the cached
+// layout for a showtime, in memory only (never persisted). It exists so the
+// alert path can be exercised end-to-end against a real watch without
+// waiting for AMC to actually free up a seat. Returns false if the showtime
+// or seat isn't cached.
+func (c *Cache) ForceSeatAvailable(showtimeID int64, seatName string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	layout, ok := c.layouts[showtimeID]
+	if !ok {
+		return false
+	}
+	for i, seat := range layout.Seats {
+		if seat.Name == seatName {
+			layout.Seats[i].Available = true
+			return true
+		}
+	}
+	return false
+}
+
 // Prune drops layouts for showtimes that are no longer upcoming.
 func (c *Cache) Prune(keep map[int64]bool) {
 	c.mu.Lock()
