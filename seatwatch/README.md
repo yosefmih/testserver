@@ -59,7 +59,7 @@ SMTP_USER=you@gmail.com SMTP_PASS=<app password> SMTP_FROM=you@gmail.com ./seatw
 With `ALERTS_ENABLED=true` but no SMTP config, alert emails are logged to
 stdout instead of sent (useful for testing).
 
-Other knobs: `PORT`, `DATABASE_URL`, `REFRESH_INTERVAL` (pause between sweeps,
+Other knobs: `PORT`, `DB_URL`, `REFRESH_INTERVAL` (pause between sweeps,
 e.g. `2m`), `MAX_LOOKAHEAD_DAYS`, `AMC_REQUEST_INTERVAL` (rate-limit spacing),
 `THEATRE_PATH` (any AMC theatre's site path), `STATIC_DIR` (serve the built
 frontend from the backend).
@@ -68,8 +68,7 @@ frontend from the backend).
 
 `Dockerfile` builds everything into one image (~25MB): SvelteKit static build +
 Go binary serving both the API and the frontend on `PORT` (default 8095). The
-database URL is read from `SEAT_WATCHER_DB_DB_URL` (falls back to
-`DATABASE_URL`). Run a single replica — each instance runs its own AMC
+database URL is read from `DB_URL`. Run a single replica — each instance runs its own AMC
 refresher, so replicas would multiply scraping traffic.
 
 Scraped data (showtimes + seat maps) is persisted to postgres as each sweep
@@ -79,7 +78,7 @@ background sweep then refreshes anything stale.
 
 ```bash
 docker build -t seatwatch .
-docker run -p 8095:8095 -e SEAT_WATCHER_DB_DB_URL=postgres://... seatwatch
+docker run -p 8095:8095 -e DB_URL=postgres://... seatwatch
 ```
 
 ## Notes

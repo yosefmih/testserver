@@ -20,7 +20,7 @@ func main() {
 	shutdownTracing := initTracing(ctx)
 	defer shutdownTracing()
 
-	dbURL := envOr("SEAT_WATCHER_DB_DB_URL", envOr("DATABASE_URL", "postgres://seatwatch:seatwatch@localhost:5434/seatwatch"))
+	dbURL := envOr("DB_URL", "postgres://seatwatch:seatwatch@localhost:5434/seatwatch")
 	pool, err := connectWithRetry(ctx, dbURL)
 	if err != nil {
 		log.Fatalf("connecting to postgres: %v", err)
