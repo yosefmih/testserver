@@ -1,0 +1,38 @@
+version: v2
+name: seatwatcher
+services:
+- name: web
+  run: ""
+  type: web
+  instances: 1
+  cpuCores: 0.2
+  ramMegabytes: 1024
+  terminationGracePeriodSeconds: 30
+  port: 8095
+  domains:
+  - name: seatwatch.jemyla.withporter.run
+  - name: web-2-9233c89a-mtdv2997.withporter.run
+  loadBalancers:
+  - public_alb
+  sleep: false
+build:
+  context: ./seatwatch
+  method: docker
+  dockerfile: ./seatwatch/Dockerfile
+env:
+- key: ALERTS_ENABLED
+  value: "true"
+- key: DEBUG_ENDPOINTS_ENABLED
+  value: "false"
+- key: PUBLIC_BASE_URL
+  value: https://seatwatch.jemyla.withporter.run
+- key: SMTP_FROM
+  value: noreply@seatwatch.jemyla.withporter.run
+- key: SMTP_HOST
+  value: smtp.resend.com
+- key: SMTP_PORT
+  value: "587"
+- key: SMTP_USER
+  value: resend
+envGroups:
+- seatwatcher-db

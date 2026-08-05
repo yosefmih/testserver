@@ -180,6 +180,116 @@ def run_cpu_burn(duration_seconds: int, cores: int, algo: str) -> None:
     for proc in processes:
         proc.join()
 
+LOG_SPAM_LEVELS = ['INFO'] * 90 + ['WARN'] * 7 + ['ERROR'] * 3
+LOG_SPAM_WORDS = [
+    'orders', 'payments', 'checkout', 'inventory', 'shipping', 'billing',
+    'session', 'cache', 'upstream', 'retry', 'timeout', 'latency', 'replica',
+    'shard', 'queue', 'worker', 'flush', 'commit', 'rollback', 'webhook'
+]
+
+def _log_spam_worker(worker_id, lines_per_second, bytes_per_line, duration_seconds,
+                     needle_every, needle_token, fmt):
+    fd = 1
+    rng = random.Random(worker_id * 7919 + os.getpid())
+    end_time = time.time() + duration_seconds if duration_seconds else None
+    tick_interval = 0.05
+    lines_per_tick = max(1, int(lines_per_second * tick_interval)) if lines_per_second else 2000
+    line_no = 0
+
+    while end_time is None or time.time() < end_time:
+        tick_start = time.time()
+        buf = []
+        buf_bytes = 0
+        for _ in range(lines_per_tick):
+            line_no += 1
+            level = LOG_SPAM_LEVELS[line_no % 100]
+            req_id = uuid.uuid4().hex
+            word = LOG_SPAM_WORDS[rng.randrange(len(LOG_SPAM_WORDS))]
+            ts = datetime.utcnow().isoformat() + 'Z'
+            if fmt == 'json':
+                line = json.dumps({
+                    'ts': ts, 'level': level, 'worker': worker_id, 'line': line_no,
+                    'req_id': req_id, 'route': f'/api/{word}',
+                    'status': rng.choice([200, 200, 200, 200, 201, 204, 400, 404, 500]),
+                    'duration_ms': rng.randint(1, 900),
+                    'msg': f'handled {word} request'
+                })
+            else:
+                line = (f'{ts} {level} worker={worker_id} line={line_no} req_id={req_id} '
+                        f'route=/api/{word} status={rng.choice([200, 200, 200, 200, 201, 204, 400, 404, 500])} '
+                        f'duration_ms={rng.randint(1, 900)} msg="handled {word} request"')
+            if len(line) < bytes_per_line:
+                pad_words = []
+                deficit = bytes_per_line - len(line)
+                while deficit > 0:
+                    w = LOG_SPAM_WORDS[rng.randrange(len(LOG_SPAM_WORDS))]
+                    pad_words.append(w)
+                    deficit -= len(w) + 1
+                line += ' pad=' + '-'.join(pad_words)
+            if needle_every and line_no % needle_every == 0:
+                line += f' {needle_token}-{worker_id}-{line_no}'
+            line += '\n'
+            encoded = line.encode()
+            buf.append(encoded)
+            buf_bytes += len(encoded)
+            if buf_bytes >= 32768:
+                os.write(fd, b''.join(buf))
+                buf = []
+                buf_bytes = 0
+        if buf:
+            os.write(fd, b''.join(buf))
+        if lines_per_second:
+            elapsed = time.time() - tick_start
+            if elapsed < tick_interval:
+                time.sleep(tick_interval - elapsed)
+
+class LogSpamController:
+    def __init__(self):
+        self.processes = []
+        self.config = None
+        self.started_at = None
+
+    def start(self, config):
+        self.stop()
+        workers = config['workers']
+        per_worker_rate = (config['lines_per_second'] // workers) if config['lines_per_second'] else 0
+        for worker_id in range(workers):
+            proc = multiprocessing.Process(
+                target=_log_spam_worker,
+                args=(worker_id, per_worker_rate, config['bytes_per_line'],
+                      config['duration_seconds'], config['needle_every'],
+                      config['needle_token'], config['format']),
+                daemon=True
+            )
+            proc.start()
+            self.processes.append(proc)
+        self.config = config
+        self.started_at = time.time()
+
+    def stop(self):
+        stopped = 0
+        for proc in self.processes:
+            if proc.is_alive():
+                proc.terminate()
+                stopped += 1
+        for proc in self.processes:
+            proc.join(timeout=2)
+        self.processes = []
+        self.config = None
+        self.started_at = None
+        return stopped
+
+    def status(self):
+        alive = sum(1 for proc in self.processes if proc.is_alive())
+        return {
+            'running': alive > 0,
+            'alive_workers': alive,
+            'config': self.config,
+            'started_seconds_ago': round(time.time() - self.started_at, 1) if self.started_at else None
+        }
+
+log_spam = LogSpamController()
+
 class MetricsCollector:
     def __init__(self):
         self.request_count = defaultdict(int)  # Track requests by path
@@ -1155,6 +1265,9 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.log_request_info(status_code, time.time() - start_time)
             return
 
+        elif self.path == '/logspam/status':
+            status_code = self.send_json_response(200, log_spam.status())
+
         elif self.path.startswith('/run/'):
             # Extract model ID from path: /run/{model_id}
             path_parts = self.path.strip('/').split('/')
@@ -1463,6 +1576,39 @@ class SimpleHandler(BaseHTTPRequestHandler):
                         'message': 'Invalid request: "enabled" field must be a boolean'
                     })
             
+            elif self.path == '/logspam/start':
+                config = {
+                    'lines_per_second': int(data.get('lines_per_second', 10000)),
+                    'bytes_per_line': int(data.get('bytes_per_line', 200)),
+                    'duration_seconds': int(data.get('duration_seconds', 300)),
+                    'workers': max(1, int(data.get('workers', 1))),
+                    'needle_every': int(data.get('needle_every', 0)),
+                    'needle_token': str(data.get('needle_token', 'NEEDLE')),
+                    'format': str(data.get('format', 'plain'))
+                }
+                if config['lines_per_second'] < 0 or config['bytes_per_line'] < 50 or config['duration_seconds'] < 0:
+                    status_code = self.send_json_response(400, {
+                        'status': 'error',
+                        'message': 'lines_per_second must be >= 0 (0 = unthrottled), bytes_per_line >= 50, duration_seconds >= 0 (0 = until stopped)'
+                    })
+                else:
+                    log_spam.start(config)
+                    logger.info(f"[LOGSPAM] started: {config}")
+                    status_code = self.send_json_response(200, {
+                        'status': 'started',
+                        'hostname': HOSTNAME,
+                        'config': config
+                    })
+
+            elif self.path == '/logspam/stop':
+                stopped = log_spam.stop()
+                logger.info(f"[LOGSPAM] stopped {stopped} workers")
+                status_code = self.send_json_response(200, {
+                    'status': 'stopped',
+                    'stopped_workers': stopped,
+                    'hostname': HOSTNAME
+                })
+
             # Audio upload endpoint
             elif self.path == '/audio/upload':
                 if not redis_client:
