@@ -45,4 +45,6 @@ env:
   value: "true"
 - key: DRAIN_TIMEOUT_SECONDS
   value: "540"
+- key: JOB_CONCURRENCY
+  value: "50"
 

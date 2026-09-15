@@ -16,7 +16,8 @@ from .storage import Storage
 
 log = logging.getLogger(__name__)
 
-RETRY_DELAY_SECONDS = 5
+RETRY_DELAYS_SECONDS = (5, 15, 45, 120, 120)
+READY_POLL_SECONDS = 10
 LEASE_POLL_SECONDS = 10
 
 
@@ -67,6 +68,18 @@ class Worker:
 
     def enqueue(self, job_id: str) -> None:
         self._queue.put_nowait(job_id)
+
+    async def retry(self, job: Job) -> None:
+        for chunk in job.chunks:
+            if chunk.status != ChunkStatus.done:
+                chunk.status = ChunkStatus.queued
+                chunk.error = None
+                chunk.attempts = 0
+        job.status = JobStatus.queued
+        job.error = None
+        job.finished_at = None
+        await self._store.save(job)
+        self.enqueue(job.id)
 
     async def _requeue(self, job: Job) -> None:
         log.info("job %s was %s at startup, requeuing", job.id, job.status)
@@ -233,6 +246,8 @@ class Worker:
             log.info("job %s chunk %d was finished by %s", job.id, chunk.index, chunk.owner or "another pod")
         return stored
 
+    # A failed request is retried with growing delays, and never before the OCR service
+    # reports ready again: a pod replacement takes minutes and must not burn the attempts.
     async def _ocr_with_retries(self, job: Job, chunk: Chunk, chunk_pdf: bytes) -> list[PageResult]:
         while True:
             try:
@@ -243,7 +258,20 @@ class Worker:
                 log.warning("job %s chunk %d attempt %d failed: %s", job.id, chunk.index, chunk.attempts, exc)
                 chunk.attempts += 1
                 await self._store.save(job)
-                await asyncio.sleep(RETRY_DELAY_SECONDS)
+                await asyncio.sleep(RETRY_DELAYS_SECONDS[min(chunk.attempts - 2, len(RETRY_DELAYS_SECONDS) - 1)])
+                await self._wait_for_ocr_ready(job, chunk)
+
+    async def _wait_for_ocr_ready(self, job: Job, chunk: Chunk) -> None:
+        deadline = time.monotonic() + self._settings.ocr_ready_wait_seconds
+        waited = False
+        while not await self._ocr.ready():
+            if time.monotonic() > deadline:
+                log.warning("job %s chunk %d: OCR service still not ready after %.0fs, retrying anyway", job.id, chunk.index, self._settings.ocr_ready_wait_seconds)
+                return
+            if not waited:
+                log.info("job %s chunk %d: OCR service not ready, waiting", job.id, chunk.index)
+                waited = True
+            await asyncio.sleep(READY_POLL_SECONDS)
 
     async def _store_pages(self, job: Job, chunk: Chunk, results: list[PageResult]) -> list[StoredPage]:
         stored = []

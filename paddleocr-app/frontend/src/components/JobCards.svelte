@@ -1,5 +1,5 @@
 <script>
-  import { deleteJob, inputPdfUrl, resultZipUrl, resultMarkdownUrl } from '../lib/api.js';
+  import { deleteJob, retryJob, inputPdfUrl, resultZipUrl, resultMarkdownUrl } from '../lib/api.js';
   import { navigate } from '../lib/router.svelte.js';
   import { duration, bytes, when, statusLabel } from '../lib/format.js';
 
@@ -10,6 +10,15 @@
     if (!confirm(`Delete "${job.file_name}" with its input, images and results?`)) return;
     try {
       await deleteJob(job.id);
+      onchanged?.();
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function retry(job) {
+    try {
+      await retryJob(job.id);
       onchanged?.();
     } catch (e) {
       error = e.message;
@@ -58,6 +67,11 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>Output zip
           </a>
           <a class="btn small" href={resultMarkdownUrl(job.id)} aria-disabled={!done} target="_blank" rel="noopener" title="Open the markdown in a new tab">Markdown</a>
+          {#if job.status === 'failed'}
+            <button class="btn small retry" type="button" onclick={() => retry(job)} title="Re-queue the failed requests; finished ones are kept">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></svg>Retry
+            </button>
+          {/if}
           <span class="spacer"></span>
           <button class="btn small quiet" type="button" onclick={() => remove(job)} disabled={active} title="Delete this job">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M6 7l1 13h10l1-13" /><path d="M9 7V4h6v3" /></svg>
@@ -107,6 +121,7 @@
   dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
   dd { margin: 0; font-size: 15px; }
   .actions { display: flex; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .retry { border-color: var(--failed); color: var(--failed); }
   .spacer { flex: 1; }
   @media (max-width: 480px) {
     .cards { grid-template-columns: 1fr; }

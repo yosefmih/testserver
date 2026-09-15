@@ -103,7 +103,7 @@ Set `AWS_PROFILE` for the account that owns the ECR registry, then:
 | `S3_ENDPOINT_URL` | unset | Alternative S3 endpoint (MinIO, LocalStack) |
 | `DEFAULT_CHUNK_PAGES` | `50` | Form default for pages per OCR request |
 | `DEFAULT_CONCURRENCY` | `2` | Form default for requests in flight per job |
-| `JOB_CONCURRENCY` | `1` | Jobs processed at once |
+| `JOB_CONCURRENCY` | `50` | Jobs processed at once; effectively unlimited, the OCR fleet's capacity is the real limit |
 | `RESTRUCTURE_PAGES` | `true` | Form default for the cross-page merge step |
 | `MAX_UPLOAD_BYTES` | `536870912` | Upload size limit |
 | `DRAIN_TIMEOUT_SECONDS` | `600` | How long shutdown waits for in-flight OCR requests |
@@ -160,6 +160,20 @@ takes 8 to 10 minutes and outlives the grace period, so its work is lost on a re
 - `GET /api/readyz` is readiness: 503 while draining, 200 otherwise. `porter.yaml` uses
   it as the health check.
 - `POST /api/jobs` answers 503 while draining.
+
+## Autoscaling
+
+`charts/paddleocr-vl-hps` ships a KEDA ScaledObject (`autoscaling.enabled: true`) that
+scales the OCR deployment on `sum(max by (k8s_pod_name) (paddleocr_pending_pages))` read
+from the cluster's Prometheus: replicas = ceil(pending pages / `pagesPerReplica`, 400 by
+default), between `minReplicas` and `maxReplicas`. Scale-up adds up to two pods a minute;
+scale-down waits 15 minutes of low backlog and then removes one pod per five minutes,
+because a fresh pod takes about ten minutes to serve. Karpenter provisions and removes the
+GPU nodes underneath. The pod carries `karpenter.sh/do-not-disrupt` so consolidation never
+evicts a busy pod, a 15-minute termination grace period, and Triton and vLLM run as native
+sidecars so a terminating pod stops the gateway first and its engines last: requests in
+flight finish before the pod goes. `maxReplicas` is bounded by the account's G-instance
+vCPU quota (32 vCPU = four g6.2xlarge) and the node pool limits, not by the chart.
 
 ## Autoscaling signal
 

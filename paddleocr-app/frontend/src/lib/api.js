@@ -16,6 +16,7 @@ export const listJobs = () => request('/api/jobs');
 export const getJob = (id) => request(`/api/jobs/${id}`);
 export const getPages = (id) => request(`/api/jobs/${id}/pages`);
 export const deleteJob = (id) => request(`/api/jobs/${id}`, { method: 'DELETE' });
+export const retryJob = (id) => request(`/api/jobs/${id}/retry`, { method: 'POST' });
 
 export const inputPdfUrl = (id) => `/api/jobs/${id}/input.pdf`;
 export const resultZipUrl = (id) => `/api/jobs/${id}/result.zip`;

@@ -99,3 +99,26 @@ tolerations:
 - key: nvidia.com/gpu
   operator: Exists
   effect: NoSchedule
+
+replicas: 1
+terminationGracePeriodSeconds: 900
+
+podDisruptionBudget:
+  enabled: true
+
+# KEDA ScaledObject on the app's backlog metric (see the app's /api/metrics). Requires KEDA
+# and a Prometheus that scrapes the app. maxReplicas is bounded by GPU quota and node pool
+# limits, not by this chart.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 4
+  pagesPerReplica: 400
+  pollingIntervalSeconds: 15
+  prometheusUrl: http://prometheus-server.monitoring.svc.cluster.local:80
+  query: sum(max by (k8s_pod_name) (paddleocr_pending_pages))
+  scaleUp:
+    podsPerMinute: 2
+  scaleDown:
+    stabilizationSeconds: 900
+    secondsPerPod: 300

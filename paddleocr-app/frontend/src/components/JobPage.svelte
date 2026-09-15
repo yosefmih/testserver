@@ -3,7 +3,7 @@
   import PdfViewer from './PdfViewer.svelte';
   import Markdown from './Markdown.svelte';
   import TimingPanel from './TimingPanel.svelte';
-  import { getJob, getPages, getResultMarkdown, deleteJob, inputPdfUrl, resultZipUrl, resultMarkdownUrl } from '../lib/api.js';
+  import { getJob, getPages, getResultMarkdown, deleteJob, retryJob, inputPdfUrl, resultZipUrl, resultMarkdownUrl } from '../lib/api.js';
   import { navigate } from '../lib/router.svelte.js';
   import { duration, bytes, when, statusLabel } from '../lib/format.js';
 
@@ -34,7 +34,7 @@
 
   onMount(() => {
     refresh();
-    const timer = setInterval(() => active && refresh(), 2000);
+    const timer = setInterval(() => (active || job?.status === 'failed') && refresh(), 2000);
     return () => clearInterval(timer);
   });
 
@@ -51,6 +51,15 @@
       await deleteJob(id);
       onchanged?.();
       navigate('/');
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function retry() {
+    try {
+      job = await retryJob(id);
+      onchanged?.();
     } catch (e) {
       error = e.message;
     }
@@ -81,6 +90,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>Output zip
         </a>
         <a class="btn" href={resultMarkdownUrl(job.id)} aria-disabled={!done} target="_blank" rel="noopener">Markdown</a>
+        {#if job.status === 'failed'}
+          <button class="btn retry" type="button" onclick={retry} title="Re-queue the failed requests; finished ones are kept">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></svg>Retry
+          </button>
+        {/if}
         <button class="btn" class:on={showTiming} type="button" onclick={() => (showTiming = !showTiming)} aria-expanded={showTiming} title="Per-request and per-stage timing">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M9 2h6" /></svg>Timing
         </button>
@@ -183,6 +197,7 @@
   .title h2 { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .actions { display: flex; gap: 8px; }
   .actions .btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .actions .retry { border-color: var(--failed); color: var(--failed); }
   .summary { padding: 14px 28px; background: var(--surface); border-bottom: 1px solid var(--line); }
   .facts { display: flex; flex-wrap: wrap; gap: 6px 32px; margin: 0; }
   .facts div { display: flex; flex-direction: column; }

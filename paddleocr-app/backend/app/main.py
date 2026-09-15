@@ -135,6 +135,17 @@ async def get_job(request: Request, job_id: str) -> dict:
     return job_view(find_job(request, job_id))
 
 
+@app.post("/api/jobs/{job_id}/retry")
+async def retry_job(request: Request, job_id: str) -> dict:
+    job = find_job(request, job_id)
+    if job.status != "failed":
+        raise HTTPException(409, f"job is {job.status}, only failed jobs can be retried")
+    if request.app.state.worker.draining:
+        raise HTTPException(503, "shutting down, retry shortly")
+    await request.app.state.worker.retry(job)
+    return job_view(job)
+
+
 @app.delete("/api/jobs/{job_id}", status_code=204)
 async def delete_job(request: Request, job_id: str) -> Response:
     job = find_job(request, job_id)

@@ -5,9 +5,14 @@ metadata:
   labels:
     {{- include "paddleocr-vl-hps.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicas }}
+  {{- end }}
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       {{- include "paddleocr-vl-hps.selectorLabels" . | nindent 6 }}
@@ -17,7 +22,12 @@ spec:
         {{- include "paddleocr-vl-hps.selectorLabels" . | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        # Karpenter must not consolidate a node out from under a pod mid-request; the
+        # autoscaler removes pods, Karpenter then removes the empty node.
+        karpenter.sh/do-not-disrupt: "true"
     spec:
+      # Long enough for the gateway to finish the requests it holds when a pod is removed.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -68,9 +78,10 @@ spec:
           sizeLimit: {{ .Values.shmSize }}
       - name: hf-cache
         emptyDir: {}
-      # vLLM runs as a native sidecar so it starts first and must pass its startup probe before
-      # Triton launches. Started together, vLLM misattributes the Triton instances' GPU
-      # allocations to its own profiling and fails with "No available memory for the cache blocks".
+      # vLLM and Triton run as native sidecars, in that order: vLLM must pass its startup probe
+      # before Triton launches (started together, vLLM misattributes the Triton instances' GPU
+      # allocations to its own profiling and fails with "No available memory for the cache
+      # blocks"), and on termination Kubernetes stops the gateway first, then Triton, then vLLM.
       initContainers:
       - name: vlm
         restartPolicy: Always
@@ -128,8 +139,8 @@ spec:
           periodSeconds: 10
         resources:
           {{- toYaml .Values.vlm.resources | nindent 10 }}
-      containers:
       - name: pipeline
+        restartPolicy: Always
         image: {{ .Values.registry }}/{{ .Values.pipeline.image }}:{{ .Values.pipeline.tag }}
         env:
         - name: PADDLEX_HPS_PIPELINE_CONFIG_PATH
@@ -176,6 +187,7 @@ spec:
           periodSeconds: 10
         resources:
           {{- toYaml .Values.pipeline.resources | nindent 10 }}
+      containers:
       - name: gateway
         image: {{ .Values.registry }}/{{ .Values.gateway.image }}:{{ .Values.gateway.tag }}
         env:
