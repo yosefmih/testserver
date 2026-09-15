@@ -1,0 +1,48 @@
+version: v2
+name: paddle
+services:
+- name: web
+  run: ""
+  type: web
+  instances: 1
+  cpuCores: 2
+  ramMegabytes: 2048
+  terminationGracePeriodSeconds: 600
+  port: 8080
+  healthCheck:
+    enabled: true
+    httpPath: /api/readyz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  metricsScraping:
+    enabled: true
+    port: 8080
+    path: /api/metrics
+    scrapeIntervalSeconds: 15
+  connections:
+  - type: awsRole
+    role: arn:aws:iam::992382605253:role/porter-s3-3587b028
+build:
+  context: ./paddleocr-app
+  method: docker
+  dockerfile: ./paddleocr-app/Dockerfile
+env:
+- key: PADDLEOCR_URL
+  value: http://paddleocr-hps.paddleocr.svc.cluster.local:8080
+- key: S3_BUCKET
+  value: porter-5-paddleocr-pdfs-too-5fb04074
+- key: S3_PREFIX
+  value: paddleocr-app
+- key: AWS_REGION
+  value: us-west-2
+- key: DEFAULT_CHUNK_PAGES
+  value: "50"
+- key: DEFAULT_CONCURRENCY
+  value: "2"
+- key: RESTRUCTURE_PAGES
+  value: "true"
+- key: DRAIN_TIMEOUT_SECONDS
+  value: "540"
+- key: JOB_CONCURRENCY
+  value: "50"
+
