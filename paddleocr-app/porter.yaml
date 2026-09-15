@@ -1,13 +1,19 @@
 version: v2
-name: paddleocr-app
+name: paddle
 services:
 - name: web
+  run: ""
   type: web
   instances: 1
-  cpuCores: 1
-  ramMegabytes: 4096
+  cpuCores: 2
+  ramMegabytes: 2048
+  terminationGracePeriodSeconds: 30
   port: 8080
-  private: true
+  domains:
+  - name: web-6-cb69b240-gwes8ykn.withporter.run
+  connections:
+  - type: awsRole
+    role: arn:aws:iam::992382605253:role/porter-s3-8556ae3b
 build:
   context: ./paddleocr-app
   method: docker
@@ -16,7 +22,7 @@ env:
 - key: PADDLEOCR_URL
   value: http://paddleocr-hps.paddleocr.svc.cluster.local:8080
 - key: S3_BUCKET
-  value: CHANGE_ME
+  value: porter-5-paddleocr-pdfs-5397ce8b
 - key: S3_PREFIX
   value: paddleocr-app
 - key: AWS_REGION
@@ -27,3 +33,4 @@ env:
   value: "2"
 - key: RESTRUCTURE_PAGES
   value: "true"
+

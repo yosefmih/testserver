@@ -4,7 +4,14 @@ End-to-end document OCR on a self-hosted PaddleOCR-VL. Upload a PDF in the brows
 server splits it into page chunks, stores everything in S3, runs the chunks through
 PaddleOCR concurrently, stitches the pages back into one markdown document (merging tables
 and re-levelling headings across page boundaries via PaddleOCR's `restructure-pages`), and
-serves the result as a preview and a zip download.
+serves the result as a zip download and an in-browser explorer.
+
+The UI is two screens. The list shows every document as a card with its status, page
+count, time taken, throughput, and buttons to download the submitted PDF, the output zip
+(markdown plus images) and the bare markdown. Opening a card shows the document page: the
+submitted PDF in a viewer on the left and, on the right, the recognised markdown for the
+page being viewed, the full stitched document, or the raw markdown. A bar per OCR request
+shows how long each took; clicking one jumps to its first page.
 
 ```
 browser ── upload ──▶ paddleocr-app (FastAPI + embedded Svelte UI)
@@ -18,9 +25,10 @@ browser ── upload ──▶ paddleocr-app (FastAPI + embedded Svelte UI)
 
 - `backend/` Python service: `app/main.py` (HTTP API + static UI), `app/worker.py` (job
   queue: chunk → OCR → store → assemble), `app/ocr.py` (PaddleOCR client), `app/storage.py`
-  (S3 or local files), `app/pdf.py`, `app/assemble.py`, `app/jobs.py`.
-- `frontend/` Svelte 5 + Vite single-page UI. `npm run build` produces `dist/`, which the
-  Dockerfile copies into the Python package as `app/static`.
+  (S3, streaming downloads), `app/pdf.py`, `app/assemble.py`, `app/jobs.py`.
+- `frontend/` Svelte 5 + Vite single-page UI (pdf.js for the PDF viewer, marked +
+  DOMPurify for markdown). `npm run build` produces `dist/`, which the Dockerfile copies
+  into the Python package as `app/static`.
 - `Dockerfile` builds both stages into one image; `python -m app` serves the UI and API on
   `PORT`.
 - `charts/paddleocr-vl-hps/` Helm chart for PaddleOCR-VL high-performance serving: one pod
@@ -35,15 +43,16 @@ browser ── upload ──▶ paddleocr-app (FastAPI + embedded Svelte UI)
 
 ## Run locally
 
-Without a GPU, fake the OCR endpoint with the harness in `../paddleocr-bench`:
+Everything the service persists lives in S3, so a local run needs a bucket (any prefix)
+and AWS credentials in the environment. Point `PADDLEOCR_URL` at a real deployment through
+`kubectl port-forward -n paddleocr svc/paddleocr-hps 8118:8080`, or fake the OCR endpoint
+with the harness in `../paddleocr-bench` (`GOWORK=off PORT=8118 go run ./cmd/fakeocr`).
 
 ```bash
-(cd ../paddleocr-bench && GOWORK=off PORT=8118 go run ./cmd/fakeocr) &
-
 cd frontend && npm install && npm run build && cd ..
 cp -R frontend/dist backend/app/static
 cd backend && python -m venv .venv && .venv/bin/pip install -r requirements.txt
-PADDLEOCR_URL=http://localhost:8118 LOCAL_DATA_DIR=./data .venv/bin/python -m app
+AWS_PROFILE=<profile> S3_BUCKET=<bucket> S3_PREFIX=paddleocr-app-dev PADDLEOCR_URL=http://localhost:8118 .venv/bin/python -m app
 open http://localhost:8080
 ```
 
@@ -84,9 +93,9 @@ Set `AWS_PROFILE` for the account that owns the ECR registry, then:
 | `PADDLEOCR_URL` | `http://localhost:8118` | Base URL of the PaddleOCR-VL service |
 | `OCR_TIMEOUT_SECONDS` | `900` | Per-request timeout; a 50-page chunk takes ~40 s on an L4 |
 | `OCR_ATTEMPTS` | `3` | Attempts per chunk before the job fails |
-| `S3_BUCKET` | unset | Bucket for inputs, chunks, images, results and job manifests |
+| `S3_BUCKET` | required | Bucket for inputs, chunks, images, results and job manifests |
 | `S3_PREFIX` | `paddleocr-app` | Key prefix inside the bucket |
-| `LOCAL_DATA_DIR` | `./data` | Used instead of S3 when `S3_BUCKET` is unset |
+| `S3_ENDPOINT_URL` | unset | Alternative S3 endpoint (MinIO, LocalStack) |
 | `DEFAULT_CHUNK_PAGES` | `50` | Form default for pages per OCR request |
 | `DEFAULT_CONCURRENCY` | `2` | Form default for requests in flight per job |
 | `JOB_CONCURRENCY` | `1` | Jobs processed at once |
@@ -105,8 +114,11 @@ Set `AWS_PROFILE` for the account that owns the ECR registry, then:
 3. When every chunk is done the pages are stitched: `POST /restructure-pages` with all
    pruned results and `concatenatePages: true` merges tables split across pages and
    re-levels headings; if that call fails, or the job was submitted without it, the pages
-   are concatenated in order. `result.md` and `result.zip` (markdown plus `imgs/`) are
-   written next to the manifest.
+   are concatenated in order. PaddleOCR derives image file names from bounding boxes when
+   it regenerates markdown, so the stitched document is relinked to the page-prefixed
+   names before it is stored. `result.md`, `result.zip` (markdown plus `imgs/`) and
+   `result.pages.json` (per-page markdown for the explorer) are written next to the
+   manifest, and downloads stream straight from S3.
 
 Sizing notes from the benchmark (`../paddleocr-bench`, results in the workstation
 `weave-paddleocr-eval.md`): one L4 sustains 1.2 to 1.5 pages/s cold, so 50-page chunks with

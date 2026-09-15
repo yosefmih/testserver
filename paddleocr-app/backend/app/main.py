@@ -1,17 +1,18 @@
+import json
 import logging
 import mimetypes
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import Settings, load_settings
 from .jobs import Job, JobStore, new_job
 from .ocr import PaddleOCRClient
 from .pdf import count_pages
-from .storage import open_storage
+from .storage import Storage
 from .worker import Worker
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -22,7 +23,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = load_settings()
-    storage = open_storage(settings)
+    storage = Storage(settings)
     store = JobStore(storage)
     await store.load()
     ocr = PaddleOCRClient(settings.paddleocr_url, settings.ocr_timeout_seconds)
@@ -84,7 +85,7 @@ async def create_job(
         raise HTTPException(400, f"not a readable PDF: {exc}") from exc
     if pages == 0:
         raise HTTPException(400, "PDF has no pages")
-    job = new_job(pdf.filename or "document.pdf", pages, chunkPages, concurrency, restructure)
+    job = new_job(pdf.filename or "document.pdf", pages, len(data), chunkPages, concurrency, restructure)
     await request.app.state.storage.put(job.key("input.pdf"), data, "application/pdf")
     await request.app.state.store.save(job)
     request.app.state.worker.enqueue(job.id)
@@ -105,35 +106,49 @@ async def delete_job(request: Request, job_id: str) -> Response:
     return Response(status_code=204)
 
 
-@app.get("/api/jobs/{job_id}/result.md")
-async def result_markdown(request: Request, job_id: str) -> Response:
+@app.get("/api/jobs/{job_id}/input.pdf")
+async def input_pdf(request: Request, job_id: str) -> StreamingResponse:
     job = find_job(request, job_id)
-    data = await read_result(request, job, "result.md")
-    return Response(data, media_type="text/markdown; charset=utf-8")
+    return await stream_file(request, job, "input.pdf", "application/pdf", f'inline; filename="{job.file_name}"')
+
+
+@app.get("/api/jobs/{job_id}/result.md")
+async def result_markdown(request: Request, job_id: str) -> StreamingResponse:
+    job = find_done_job(request, job_id)
+    return await stream_file(request, job, "result.md", "text/markdown; charset=utf-8", f'inline; filename="{job.output_stem()}.md"')
 
 
 @app.get("/api/jobs/{job_id}/result.zip")
-async def result_zip(request: Request, job_id: str) -> Response:
-    job = find_job(request, job_id)
-    data = await read_result(request, job, "result.zip")
-    filename = Path(job.file_name).stem + ".zip"
-    return Response(
-        data,
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+async def result_zip(request: Request, job_id: str) -> StreamingResponse:
+    job = find_done_job(request, job_id)
+    return await stream_file(request, job, "result.zip", "application/zip", f'attachment; filename="{job.output_stem()}.zip"')
+
+
+@app.get("/api/jobs/{job_id}/pages")
+async def result_pages(request: Request, job_id: str) -> Response:
+    job = find_done_job(request, job_id)
+    storage = request.app.state.storage
+    if not await storage.exists(job.key("result.pages.json")):
+        await storage.put(job.key("result.pages.json"), await build_page_index(storage, job), "application/json")
+    return Response(await storage.get(job.key("result.pages.json")), media_type="application/json")
+
+
+async def build_page_index(storage: Storage, job: Job) -> bytes:
+    pages = []
+    for chunk in job.chunks:
+        manifest = json.loads(await storage.get(job.key("chunks", str(chunk.index), "pages.json")))
+        pages.extend({"page": p["pageNumber"], "markdown": p["markdown"], "images": p["imageKeys"]} for p in manifest)
+    return json.dumps(pages).encode()
 
 
 @app.get("/api/jobs/{job_id}/files/{key:path}")
-async def job_file(request: Request, job_id: str, key: str) -> Response:
+async def job_file(request: Request, job_id: str, key: str) -> StreamingResponse:
     job = find_job(request, job_id)
     if ".." in key.split("/") or key.startswith("/"):
         raise HTTPException(400, "invalid key")
-    storage = request.app.state.storage
-    if not await storage.exists(job.key(key)):
+    if not await request.app.state.storage.exists(job.key(key)):
         raise HTTPException(404, "no such file")
-    media_type = mimetypes.guess_type(key)[0] or "application/octet-stream"
-    return Response(await storage.get(job.key(key)), media_type=media_type)
+    return await stream_file(request, job, key, mimetypes.guess_type(key)[0] or "application/octet-stream", None)
 
 
 def find_job(request: Request, job_id: str) -> Job:
@@ -143,15 +158,26 @@ def find_job(request: Request, job_id: str) -> Job:
     return job
 
 
-async def read_result(request: Request, job: Job, name: str) -> bytes:
+def find_done_job(request: Request, job_id: str) -> Job:
+    job = find_job(request, job_id)
     if job.status != "done":
         raise HTTPException(409, f"job is {job.status}")
-    return await request.app.state.storage.get(job.key(name))
+    return job
+
+
+async def stream_file(request: Request, job: Job, key: str, media_type: str, disposition: str | None) -> StreamingResponse:
+    stored = await request.app.state.storage.open(job.key(key))
+    headers = {"Content-Length": str(stored.size)}
+    if disposition:
+        headers["Content-Disposition"] = disposition
+    return StreamingResponse(stored.chunks, media_type=media_type, headers=headers)
 
 
 def job_view(job: Job) -> dict:
     view = job.model_dump(mode="json")
     view["metrics"] = job.metrics().model_dump()
+    for chunk_view, chunk in zip(view["chunks"], job.chunks):
+        chunk_view["seconds"] = chunk.seconds()
     return view
 
 

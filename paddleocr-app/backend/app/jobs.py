@@ -41,6 +41,12 @@ class Chunk(BaseModel):
     def pages(self) -> int:
         return self.last_page - self.first_page + 1
 
+    def seconds(self) -> float | None:
+        if self.started_at is None:
+            return None
+        end = self.finished_at if self.finished_at else now()
+        return round((end - self.started_at).total_seconds(), 1)
+
 
 class JobMetrics(BaseModel):
     pages_done: int
@@ -54,6 +60,7 @@ class Job(BaseModel):
     id: str
     file_name: str
     pages: int
+    bytes: int = 0
     chunk_pages: int
     concurrency: int
     restructure: bool
@@ -67,6 +74,9 @@ class Job(BaseModel):
 
     def key(self, *parts: str) -> str:
         return "/".join(("jobs", self.id, *parts))
+
+    def output_stem(self) -> str:
+        return self.file_name.rsplit(".", 1)[0] or "document"
 
     def is_active(self) -> bool:
         return self.status in (JobStatus.queued, JobStatus.running, JobStatus.assembling)
@@ -88,7 +98,7 @@ class Job(BaseModel):
         )
 
 
-def new_job(file_name: str, pages: int, chunk_pages: int, concurrency: int, restructure: bool) -> Job:
+def new_job(file_name: str, pages: int, size: int, chunk_pages: int, concurrency: int, restructure: bool) -> Job:
     chunks = [
         Chunk(index=i, first_page=first, last_page=min(first + chunk_pages - 1, pages))
         for i, first in enumerate(range(1, pages + 1, chunk_pages))
@@ -97,6 +107,7 @@ def new_job(file_name: str, pages: int, chunk_pages: int, concurrency: int, rest
         id=secrets.token_hex(6),
         file_name=file_name,
         pages=pages,
+        bytes=size,
         chunk_pages=chunk_pages,
         concurrency=concurrency,
         restructure=restructure,

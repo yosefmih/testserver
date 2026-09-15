@@ -97,6 +97,8 @@ class Worker:
         await self._store.save(job)
         markdown, method = await self._assemble(job, pages)
         await self._storage.put(job.key("result.md"), markdown.encode(), "text/markdown")
+        page_index = [{"page": p.page_number, "markdown": p.markdown, "images": p.image_keys} for p in pages]
+        await self._storage.put(job.key("result.pages.json"), json.dumps(page_index).encode(), "application/json")
         images = {}
         for page in pages:
             for key in page.image_keys:
@@ -172,6 +174,7 @@ class Worker:
         if job.restructure:
             try:
                 markdown = await self._ocr.restructure_pages([p.pruned_result for p in pages])
+                markdown = assemble.relink_images(markdown, [(p.page_number, p.image_keys) for p in pages])
                 return markdown, "restructure-pages"
             except (OCRError, httpx.HTTPError) as exc:
                 log.warning("job %s: restructure-pages failed (%s), concatenating instead", job.id, exc)

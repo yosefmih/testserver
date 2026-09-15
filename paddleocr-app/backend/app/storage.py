@@ -1,34 +1,27 @@
 import asyncio
-import shutil
-import tempfile
-from pathlib import Path
-from typing import Protocol
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+
+import boto3
+from botocore.exceptions import ClientError
 
 from .config import Settings
 
-
-class Storage(Protocol):
-    def describe(self) -> str: ...
-    async def put(self, key: str, data: bytes, content_type: str) -> None: ...
-    async def get(self, key: str) -> bytes: ...
-    async def exists(self, key: str) -> bool: ...
-    async def list_dirs(self, prefix: str) -> list[str]: ...
-    async def delete_prefix(self, prefix: str) -> None: ...
+STREAM_CHUNK_BYTES = 1 << 20
 
 
-def open_storage(settings: Settings) -> Storage:
-    if settings.s3_bucket:
-        return S3Storage(settings.s3_bucket, settings.s3_prefix)
-    return LocalStorage(Path(settings.local_data_dir))
+@dataclass
+class StoredObject:
+    size: int
+    content_type: str
+    chunks: AsyncIterator[bytes]
 
 
-class S3Storage:
-    def __init__(self, bucket: str, prefix: str):
-        import boto3
-
-        self._bucket = bucket
-        self._prefix = prefix.strip("/")
-        self._client = boto3.client("s3")
+class Storage:
+    def __init__(self, settings: Settings):
+        self._bucket = settings.s3_bucket
+        self._prefix = settings.s3_prefix.strip("/")
+        self._client = boto3.client("s3", endpoint_url=settings.s3_endpoint_url or None)
 
     def describe(self) -> str:
         return f"s3://{self._bucket}/{self._prefix}"
@@ -47,11 +40,24 @@ class S3Storage:
 
         return await asyncio.to_thread(read)
 
+    async def open(self, key: str) -> StoredObject:
+        response = await asyncio.to_thread(self._client.get_object, Bucket=self._bucket, Key=self._key(key))
+        body = response["Body"]
+
+        async def chunks() -> AsyncIterator[bytes]:
+            try:
+                while chunk := await asyncio.to_thread(body.read, STREAM_CHUNK_BYTES):
+                    yield chunk
+            finally:
+                body.close()
+
+        return StoredObject(size=response["ContentLength"], content_type=response.get("ContentType", ""), chunks=chunks())
+
     async def exists(self, key: str) -> bool:
         def head() -> bool:
             try:
                 self._client.head_object(Bucket=self._bucket, Key=self._key(key))
-            except self._client.exceptions.ClientError:
+            except ClientError:
                 return False
             return True
 
@@ -78,40 +84,3 @@ class S3Storage:
                     self._client.delete_objects(Bucket=self._bucket, Delete={"Objects": keys})
 
         await asyncio.to_thread(rm)
-
-
-class LocalStorage:
-    def __init__(self, root: Path):
-        self._root = root
-        root.mkdir(parents=True, exist_ok=True)
-
-    def describe(self) -> str:
-        return f"local:{self._root.resolve()}"
-
-    def _path(self, key: str) -> Path:
-        return self._root / key
-
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
-        def write() -> None:
-            path = self._path(key)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + ".", delete=False) as tmp:
-                tmp.write(data)
-            Path(tmp.name).replace(path)
-
-        await asyncio.to_thread(write)
-
-    async def get(self, key: str) -> bytes:
-        return await asyncio.to_thread(self._path(key).read_bytes)
-
-    async def exists(self, key: str) -> bool:
-        return self._path(key).is_file()
-
-    async def list_dirs(self, prefix: str) -> list[str]:
-        base = self._path(prefix)
-        if not base.is_dir():
-            return []
-        return sorted(p.name for p in base.iterdir() if p.is_dir())
-
-    async def delete_prefix(self, prefix: str) -> None:
-        await asyncio.to_thread(shutil.rmtree, self._path(prefix), True)
