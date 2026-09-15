@@ -69,9 +69,31 @@ async def config(request: Request) -> dict:
     }
 
 
+# Prometheus exposition format so Porter's metrics scraping (porter.yaml metricsScraping)
+# and a KEDA prometheus trigger can read it directly.
 @app.get("/api/metrics")
-async def metrics(request: Request) -> dict:
-    return request.app.state.store.backlog().model_dump()
+async def metrics(request: Request) -> Response:
+    backlog = request.app.state.store.backlog()
+    draining = 1 if request.app.state.worker.draining else 0
+    lines = [
+        "# HELP paddleocr_pending_pages Pages in queued or running OCR requests across unfinished jobs.",
+        "# TYPE paddleocr_pending_pages gauge",
+        f"paddleocr_pending_pages {backlog.pending_pages}",
+        "# HELP paddleocr_pending_chunks OCR requests queued or running across unfinished jobs.",
+        "# TYPE paddleocr_pending_chunks gauge",
+        f"paddleocr_pending_chunks {backlog.pending_chunks}",
+        "# HELP paddleocr_active_jobs Jobs that are queued, running or assembling.",
+        "# TYPE paddleocr_active_jobs gauge",
+        f"paddleocr_active_jobs {backlog.active_jobs}",
+        "# HELP paddleocr_jobs_total Jobs by final status.",
+        "# TYPE paddleocr_jobs_total gauge",
+        f'paddleocr_jobs_total{{status="done"}} {backlog.jobs_done}',
+        f'paddleocr_jobs_total{{status="failed"}} {backlog.jobs_failed}',
+        "# HELP paddleocr_draining Whether this replica is shutting down and refusing new work.",
+        "# TYPE paddleocr_draining gauge",
+        f"paddleocr_draining {draining}",
+    ]
+    return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
 @app.get("/api/jobs")

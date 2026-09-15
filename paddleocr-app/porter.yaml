@@ -14,6 +14,11 @@ services:
     httpPath: /api/readyz
     initialDelaySeconds: 5
     periodSeconds: 10
+  metricsScraping:
+    enabled: true
+    port: 8080
+    path: /api/metrics
+    scrapeIntervalSeconds: 15
   domains:
   - name: web-6-cb69b240-gwes8ykn.withporter.run
   connections:

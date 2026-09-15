@@ -24,12 +24,13 @@
       const stop = t(c.finished_at) ?? (start ? Date.now() : null);
       const total = start && stop ? (stop - start) / 1000 : null;
       const known = STAGES.reduce((sum, s) => sum + (c.timings?.[s.key] ?? 0), 0);
-      return { chunk: c, start, stop, total, known, other: total != null ? Math.max(0, total - known) : 0 };
+      const earlier = (c.history ?? []).filter((a) => a.outcome && a.outcome !== 'done' && t(a.started_at) !== start);
+      return { chunk: c, start, stop, total, known, other: total != null ? Math.max(0, total - known) : 0, earlier };
     })
   );
 
   const recognition = $derived.by(() => {
-    const starts = rows.map((r) => r.start).filter(Boolean);
+    const starts = rows.flatMap((r) => [r.start, ...(r.chunk.history ?? []).map((a) => t(a.started_at))]).filter(Boolean);
     const stops = rows.map((r) => r.stop).filter(Boolean);
     return starts.length ? { start: Math.min(...starts), stop: Math.max(...stops) } : null;
   });
@@ -63,8 +64,11 @@
       <div class="row">
         <div class="label mono">#{row.chunk.index + 1} <span class="muted">p{row.chunk.first_page}–{row.chunk.last_page}</span></div>
         <div class="track">
+          {#each row.earlier as attempt}
+            <div class={`bar ghost ${attempt.outcome}`} style={`left:${pct(t(attempt.started_at) - origin)};width:${pct(Math.max((t(attempt.finished_at) ?? Date.now()) - t(attempt.started_at), 800))}`} title={`${attempt.outcome} attempt on ${attempt.owner}: ${clock(attempt.started_at)} → ${clock(attempt.finished_at)}`}></div>
+          {/each}
           {#if row.start}
-            <div class={`bar ${row.chunk.status}`} style={`left:${pct(row.start - origin)};width:${pct(Math.max(row.stop - row.start, 800))}`} title={`${duration(row.total)} · ${clock(row.chunk.started_at)} → ${clock(row.chunk.finished_at)}`}>
+            <div class={`bar ${row.chunk.status}`} style={`left:${pct(row.start - origin)};width:${pct(Math.max(row.stop - row.start, 800))}`} title={`${duration(row.total)} · ${clock(row.chunk.started_at)} → ${clock(row.chunk.finished_at)}${row.chunk.owner ? ` · ${row.chunk.owner}` : ''}`}>
               {#if row.known > 0 && row.total}
                 {#each STAGES as stage}
                   {#if row.chunk.timings?.[stage.key]}
@@ -85,19 +89,21 @@
         <span><i style={`background:${stage.color}`}></i>{stage.label}</span>
       {/each}
       <span><i class="failed"></i>failed</span>
+      <span><i class="ghost"></i>abandoned attempt (pod restarted)</span>
     </div>
   </div>
 
   <div class="tables">
     <table>
       <thead>
-        <tr><th>Request</th><th>Pages</th><th>Started</th><th>Ended</th><th class="num">Split</th><th class="num">Upload</th><th class="num">OCR</th><th class="num">Store</th><th class="num">Total</th><th class="num">Attempts</th><th>Status</th></tr>
+        <tr><th>Request</th><th>Pages</th><th>Pod</th><th>Started</th><th>Ended</th><th class="num">Split</th><th class="num">Upload</th><th class="num">OCR</th><th class="num">Store</th><th class="num">Total</th><th class="num">Attempts</th><th>Status</th></tr>
       </thead>
       <tbody>
         {#each rows as row (row.chunk.index)}
           <tr>
             <td class="mono">#{row.chunk.index + 1}</td>
             <td class="mono">{row.chunk.first_page}–{row.chunk.last_page}</td>
+            <td class="mono pod" title={row.chunk.owner ?? ''}>{row.chunk.owner ? row.chunk.owner.replace(/-\d+$/, '') : '–'}</td>
             <td class="mono">{clock(row.chunk.started_at)}</td>
             <td class="mono">{clock(row.chunk.finished_at)}</td>
             {#each STAGES as stage}
@@ -105,7 +111,13 @@
             {/each}
             <td class="num mono">{duration(row.total)}</td>
             <td class="num mono">{row.chunk.attempts}</td>
-            <td><span class={`pill ${row.chunk.status}`}>{row.chunk.status}</span>{#if row.chunk.error}<div class="error">{row.chunk.error}</div>{/if}</td>
+            <td>
+              <span class={`pill ${row.chunk.status}`}>{row.chunk.status}</span>
+              {#each row.earlier as attempt}
+                <div class="earlier muted" title={`${attempt.outcome} attempt on ${attempt.owner}`}>{attempt.outcome} on {attempt.owner.replace(/-\d+$/, '')}, {clock(attempt.started_at)}</div>
+              {/each}
+              {#if row.chunk.error}<div class="error">{row.chunk.error}</div>{/if}
+            </td>
           </tr>
         {/each}
       </tbody>
@@ -140,6 +152,11 @@
   .bar.running { background: var(--running); }
   .bar.failed { background: var(--failed); }
   .bar.failed span { display: none; }
+  .bar.ghost { background: repeating-linear-gradient(135deg, var(--line-strong) 0 4px, transparent 4px 8px); opacity: 0.9; }
+  .bar.ghost.failed { background: repeating-linear-gradient(135deg, var(--failed) 0 4px, transparent 4px 8px); }
+  .legend i.ghost { background: repeating-linear-gradient(135deg, var(--line-strong) 0 3px, transparent 3px 6px); }
+  .pod { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .earlier { font-size: 11px; margin-top: 2px; }
   .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 0 0 132px; font-size: 11px; color: var(--muted); }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
   .legend i.failed { background: var(--failed); }

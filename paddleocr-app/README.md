@@ -137,6 +137,24 @@ chunks that are left, so a redeploy costs no duplicate work. Keep the drain time
 the pod's termination grace period (`porter.yaml`: 540 s inside 600 s) and chunks small
 enough to finish within it (a 200-page chunk takes 4 to 5 minutes on one L4).
 
+Two pods can work the same job at once, which is what happens during a rolling deploy:
+the old pod drains while the new one starts. Each chunk is guarded by a lease object,
+`chunks/<n>/lease.json`, holding the owner and an expiry 45 s out; the owner renews it
+every 15 s while the chunk is in flight and deletes it when the chunk's pages are stored.
+Claims use S3 conditional writes (create-only, or replace-if-ETag-matches for an expired
+lease), so two pods racing for a chunk cannot both win. A pod that finds a live lease
+held by someone else waits, polling for the finished pages every 10 s and adopting them
+from `chunks/<n>/chunk.json` when they appear, and only takes the chunk over if the lease
+lapses, which means the previous owner died. Assembly is guarded the same way by
+`assembly.lease`. Verified: a job handed from a draining pod to a fresh pod runs every
+chunk exactly once, with the manifest attributing each chunk to the pod that ran it.
+
+Every attempt on a chunk is kept in the manifest with its pod, start, end and outcome, so
+the timing panel still shows what a pod that died mid-request was doing: its attempt
+appears as a hatched bar and the retry on the new pod as the solid one. Keep chunks small
+enough to finish inside the drain budget (100 pages or fewer on an L4); a 300-page chunk
+takes 8 to 10 minutes and outlives the grace period, so its work is lost on a redeploy.
+
 - `GET /api/healthz` is liveness: always 200 while the process runs, with `ocrReady` and
   `draining` for diagnostics.
 - `GET /api/readyz` is readiness: 503 while draining, 200 otherwise. `porter.yaml` uses
@@ -145,18 +163,24 @@ enough to finish within it (a 200-page chunk takes 4 to 5 minutes on one L4).
 
 ## Autoscaling signal
 
-`GET /api/metrics` reports the work accepted but not finished:
+`GET /api/metrics` is a Prometheus endpoint, scraped every 15 s by Porter through the
+`metricsScraping` block in `porter.yaml`:
 
-```json
-{"pending_pages": 1240, "pending_chunks": 25, "active_jobs": 3}
+```
+paddleocr_pending_pages 1240
+paddleocr_pending_chunks 25
+paddleocr_active_jobs 3
+paddleocr_jobs_total{status="done"} 41
+paddleocr_jobs_total{status="failed"} 1
+paddleocr_draining 0
 ```
 
-`pending_pages` counts pages in chunks that are queued or still running across every
-unfinished job. It is the input for scaling the PaddleOCR pods: replicas =
-ceil(pending_pages / pages each pod may leave waiting), which a KEDA metrics-API trigger
-computes directly. GPU and CPU utilisation are not usable signals for this stack (a
-saturated pod shows ~60% GPU and one busy core), and Triton's queue counters only move once
-a pod is already full.
+`paddleocr_pending_pages` counts pages in chunks that are queued or still running across
+every unfinished job: work accepted but not finished. It is the input for scaling the
+PaddleOCR pods, as replicas = ceil(pending_pages / pages each pod may leave waiting), which
+a KEDA prometheus trigger against the cluster's Prometheus computes directly. GPU and CPU
+utilisation are not usable signals for this stack (a saturated pod shows ~60% GPU and one
+busy core), and Triton's queue counters only move once a pod is already full.
 
 Sizing notes from the benchmark (`../paddleocr-bench`, results in the workstation
 `weave-paddleocr-eval.md`): one L4 sustains 1.2 to 1.5 pages/s cold, so 50-page chunks with

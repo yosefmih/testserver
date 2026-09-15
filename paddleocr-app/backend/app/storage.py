@@ -40,6 +40,37 @@ class Storage:
 
         return await asyncio.to_thread(read)
 
+    async def get_versioned(self, key: str) -> tuple[bytes, str] | None:
+        def read() -> tuple[bytes, str] | None:
+            try:
+                response = self._client.get_object(Bucket=self._bucket, Key=self._key(key))
+            except self._client.exceptions.NoSuchKey:
+                return None
+            return response["Body"].read(), response["ETag"]
+
+        return await asyncio.to_thread(read)
+
+    # Conditional write: only succeeds if the object is absent (if_none_match="*") or still
+    # has the given ETag (if_match), which is what makes lease claims safe between pods.
+    async def put_if(self, key: str, data: bytes, content_type: str, if_match: str | None = None, if_none_match: str | None = None) -> str | None:
+        def write() -> str | None:
+            params = {"Bucket": self._bucket, "Key": self._key(key), "Body": data, "ContentType": content_type}
+            if if_match:
+                params["IfMatch"] = if_match
+            if if_none_match:
+                params["IfNoneMatch"] = if_none_match
+            try:
+                return self._client.put_object(**params)["ETag"]
+            except ClientError as exc:
+                if exc.response["Error"]["Code"] in ("PreconditionFailed", "ConditionalRequestConflict"):
+                    return None
+                raise
+
+        return await asyncio.to_thread(write)
+
+    async def delete(self, key: str) -> None:
+        await asyncio.to_thread(self._client.delete_object, Bucket=self._bucket, Key=self._key(key))
+
     async def open(self, key: str) -> StoredObject:
         response = await asyncio.to_thread(self._client.get_object, Bucket=self._bucket, Key=self._key(key))
         body = response["Body"]

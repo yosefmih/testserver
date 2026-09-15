@@ -27,6 +27,13 @@ class ChunkStatus(StrEnum):
     failed = "failed"
 
 
+class Attempt(BaseModel):
+    owner: str
+    started_at: datetime
+    finished_at: datetime | None = None
+    outcome: str | None = None
+
+
 class Chunk(BaseModel):
     index: int
     first_page: int
@@ -36,11 +43,19 @@ class Chunk(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error: str | None = None
+    owner: str | None = None
     timings: dict[str, float] = {}
+    history: list[Attempt] = []
 
     @property
     def pages(self) -> int:
         return self.last_page - self.first_page + 1
+
+    def close_open_attempts(self, outcome: str) -> None:
+        for attempt in self.history:
+            if attempt.finished_at is None:
+                attempt.finished_at = now()
+                attempt.outcome = outcome
 
     def seconds(self) -> float | None:
         if self.started_at is None:
@@ -62,6 +77,8 @@ class Backlog(BaseModel):
     pending_pages: int
     pending_chunks: int
     active_jobs: int
+    jobs_done: int
+    jobs_failed: int
 
 
 class Job(BaseModel):
@@ -157,7 +174,13 @@ class JobStore:
     def backlog(self) -> Backlog:
         active = [job for job in self._jobs.values() if job.is_active()]
         pending = [c for job in active for c in job.chunks if c.status in (ChunkStatus.queued, ChunkStatus.running)]
-        return Backlog(pending_pages=sum(c.pages for c in pending), pending_chunks=len(pending), active_jobs=len(active))
+        return Backlog(
+            pending_pages=sum(c.pages for c in pending),
+            pending_chunks=len(pending),
+            active_jobs=len(active),
+            jobs_done=sum(1 for job in self._jobs.values() if job.status == JobStatus.done),
+            jobs_failed=sum(1 for job in self._jobs.values() if job.status == JobStatus.failed),
+        )
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)

@@ -9,13 +9,15 @@ import httpx
 
 from . import assemble, pdf
 from .config import Settings
-from .jobs import Chunk, ChunkStatus, Job, JobStatus, JobStore, now
+from .jobs import Attempt, Chunk, ChunkStatus, Job, JobStatus, JobStore, now
+from .leases import OWNER, Lease
 from .ocr import OCRError, PaddleOCRClient, PageResult
 from .storage import Storage
 
 log = logging.getLogger(__name__)
 
 RETRY_DELAY_SECONDS = 5
+LEASE_POLL_SECONDS = 10
 
 
 @dataclass
@@ -115,21 +117,32 @@ class Worker:
 
         job.status = JobStatus.assembling
         await self._store.save(job)
-        clock = time.monotonic()
-        markdown, method = await self._assemble(job, pages)
-        job.timings["assemble"] = round(time.monotonic() - clock, 2)
-        clock = time.monotonic()
-        await self._storage.put(job.key("result.md"), markdown.encode(), "text/markdown")
-        page_index = [{"page": p.page_number, "markdown": p.markdown, "images": p.image_keys} for p in pages]
-        await self._storage.put(job.key("result.pages.json"), json.dumps(page_index).encode(), "application/json")
-        images = {}
-        for page in pages:
-            for key in page.image_keys:
-                images[key] = await self._storage.get(job.key(key))
-        archive = await asyncio.to_thread(assemble.build_zip, markdown, images)
-        await self._storage.put(job.key("result.zip"), archive, "application/zip")
-        job.timings["archive"] = round(time.monotonic() - clock, 2)
+        lease = Lease(self._storage, job.key("assembly.lease"))
+        while not await lease.try_acquire():
+            if await self._storage.exists(job.key("result.zip")):
+                log.info("job %s was assembled by %s", job.id, await lease.holder())
+                await self._finish(job, "other pod")
+                return
+            await asyncio.sleep(LEASE_POLL_SECONDS)
+        async with lease.held():
+            clock = time.monotonic()
+            markdown, method = await self._assemble(job, pages)
+            job.timings["assemble"] = round(time.monotonic() - clock, 2)
+            clock = time.monotonic()
+            await self._storage.put(job.key("result.md"), markdown.encode(), "text/markdown")
+            page_index = [{"page": p.page_number, "markdown": p.markdown, "images": p.image_keys} for p in pages]
+            await self._storage.put(job.key("result.pages.json"), json.dumps(page_index).encode(), "application/json")
+            images = {}
+            for page in pages:
+                for key in page.image_keys:
+                    images[key] = await self._storage.get(job.key(key))
+            archive = await asyncio.to_thread(assemble.build_zip, markdown, images)
+            await self._storage.put(job.key("result.zip"), archive, "application/zip")
+            job.timings["archive"] = round(time.monotonic() - clock, 2)
+            await self._finish(job, method)
+        await lease.release()
 
+    async def _finish(self, job: Job, method: str) -> None:
         job.assembled_with = method
         job.status = JobStatus.done
         job.finished_at = now()
@@ -137,52 +150,98 @@ class Worker:
         log.info("job %s done: %d pages in %.1fs (%s)", job.id, job.pages, job.metrics().elapsed_seconds, method)
 
     async def _run_chunk(self, job: Job, chunk: Chunk, source: bytes, limiter: asyncio.Semaphore) -> list[StoredPage] | None:
-        if chunk.status == ChunkStatus.done:
-            return await self._load_stored_pages(job, chunk)
+        pages_key = job.key("chunks", str(chunk.index), "pages.json")
+        if chunk.status == ChunkStatus.done or await self._storage.exists(pages_key):
+            return await self._adopt_finished_chunk(job, chunk)
         async with limiter:
-            if self._draining:
-                return None
+            lease = Lease(self._storage, job.key("chunks", str(chunk.index), "lease.json"))
+            clock = time.monotonic()
+            while True:
+                if self._draining:
+                    return None
+                if await self._storage.exists(pages_key):
+                    return await self._adopt_finished_chunk(job, chunk)
+                if await lease.try_acquire():
+                    chunk.close_open_attempts("abandoned")
+                    break
+                holder = await lease.holder()
+                if chunk.owner != holder:
+                    chunk.owner = holder
+                    chunk.status = ChunkStatus.running
+                    await self._store.save(job)
+                    log.info("job %s chunk %d is held by %s, waiting", job.id, chunk.index, holder)
+                await asyncio.sleep(LEASE_POLL_SECONDS)
             chunk.status = ChunkStatus.running
+            chunk.owner = OWNER
             chunk.started_at = now()
             chunk.finished_at = None
             chunk.error = None
             chunk.timings = {}
+            chunk.attempts += 1
+            chunk.history.append(Attempt(owner=OWNER, started_at=chunk.started_at))
+            waited = time.monotonic() - clock
+            if waited > 1:
+                chunk.timings["lease_wait"] = round(waited, 2)
             await self._store.save(job)
             try:
-                clock = time.monotonic()
-                chunk_pdf = await asyncio.to_thread(pdf.extract_pages, source, chunk.first_page, chunk.last_page)
-                chunk.timings["split"] = round(time.monotonic() - clock, 2)
-                clock = time.monotonic()
-                await self._storage.put(job.key("chunks", str(chunk.index), "input.pdf"), chunk_pdf, "application/pdf")
-                chunk.timings["upload"] = round(time.monotonic() - clock, 2)
-                clock = time.monotonic()
-                results = await self._ocr_with_retries(job, chunk, chunk_pdf)
-                chunk.timings["ocr"] = round(time.monotonic() - clock, 2)
-                if len(results) != chunk.pages:
-                    raise OCRError(f"expected {chunk.pages} pages, got {len(results)}")
-                clock = time.monotonic()
-                stored = await self._store_pages(job, chunk, results)
-                chunk.timings["store"] = round(time.monotonic() - clock, 2)
+                async with lease.held():
+                    clock = time.monotonic()
+                    chunk_pdf = await asyncio.to_thread(pdf.extract_pages, source, chunk.first_page, chunk.last_page)
+                    chunk.timings["split"] = round(time.monotonic() - clock, 2)
+                    clock = time.monotonic()
+                    await self._storage.put(job.key("chunks", str(chunk.index), "input.pdf"), chunk_pdf, "application/pdf")
+                    chunk.timings["upload"] = round(time.monotonic() - clock, 2)
+                    clock = time.monotonic()
+                    results = await self._ocr_with_retries(job, chunk, chunk_pdf)
+                    chunk.timings["ocr"] = round(time.monotonic() - clock, 2)
+                    if len(results) != chunk.pages:
+                        raise OCRError(f"expected {chunk.pages} pages, got {len(results)}")
+                    clock = time.monotonic()
+                    stored = await self._store_pages(job, chunk, results)
+                    chunk.timings["store"] = round(time.monotonic() - clock, 2)
                 chunk.status = ChunkStatus.done
                 chunk.finished_at = now()
+                chunk.close_open_attempts("done")
+                await self._storage.put(job.key("chunks", str(chunk.index), "chunk.json"), chunk.model_dump_json().encode(), "application/json")
                 await self._store.save(job)
+                await lease.release()
                 return stored
             except Exception as exc:
                 chunk.status = ChunkStatus.failed
                 chunk.finished_at = now()
                 chunk.error = str(exc)[:500]
+                chunk.close_open_attempts("failed")
                 await self._store.save(job)
+                await lease.release()
                 raise
+
+    # A chunk finished by another pod is adopted from the record that pod wrote next to its
+    # pages, so the manifest shows who ran it and how long it took rather than a stale copy.
+    async def _adopt_finished_chunk(self, job: Job, chunk: Chunk) -> list[StoredPage]:
+        stored = await self._load_stored_pages(job, chunk)
+        if chunk.status != ChunkStatus.done:
+            record_key = job.key("chunks", str(chunk.index), "chunk.json")
+            if await self._storage.exists(record_key):
+                finished = Chunk.model_validate_json(await self._storage.get(record_key))
+                for field in ("status", "attempts", "started_at", "finished_at", "error", "owner", "timings", "history"):
+                    setattr(chunk, field, getattr(finished, field))
+            else:
+                chunk.status = ChunkStatus.done
+                chunk.finished_at = chunk.finished_at or now()
+                chunk.error = None
+            await self._store.save(job)
+            log.info("job %s chunk %d was finished by %s", job.id, chunk.index, chunk.owner or "another pod")
+        return stored
 
     async def _ocr_with_retries(self, job: Job, chunk: Chunk, chunk_pdf: bytes) -> list[PageResult]:
         while True:
-            chunk.attempts += 1
             try:
                 return await self._ocr.layout_parsing(chunk_pdf)
             except (OCRError, httpx.HTTPError) as exc:
                 if chunk.attempts >= self._settings.ocr_attempts:
                     raise
                 log.warning("job %s chunk %d attempt %d failed: %s", job.id, chunk.index, chunk.attempts, exc)
+                chunk.attempts += 1
                 await self._store.save(job)
                 await asyncio.sleep(RETRY_DELAY_SECONDS)
 
