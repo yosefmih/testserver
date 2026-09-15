@@ -24,4 +24,4 @@ jobs:
                 PORTER_HOST: https://yosefdev2.withporter.run
                 PORTER_PROJECT: "5"
                 PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
-                PORTER_TOKEN: ${{ secrets.PORTER_APP_5_6 }}
+                PORTER_TOKEN: ${{ secrets.PORTER_APP_5_4 }}
