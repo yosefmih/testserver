@@ -443,6 +443,10 @@ Aimer et mourir
 Au pays qui te ressemble!
 """.strip()
 
+UPLOAD_CHUNK_BYTES = 1024 * 1024
+UPLOAD_LOG_INTERVAL_BYTES = 100 * 1024 * 1024
+MAX_CHUNK_HEADER_BYTES = 65536
+
 class SimpleHandler(BaseHTTPRequestHandler):
     # Class variables
     is_ready = False
@@ -559,15 +563,36 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.log_request_info(status_code, duration)
         return status_code
 
+    def reject_websocket_upgrade(self):
+        """Mimics a backend refusing a WebSocket upgrade.
+        - /ws-reject drops the TCP connection with no HTTP response, the way a Node
+          upgrade handler that calls socket.destroy() does
+        - /ws-reject-401 writes a proper 401 before closing
+        """
+        logger.info(f"ws-reject: path={self.path} upgrade={self.headers.get('Upgrade')} from={self.client_address[0]}")
+        if self.path == '/ws-reject-401':
+            self.send_response(401)
+            self.send_header('Content-Length', '0')
+            self.send_header('Connection', 'close')
+            self.end_headers()
+            return 401
+        self.close_connection = True
+        self.connection.shutdown(socket.SHUT_RDWR)
+        self.connection.close()
+        return 0
+
     def send_json_response(self, status_code, data):
         """Helper method to send JSON response"""
         # Apply artificial latency if configured
         if SimpleHandler.latency_injection_ms > 0:
             time.sleep(SimpleHandler.latency_injection_ms / 1000.0)
-            
+
+        body = json.dumps(data).encode('utf-8')
+
         # Set response headers
         self.send_response(status_code)
         self.send_header('Content-type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
         self.send_header('X-Server-Host', HOSTNAME)
         
         # Add Linkerd-specific headers if we're in the mesh
@@ -586,7 +611,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                     self.send_header(f'Echo-{header}', self.headers[header])
         
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode('utf-8'))
+        self.wfile.write(body)
         return status_code
 
     @classmethod
@@ -620,7 +645,10 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
         if self.path == '/healthz':
             status_code = self.send_json_response(200, {'status': 'healthy'})
-        
+
+        elif self.path in ('/ws-reject', '/ws-reject-401'):
+            status_code = self.reject_websocket_upgrade()
+
         elif self.path == '/readyz':
             if self.is_ready:
                 status_code = self.send_json_response(200, {'status': 'ready'})
@@ -1497,6 +1525,12 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.log_request_info(status_code, time.time() - start_time)
             return
 
+        # Streaming upload sink. The body is read in fixed-size chunks and discarded, so an
+        # upload of any size is received without the memory footprint of buffering it.
+        if self.path == '/upload':
+            self.handle_upload(start_time)
+            return
+
         # Get request content
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
@@ -1739,6 +1773,88 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
         self.log_request_info(status_code, time.time() - start_time)
 
+    def do_PUT(self):
+        start_time = time.time()
+        if self.path == '/upload':
+            self.handle_upload(start_time)
+            return
+        status_code = self.send_json_response(404, {'status': 'error', 'message': 'Not found'})
+        self.log_request_info(status_code, time.time() - start_time)
+
+    def handle_upload(self, start_time):
+        """Drain an upload of arbitrary size and report exactly how much of it arrived."""
+        declared_length = self.headers.get('Content-Length')
+        transfer_encoding = self.headers.get('Transfer-Encoding', '') or 'none'
+        expected_bytes = int(declared_length) if declared_length else None
+        logger.info(f"[UPLOAD] start content_length={declared_length} transfer_encoding={transfer_encoding} "
+                    f"content_type={self.headers.get('Content-Type', 'none')} peer={self.client_address[0]}")
+
+        received_bytes = 0
+        next_log_at = UPLOAD_LOG_INTERVAL_BYTES
+        first_byte_seconds = None
+        read_error = None
+        try:
+            for chunk in self.iter_request_body():
+                if first_byte_seconds is None:
+                    first_byte_seconds = time.time() - start_time
+                    logger.info(f"[UPLOAD] first body byte after {first_byte_seconds * 1000:.0f}ms")
+                received_bytes += len(chunk)
+                if received_bytes >= next_log_at:
+                    elapsed = time.time() - start_time
+                    logger.info(f"[UPLOAD] {received_bytes / 1048576:.0f}MB received in {elapsed:.1f}s "
+                                f"({received_bytes / 1048576 / elapsed:.1f}MB/s)")
+                    next_log_at += UPLOAD_LOG_INTERVAL_BYTES
+        except Exception as e:
+            read_error = f"{type(e).__name__}: {e}"
+            logger.error(f"[UPLOAD] body read failed after {received_bytes} bytes: {read_error}")
+
+        duration = time.time() - start_time
+        complete = read_error is None and (expected_bytes is None or received_bytes == expected_bytes)
+        logger.info(f"[UPLOAD] done complete={complete} received={received_bytes} expected={expected_bytes} "
+                    f"duration={duration:.1f}s")
+        status_code = self.send_json_response(200 if complete else 400, {
+            'status': 'success' if complete else 'incomplete',
+            'received_bytes': received_bytes,
+            'received_megabytes': round(received_bytes / 1048576, 2),
+            'expected_bytes': expected_bytes,
+            'transfer_encoding': transfer_encoding,
+            'first_byte_seconds': round(first_byte_seconds, 3) if first_byte_seconds is not None else None,
+            'duration_seconds': round(duration, 3),
+            'throughput_megabytes_per_second': round(received_bytes / 1048576 / duration, 2) if duration > 0 else None,
+            'read_error': read_error,
+            'hostname': HOSTNAME
+        })
+        self.log_request_info(status_code, duration)
+
+    def iter_request_body(self):
+        """Yield the request body in chunks, handling both Content-Length and chunked transfer encoding."""
+        if 'chunked' in self.headers.get('Transfer-Encoding', '').lower():
+            while True:
+                size_line = self.rfile.readline(MAX_CHUNK_HEADER_BYTES).split(b';', 1)[0].strip()
+                if not size_line:
+                    raise ConnectionError('connection closed before the chunk size line')
+                chunk_size = int(size_line, 16)
+                if chunk_size == 0:
+                    while self.rfile.readline(MAX_CHUNK_HEADER_BYTES).strip():
+                        pass
+                    return
+                remaining = chunk_size
+                while remaining > 0:
+                    chunk = self.rfile.read(min(remaining, UPLOAD_CHUNK_BYTES))
+                    if not chunk:
+                        raise ConnectionError(f'connection closed {remaining} bytes into a chunk')
+                    remaining -= len(chunk)
+                    yield chunk
+                self.rfile.read(2)
+
+        remaining = int(self.headers.get('Content-Length', 0))
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, UPLOAD_CHUNK_BYTES))
+            if not chunk:
+                raise ConnectionError(f'connection closed with {remaining} bytes of Content-Length outstanding')
+            remaining -= len(chunk)
+            yield chunk
+
     def _parse_form_body(self, raw_body, content_type):
         """Parse a urlencoded or multipart form body, preserving each field value's bytes exactly as received."""
         def describe(name, value_bytes):
@@ -1858,7 +1974,9 @@ def run(server_class=ThreadingHTTPServer, handler_class=SimpleHandler, port=3000
     handler_class.error_rate_percent = float(os.environ.get('ERROR_RATE_PERCENT', '0'))
     handler_class.latency_injection_ms = float(os.environ.get('LATENCY_INJECTION_MS', '0'))
     handler_class.trace_propagation = os.environ.get('TRACE_PROPAGATION', 'true').lower() == 'true'
-    
+    if os.environ.get('HTTP_KEEPALIVE', 'false').lower() == 'true':
+        handler_class.protocol_version = 'HTTP/1.1'
+
     # If an init block is defined, perform it before starting any servers
     if init_block_seconds > 0:
         logger.info(f"Init block enabled: sleeping {init_block_seconds} seconds before starting servers")
