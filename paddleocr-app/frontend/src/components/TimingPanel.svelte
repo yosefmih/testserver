@@ -60,7 +60,9 @@
       const stop = t(c.finished_at) ?? (start ? now : null);
       const total = start && stop ? (stop - start) / 1000 : null;
       const earlier = (c.history ?? []).filter((a) => a.outcome && a.outcome !== 'done' && t(a.started_at) !== start);
-      return { chunk: c, start, stop, total, earlier, segments: start ? segments(c, start, stop) : [] };
+      const pages = c.last_page - c.first_page + 1;
+      const ocrRate = c.timings?.ocr ? pages / c.timings.ocr : null;
+      return { chunk: c, start, stop, total, earlier, pages, ocrRate, segments: start ? segments(c, start, stop) : [] };
     })
   );
 
@@ -70,12 +72,35 @@
     return starts.length ? { start: Math.min(...starts), stop: Math.max(...stops) } : null;
   });
 
+  // Service throughput: pages recognised over the time at least one request was at the OCR
+  // service. Summing round trips would double-count time when requests overlap.
+  const ocrTotals = $derived.by(() => {
+    const done = rows.filter((r) => r.chunk.timings?.ocr && r.start);
+    const intervals = done
+      .map((r) => {
+        const tm = r.chunk.timings;
+        const from = r.start + ((tm.lease_wait ?? 0) + (tm.split ?? 0) + (tm.upload ?? 0)) * 1000;
+        return [from, from + tm.ocr * 1000];
+      })
+      .sort((a, b) => a[0] - b[0]);
+    let covered = 0;
+    let cursor = -Infinity;
+    for (const [from, to] of intervals) {
+      if (to <= cursor) continue;
+      covered += to - Math.max(from, cursor);
+      cursor = to;
+    }
+    const pages = done.reduce((sum, r) => sum + r.pages, 0);
+    return { pages, seconds: covered / 1000, rate: covered ? pages / (covered / 1000) : null, requests: done.length };
+  });
+
   const phases = $derived.by(() => {
     const list = [{ label: 'Queued before start', seconds: job.metrics.queued_seconds, from: origin, to: t(job.started_at) }];
     if (recognition) list.push({ label: live ? 'Recognition so far' : 'Recognition (all requests)', seconds: (recognition.stop - recognition.start) / 1000, from: recognition.start, to: recognition.stop });
     if (job.timings?.assemble != null) list.push({ label: job.assembled_with === 'restructure-pages' ? 'Restructure pages' : 'Concatenate pages', seconds: job.timings.assemble });
     if (job.timings?.archive != null) list.push({ label: 'Write markdown, page index and zip', seconds: job.timings.archive });
     list.push({ label: live ? 'Elapsed so far' : 'Total (submitted → finished)', seconds: (end - origin) / 1000, from: origin, to: end });
+    if (ocrTotals.rate) list.push({ label: `OCR throughput (${ocrTotals.pages} pages ÷ ${duration(ocrTotals.seconds)} with a request at the service)`, rate: ocrTotals.rate, seconds: ocrTotals.seconds });
     return list;
   });
 
@@ -125,7 +150,7 @@
   <div class="tables">
     <table>
       <thead>
-        <tr><th>Request</th><th>Pages</th><th>Pod</th><th>Started</th><th>Ended</th><th class="num">Split</th><th class="num">Upload</th><th class="num">OCR</th><th class="num">Store</th><th class="num">Total</th><th class="num">Attempts</th><th>Status</th></tr>
+        <tr><th>Request</th><th>Pages</th><th>Pod</th><th>Started</th><th>Ended</th><th class="num">Split</th><th class="num">Upload</th><th class="num">OCR</th><th class="num" title="pages ÷ OCR round trip: sent to the gateway until its response arrived">Pages/s</th><th class="num">Store</th><th class="num">Total</th><th class="num">Attempts</th><th>Status</th></tr>
       </thead>
       <tbody>
         {#each rows as row (row.chunk.index)}
@@ -135,9 +160,11 @@
             <td class="mono pod" title={row.chunk.owner ?? ''}>{row.chunk.owner ? row.chunk.owner.replace(/-\d+$/, '') : '–'}</td>
             <td class="mono">{clock(row.chunk.started_at)}</td>
             <td class="mono">{clock(row.chunk.finished_at)}</td>
-            {#each STAGES as stage}
-              <td class="num mono">{row.chunk.timings?.[stage.key] != null ? duration(row.chunk.timings[stage.key]) : '–'}</td>
-            {/each}
+            <td class="num mono">{row.chunk.timings?.split != null ? duration(row.chunk.timings.split) : '–'}</td>
+            <td class="num mono">{row.chunk.timings?.upload != null ? duration(row.chunk.timings.upload) : '–'}</td>
+            <td class="num mono">{row.chunk.timings?.ocr != null ? duration(row.chunk.timings.ocr) : '–'}</td>
+            <td class="num mono rate">{row.ocrRate ? row.ocrRate.toFixed(2) : '–'}</td>
+            <td class="num mono">{row.chunk.timings?.store != null ? duration(row.chunk.timings.store) : '–'}</td>
             <td class="num mono">{duration(row.total)}</td>
             <td class="num mono">{row.chunk.attempts}</td>
             <td>
@@ -160,7 +187,7 @@
             <td>{phase.label}</td>
             <td class="mono">{phase.from ? clock(new Date(phase.from).toISOString()) : '–'}</td>
             <td class="mono">{phase.to ? clock(new Date(phase.to).toISOString()) : '–'}</td>
-            <td class="num mono">{duration(phase.seconds)}</td>
+            <td class="num mono">{phase.rate ? `${phase.rate.toFixed(2)} pages/s` : duration(phase.seconds)}</td>
           </tr>
         {/each}
       </tbody>
@@ -198,6 +225,7 @@
   .legend i.ghost { background: repeating-linear-gradient(135deg, var(--line-strong) 0 3px, transparent 3px 6px); }
   .pod { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .earlier { font-size: 11px; margin-top: 2px; }
+  .rate { color: var(--accent); font-weight: 500; }
   .tables { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-top: 16px; }
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   th, td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
