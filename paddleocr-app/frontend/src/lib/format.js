@@ -1,6 +1,6 @@
 export function duration(seconds) {
   if (seconds == null) return '–';
-  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
+  if (seconds < 60) return Number.isInteger(seconds) ? `${seconds}s` : `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
   if (m < 60) return `${m}m ${String(s).padStart(2, '0')}s`;
