@@ -6,9 +6,9 @@
 : "${NAMESPACE:=paddleocr}"
 
 : "${PIPELINE_IMAGE:=paddleocr-hps-pipeline}"
-: "${PIPELINE_TAG:=paddlex3.6-gpu-sdk0.1.0}"
+: "${PIPELINE_TAG:=paddlex3.6-gpu-sdk0.1.0-bundled}"
 : "${GATEWAY_IMAGE:=paddleocr-hps-gateway}"
-: "${GATEWAY_TAG:=paddlex3.6-sdk0.1.0}"
+: "${GATEWAY_TAG:=paddlex3.6-sdk0.1.1}"
 : "${VLLM_IMAGE:=paddleocr-genai-vllm-server}"
 : "${VLLM_TAG:=paddleocr3.6-nvidia-gpu-offline}"
 : "${VLLM_SOURCE_IMAGE:=ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-genai-vllm-server:${VLLM_TAG}}"

@@ -12,7 +12,7 @@
 #   ECR_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com KUBE_CONTEXT=<ctx> scripts/build-paddleocr-images.sh
 # BUILDER=kaniko (default) runs three pods in the cluster so nothing is pulled locally; the
 # base images are 8 to 15 GB. BUILDER=docker builds on this machine instead.
-# NODE_GROUP_ID pins the build pods to a Porter node group.
+# NODE_GROUP_ID pins the build pods to a Porter node group. GATEWAY_ONLY=true rebuilds just the gateway.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/common.sh
@@ -32,6 +32,14 @@ mkdir -p "$ctx/gateway"
 curl -fsSL "$UPSTREAM/gateway/app.py" -o "$ctx/gateway/app.py"
 curl -fsSL "$UPSTREAM/gateway/requirements.txt" -o "$ctx/gateway/requirements.txt"
 curl -fsSL "$UPSTREAM/pipeline.Dockerfile" -o "$ctx/pipeline.Dockerfile"
+# Upstream's pipeline image fetches the layout detector (PP-DocLayoutV3, ~126 MB) from a
+# model hub on every pod start. Fetch it at build time instead so a pod starts with every
+# weight local and nothing is pulled from outside the registry at runtime.
+cat >> "$ctx/pipeline.Dockerfile" <<DOCKERFILE
+
+RUN python -c "from paddlex.inference.utils.official_models import official_models; print(official_models['PP-DocLayoutV3'])" \
+    && du -sh /root/.paddlex/official_models/PP-DocLayoutV3
+DOCKERFILE
 cat > "$ctx/gateway.Dockerfile" <<DOCKERFILE
 FROM python:3.10-slim
 RUN apt-get update \\
@@ -51,7 +59,9 @@ ENV HPS_INFERENCE_TIMEOUT=600
 ENV HPS_LOG_LEVEL=INFO
 ENV HPS_UVICORN_WORKERS=4
 EXPOSE 8080
-CMD uvicorn --host 0.0.0.0 --port 8080 --workers \${HPS_UVICORN_WORKERS} app:app
+# exec so uvicorn is PID 1 and receives SIGTERM; upstream's shell-form CMD leaves a shell as
+# PID 1 that swallows the signal, and the pod then lives out its whole grace period.
+CMD ["sh", "-c", "exec uvicorn --host 0.0.0.0 --port 8080 --workers \${HPS_UVICORN_WORKERS} app:app"]
 DOCKERFILE
 
 for repo in "$PIPELINE_IMAGE" "$GATEWAY_IMAGE" "$VLLM_IMAGE" "$HPS_BASE_IMAGE"; do ensure_ecr_repo "$repo"; done
@@ -155,6 +165,11 @@ YAML
   }
 
   kc delete pod -l app=hps-image-build --ignore-not-found >/dev/null
+  if [ "${GATEWAY_ONLY:-false}" = true ]; then
+    kaniko_pod build-hps-gateway gateway.Dockerfile "$GATEWAY_REF" | kubectl --context "$KUBE_CONTEXT" apply -f -
+    wait_for_pods build-hps-gateway
+    return
+  fi
   mirror_pod mirror-hps-base "$HPS_BASE_SOURCE_IMAGE" "$HPS_BASE_REF" | kubectl --context "$KUBE_CONTEXT" apply -f -
   mirror_pod mirror-vllm "$VLLM_SOURCE_IMAGE" "$VLLM_REF" | kubectl --context "$KUBE_CONTEXT" apply -f -
   kaniko_pod build-hps-gateway gateway.Dockerfile "$GATEWAY_REF" | kubectl --context "$KUBE_CONTEXT" apply -f -

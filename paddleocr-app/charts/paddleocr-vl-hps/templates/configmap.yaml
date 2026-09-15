@@ -108,4 +108,4 @@ data:
     input [ { name: "input", data_type: TYPE_STRING, dims: [ -1 ] } ]
     output [ { name: "output", data_type: TYPE_STRING, dims: [ -1 ] } ]
     instance_group [ { count: {{ .Values.pipeline.instances }}, kind: KIND_GPU, gpus: [ 0 ] } ]
-    dynamic_batching { }
+    dynamic_batching { max_queue_delay_microseconds: {{ mul .Values.pipeline.batchQueueDelayMs 1000 }} }
