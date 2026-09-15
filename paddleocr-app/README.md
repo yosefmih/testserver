@@ -11,7 +11,12 @@ count, time taken, throughput, and buttons to download the submitted PDF, the ou
 (markdown plus images) and the bare markdown. Opening a card shows the document page: the
 submitted PDF in a viewer on the left and, on the right, the recognised markdown for the
 page being viewed, the full stitched document, or the raw markdown. A bar per OCR request
-shows how long each took; clicking one jumps to its first page.
+shows how long each took; clicking one jumps to its first page. The Timing button in the
+header opens a breakdown: a timeline of every request on a shared clock, segmented by
+stage (split the PDF, upload the chunk, OCR round trip, store pages and images), a table
+with each request's start, end and per-stage seconds, and the job's phases (queue wait,
+recognition span, restructure, archive, total). The OCR round trip is one figure because
+the gateway does not report time spent inside the pod per request.
 
 ```
 browser ── upload ──▶ paddleocr-app (FastAPI + embedded Svelte UI)

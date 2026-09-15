@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import mimetypes
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -114,7 +115,10 @@ class Worker:
 
         job.status = JobStatus.assembling
         await self._store.save(job)
+        clock = time.monotonic()
         markdown, method = await self._assemble(job, pages)
+        job.timings["assemble"] = round(time.monotonic() - clock, 2)
+        clock = time.monotonic()
         await self._storage.put(job.key("result.md"), markdown.encode(), "text/markdown")
         page_index = [{"page": p.page_number, "markdown": p.markdown, "images": p.image_keys} for p in pages]
         await self._storage.put(job.key("result.pages.json"), json.dumps(page_index).encode(), "application/json")
@@ -124,6 +128,7 @@ class Worker:
                 images[key] = await self._storage.get(job.key(key))
         archive = await asyncio.to_thread(assemble.build_zip, markdown, images)
         await self._storage.put(job.key("result.zip"), archive, "application/zip")
+        job.timings["archive"] = round(time.monotonic() - clock, 2)
 
         job.assembled_with = method
         job.status = JobStatus.done
@@ -141,14 +146,23 @@ class Worker:
             chunk.started_at = now()
             chunk.finished_at = None
             chunk.error = None
+            chunk.timings = {}
             await self._store.save(job)
             try:
+                clock = time.monotonic()
                 chunk_pdf = await asyncio.to_thread(pdf.extract_pages, source, chunk.first_page, chunk.last_page)
+                chunk.timings["split"] = round(time.monotonic() - clock, 2)
+                clock = time.monotonic()
                 await self._storage.put(job.key("chunks", str(chunk.index), "input.pdf"), chunk_pdf, "application/pdf")
+                chunk.timings["upload"] = round(time.monotonic() - clock, 2)
+                clock = time.monotonic()
                 results = await self._ocr_with_retries(job, chunk, chunk_pdf)
+                chunk.timings["ocr"] = round(time.monotonic() - clock, 2)
                 if len(results) != chunk.pages:
                     raise OCRError(f"expected {chunk.pages} pages, got {len(results)}")
+                clock = time.monotonic()
                 stored = await self._store_pages(job, chunk, results)
+                chunk.timings["store"] = round(time.monotonic() - clock, 2)
                 chunk.status = ChunkStatus.done
                 chunk.finished_at = now()
                 await self._store.save(job)

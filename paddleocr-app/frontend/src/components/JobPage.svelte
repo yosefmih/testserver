@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import PdfViewer from './PdfViewer.svelte';
   import Markdown from './Markdown.svelte';
+  import TimingPanel from './TimingPanel.svelte';
   import { getJob, getPages, getResultMarkdown, deleteJob, inputPdfUrl, resultZipUrl, resultMarkdownUrl } from '../lib/api.js';
   import { navigate } from '../lib/router.svelte.js';
   import { duration, bytes, when, statusLabel } from '../lib/format.js';
@@ -14,6 +15,7 @@
   let tab = $state('page');
   let pages = $state(null);
   let document = $state('');
+  let showTiming = $state(false);
 
   const done = $derived(job?.status === 'done');
   const active = $derived(job && ['queued', 'running', 'assembling'].includes(job.status));
@@ -79,6 +81,9 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>Output zip
         </a>
         <a class="btn" href={resultMarkdownUrl(job.id)} aria-disabled={!done} target="_blank" rel="noopener">Markdown</a>
+        <button class="btn" class:on={showTiming} type="button" onclick={() => (showTiming = !showTiming)} aria-expanded={showTiming} title="Per-request and per-stage timing">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M9 2h6" /></svg>Timing
+        </button>
         <button class="btn quiet" type="button" onclick={remove} disabled={active} title="Delete this job">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M6 7l1 13h10l1-13" /><path d="M9 7V4h6v3" /></svg>
         </button>
@@ -111,6 +116,10 @@
       </div>
       {#if job.error}<p class="error">{job.error}</p>{/if}
     </section>
+
+    {#if showTiming}
+      <TimingPanel {job} />
+    {/if}
 
     <section class="panes">
       <div class="pane">
@@ -173,6 +182,7 @@
   .title { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
   .title h2 { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .actions { display: flex; gap: 8px; }
+  .actions .btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .summary { padding: 14px 28px; background: var(--surface); border-bottom: 1px solid var(--line); }
   .facts { display: flex; flex-wrap: wrap; gap: 6px 32px; margin: 0; }
   .facts div { display: flex; flex-direction: column; }

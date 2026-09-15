@@ -36,6 +36,7 @@ class Chunk(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error: str | None = None
+    timings: dict[str, float] = {}
 
     @property
     def pages(self) -> int:
@@ -77,6 +78,7 @@ class Job(BaseModel):
     finished_at: datetime | None = None
     error: str | None = None
     assembled_with: str | None = None
+    timings: dict[str, float] = {}
     chunks: list[Chunk]
 
     def key(self, *parts: str) -> str:
