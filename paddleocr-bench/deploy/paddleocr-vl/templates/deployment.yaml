@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "paddleocr-vl.name" . }}
+  labels:
+    {{- include "paddleocr-vl.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "paddleocr-vl.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "paddleocr-vl.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      nodeSelector:
+        {{- if .Values.nodeGroupId }}
+        porter.run/node-group-id: {{ .Values.nodeGroupId | quote }}
+        {{- end }}
+        {{- with .Values.nodeSelector }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.allowedInstanceFamilies }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: karpenter.k8s.aws/instance-family
+                operator: In
+                values:
+                  {{- toYaml . | nindent 18 }}
+      {{- end }}
+      tolerations:
+      {{- if .Values.nodeGroupId }}
+      - key: porter.run/node-group-id
+        operator: Equal
+        value: {{ .Values.nodeGroupId | quote }}
+        effect: NoSchedule
+      {{- end }}
+      {{- with .Values.tolerations }}
+        {{- toYaml . | nindent 6 }}
+      {{- end }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "paddleocr-vl.name" . }}
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: {{ .Values.shmSize }}
+      containers:
+      - name: vlm
+        image: {{ .Values.registry }}/{{ .Values.vlm.image }}:{{ .Values.vlm.tag }}
+        args:
+        - paddleocr
+        - genai_server
+        - --model_name
+        - {{ .Values.vlm.modelName }}
+        - --host
+        - 0.0.0.0
+        - --port
+        - {{ .Values.vlm.port | quote }}
+        - --backend
+        - vllm
+        - --backend_config
+        - /config/vllm_config.yaml
+        ports:
+        - name: vlm
+          containerPort: {{ .Values.vlm.port }}
+        volumeMounts:
+        - name: config
+          mountPath: /config
+          readOnly: true
+        - name: shm
+          mountPath: /dev/shm
+        startupProbe:
+          httpGet:
+            path: /health
+            port: vlm
+          periodSeconds: 10
+          failureThreshold: {{ div .Values.vlm.startupTimeoutSeconds 10 }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: vlm
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.vlm.resources | nindent 10 }}
+      - name: pipeline
+        image: {{ .Values.registry }}/{{ .Values.pipeline.image }}:{{ .Values.pipeline.tag }}
+        args:
+        - paddlex
+        - --serve
+        - --pipeline
+        - /config/pipeline_config.yaml
+        - --port
+        - {{ .Values.service.port | quote }}
+        {{- if eq .Values.pipeline.gpuMode "cpu" }}
+        - --device
+        - cpu
+        {{- end }}
+        {{- if eq .Values.pipeline.gpuMode "shared" }}
+        env:
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: all
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: compute,utility
+        {{- end }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+        volumeMounts:
+        - name: config
+          mountPath: /config
+          readOnly: true
+        - name: shm
+          mountPath: /dev/shm
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 10
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 10
+        resources:
+          {{- if eq .Values.pipeline.gpuMode "dedicated" }}
+          {{- $res := deepCopy .Values.pipeline.resources }}
+          {{- $_ := set (index $res "limits") "nvidia.com/gpu" 1 }}
+          {{- toYaml $res | nindent 10 }}
+          {{- else }}
+          {{- toYaml .Values.pipeline.resources | nindent 10 }}
+          {{- end }}

@@ -1,0 +1,29 @@
+version: v2
+name: paddleocr-app
+services:
+- name: web
+  type: web
+  instances: 1
+  cpuCores: 1
+  ramMegabytes: 4096
+  port: 8080
+  private: true
+build:
+  context: ./paddleocr-app
+  method: docker
+  dockerfile: ./paddleocr-app/Dockerfile
+env:
+- key: PADDLEOCR_URL
+  value: http://paddleocr-hps.paddleocr.svc.cluster.local:8080
+- key: S3_BUCKET
+  value: CHANGE_ME
+- key: S3_PREFIX
+  value: paddleocr-app
+- key: AWS_REGION
+  value: us-east-1
+- key: DEFAULT_CHUNK_PAGES
+  value: "50"
+- key: DEFAULT_CONCURRENCY
+  value: "2"
+- key: RESTRUCTURE_PAGES
+  value: "true"

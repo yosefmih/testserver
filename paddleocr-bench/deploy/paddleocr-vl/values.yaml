@@ -1,0 +1,75 @@
+# Images come from the PaddleOCR repo's deploy/paddleocr_vl_docker build. The
+# source registry is in Baidu Cloud; mirror both images into ECR before use.
+registry: ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle
+imagePullSecrets: []
+
+pipeline:
+  image: paddleocr-vl
+  tag: paddleocr3.6-nvidia-gpu-offline
+  # How the pipeline container gets a GPU for layout detection:
+  #   shared    - sees the GPU the vlm container requested via NVIDIA_VISIBLE_DEVICES=all,
+  #               without a second nvidia.com/gpu request. Works with the default
+  #               NVIDIA container toolkit config; if the node blocks it, use another mode.
+  #   dedicated - requests its own nvidia.com/gpu (the pod then needs a 2-GPU node).
+  #   cpu       - runs layout detection on CPU (--device cpu).
+  gpuMode: shared
+  # Sized so the whole pod fits a g6.xlarge (4 vCPU, 16 GiB).
+  resources:
+    requests:
+      cpu: "1"
+      memory: 5Gi
+    limits:
+      memory: 7Gi
+  # Fields of the upstream pipeline_config_vllm.yaml worth tuning per deployment.
+  config:
+    # Pages rendered before the first batch is handed to layout detection and the VLM.
+    # Upstream ships 64, which leaves the GPU idle for 64 × render time at the start of
+    # every request (~15 s on figure-heavy PDFs). 8 starts the GPU after ~2 s.
+    batchSize: 8
+    # Sub-images sent to vLLM concurrently by one request.
+    vlmMaxConcurrency: 64
+    # Cap on pages processed per request; null means unlimited.
+    maxNumInputImgs: null
+    useDocPreprocessor: false
+    useChartRecognition: false
+    useSealRecognition: false
+
+vlm:
+  image: paddleocr-genai-vllm-server
+  tag: paddleocr3.6-nvidia-gpu-offline
+  modelName: PaddleOCR-VL-1.6-0.9B
+  port: 8118
+  resources:
+    requests:
+      cpu: "1500m"
+      memory: 7Gi
+    limits:
+      memory: 9Gi
+      nvidia.com/gpu: 1
+  # Passed to vLLM via --backend_config. Lower gpu-memory-utilization when the
+  # pipeline container shares the GPU so its layout model has headroom.
+  backendConfig:
+    gpu-memory-utilization: 0.7
+    max-num-seqs: 256
+  # Model load can take minutes on first start.
+  startupTimeoutSeconds: 900
+
+# Shared-memory volume mounted at /dev/shm in both containers.
+shmSize: 4Gi
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Porter GPU node groups label nodes with porter.run/node-group-id and taint them
+# with both that id and nvidia.com/gpu. Setting the id adds the matching
+# nodeSelector and toleration.
+nodeGroupId: ""
+# vLLM needs compute capability >= 8.0, so keep the pod off T4 (g4dn) nodes even
+# when the node group allows several families. Empty list disables the affinity.
+allowedInstanceFamilies: [g5, g6, g6e, gr6]
+nodeSelector: {}
+tolerations:
+- key: nvidia.com/gpu
+  operator: Exists
+  effect: NoSchedule

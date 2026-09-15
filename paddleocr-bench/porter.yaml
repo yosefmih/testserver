@@ -1,0 +1,29 @@
+version: v2
+name: paddleocr-bench
+services:
+- name: web
+  type: web
+  instances: 1
+  cpuCores: 1
+  ramMegabytes: 4096
+  port: 8096
+  private: true
+build:
+  context: ./paddleocr-bench
+  method: docker
+  dockerfile: ./paddleocr-bench/Dockerfile
+env:
+- key: PADDLEOCR_URL
+  value: http://paddleocr-vl.paddleocr.svc.cluster.local:8080
+- key: S3_BUCKET
+  value: CHANGE_ME
+- key: S3_PREFIX
+  value: paddleocr-bench
+- key: AWS_REGION
+  value: us-east-1
+- key: OCR_TIMEOUT
+  value: 15m
+- key: DEFAULT_CHUNK_PAGES
+  value: "10"
+- key: DEFAULT_CONCURRENCY
+  value: "4"

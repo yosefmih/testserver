@@ -1,0 +1,12 @@
+PaddleOCR-VL is starting. The vlm container loads the model first (up to
+{{ .Values.vlm.startupTimeoutSeconds }}s), then the pipeline container becomes ready.
+
+Watch:
+  kubectl --context <ctx> -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }} -w
+
+In-cluster URL for paddleocr-bench's PADDLEOCR_URL:
+  http://{{ include "paddleocr-vl.name" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+Smoke test from inside the cluster:
+  kubectl --context <ctx> -n {{ .Release.Namespace }} run curl --rm -it --image=curlimages/curl -- \
+    curl -s http://{{ include "paddleocr-vl.name" . }}:{{ .Values.service.port }}/health

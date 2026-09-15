@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+<title>PaddleOCR bench</title>
+{{template "style"}}
+</head>
+<body>
+<h1>PaddleOCR bench</h1>
+<p class="muted">OCR service: <code>{{.Cfg.PaddleOCRURL}}</code> · store: <code>{{.StoreName}}</code></p>
+
+{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+
+<div class="card">
+  <form method="post" action="/jobs" enctype="multipart/form-data">
+    <label for="pdf">PDF</label>
+    <input type="file" id="pdf" name="pdf" accept="application/pdf" required>
+    <div class="row">
+      <div>
+        <label for="chunkPages">Pages per request</label>
+        <input type="number" id="chunkPages" name="chunkPages" min="1" value="{{.Cfg.DefaultChunkPages}}">
+      </div>
+      <div>
+        <label for="concurrency">Concurrent requests</label>
+        <input type="number" id="concurrency" name="concurrency" min="1" value="{{.Cfg.DefaultConcurrency}}">
+      </div>
+      <div>
+        <label>Delivery to OCR</label>
+        <label style="font-weight:normal"><input type="radio" name="delivery" value="url" {{if .CanPresign}}checked{{else}}disabled{{end}}> presigned S3 URL</label>
+        <label style="font-weight:normal"><input type="radio" name="delivery" value="base64" {{if not .CanPresign}}checked{{end}}> base64 in request body</label>
+      </div>
+      <div>
+        <label style="font-weight:normal"><input type="checkbox" name="keepImages" checked> keep figure images</label>
+      </div>
+      <div><button type="submit">Submit</button></div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Jobs</h2>
+  {{if not .Jobs}}<p class="muted">No jobs yet.</p>{{else}}
+  <table>
+    <tr><th>Job</th><th>File</th><th>Pages</th><th>Chunk × conc</th><th>Delivery</th><th>Status</th><th>Pages/s</th><th>s/page</th><th>OCR time</th><th>Created</th></tr>
+    {{range .Jobs}}{{$m := .Metrics}}
+    <tr>
+      <td><a href="/jobs/{{.ID}}">{{.ID}}</a></td>
+      <td>{{.FileName}}</td>
+      <td>{{.Pages}}</td>
+      <td>{{.ChunkPages}} × {{.Concurrency}}</td>
+      <td>{{.Delivery}}</td>
+      <td><span class="status {{.Status}}">{{.Status}}</span></td>
+      <td>{{if $m.PagesPerSecond}}{{rate $m.PagesPerSecond}}{{else}}-{{end}}</td>
+      <td>{{if $m.SecondsPerPage}}{{rate $m.SecondsPerPage}}{{else}}-{{end}}</td>
+      <td>{{duration $m.OCRElapsed}}</td>
+      <td>{{when .CreatedAt}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{end}}
+</div>
+<p class="muted">JSON: <a href="/api/jobs">/api/jobs</a></p>
+</body>
+</html>

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: paddleocr-vl
+description: PaddleOCR-VL document parsing service. One pod running the pipeline (layout detection and orchestration) and the vLLM server for the PaddleOCR-VL VLM, sharing one GPU.
+type: application
+version: 0.1.0
+appVersion: "3.6"

@@ -1,0 +1,39 @@
+# Round B on g6e.8xlarge: nine pipeline instances with Paddle's per-process GPU allocator
+# capped at 3,000 MB (uncapped, an instance grows to ~4.2 GiB, mostly allocator cache).
+# VRAM: vLLM at 0.20 ≈ 9 GiB + Triton 0.5 + 9 × 3.0 = 27 GiB  →  ~36.5 of ~45 GiB.
+# RAM: vLLM ~3 + 9 × ~2.3 + Triton ~1 + gateway ~1 ≈ 26 GiB. CPU: ~1.2 + 9 × ~1.0 bursty.
+gateway:
+  uvicornWorkers: 4
+  maxConcurrentInferenceRequests: 48
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+pipeline:
+  instances: 9
+  extraEnv:
+    FLAGS_gpu_memory_limit_mb: "3000"
+  resources:
+    requests:
+      cpu: "9"
+      memory: 30Gi
+    limits:
+      memory: 44Gi
+vlm:
+  resources:
+    requests:
+      cpu: "2"
+      memory: 4Gi
+    limits:
+      memory: 8Gi
+      nvidia.com/gpu: 1
+  backendConfig:
+    gpu-memory-utilization: 0.20
+    max-num-batched-tokens: 16384
+    max-num-seqs: 768
+    mm-processor-cache-gb: 0
+    swap-space: 0
+    no-enable-prefix-caching: true
+shmSize: 4Gi

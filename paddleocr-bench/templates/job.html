@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+<title>Job {{.Job.ID}}</title>
+{{template "style"}}
+{{if .Job.IsActive}}<meta http-equiv="refresh" content="3">{{end}}
+</head>
+<body>
+<nav><a href="/">← jobs</a></nav>
+<h1>{{.Job.FileName}} <span class="status {{.Job.Status}}">{{.Job.Status}}</span></h1>
+<p class="muted">
+  {{.Job.ID}} · {{.Job.Pages}} pages · {{bytes .Job.InputBytes}} · {{.Job.ChunkPages}} pages/request · {{.Job.Concurrency}} concurrent · {{.Job.Delivery}} delivery
+  {{if .Job.KeepImages}}· images kept{{end}}
+  · <a href="/api/jobs/{{.Job.ID}}">json</a>
+  {{if .Metrics.ChunksDone}}· <a href="/jobs/{{.Job.ID}}/markdown">download markdown</a>{{end}}
+</p>
+{{if .Job.Error}}<div class="error">{{.Job.Error}}</div>{{end}}
+
+<div class="card">
+  <div class="metrics">
+    <div class="metric"><div class="label">Pages / second</div><div class="value big">{{if .Metrics.PagesPerSecond}}{{rate .Metrics.PagesPerSecond}}{{else}}-{{end}}</div></div>
+    <div class="metric"><div class="label">Seconds / page</div><div class="value">{{if .Metrics.SecondsPerPage}}{{rate .Metrics.SecondsPerPage}}{{else}}-{{end}}</div></div>
+    <div class="metric"><div class="label">Pages done</div><div class="value">{{.Metrics.PagesDone}} / {{.Job.Pages}}</div></div>
+    <div class="metric"><div class="label">Chunks done / failed</div><div class="value">{{.Metrics.ChunksDone}} / {{.Metrics.ChunksFailed}}</div></div>
+    <div class="metric"><div class="label">OCR wall time</div><div class="value">{{duration .Metrics.OCRElapsed}}</div></div>
+    <div class="metric"><div class="label">Total wall time</div><div class="value">{{duration .Metrics.Elapsed}}</div></div>
+    <div class="metric"><div class="label">PDF split time</div><div class="value">{{.Job.SplitMillis}} ms</div></div>
+    <div class="metric"><div class="label">Request latency p50</div><div class="value">{{duration .Metrics.LatencyP50}}</div></div>
+    <div class="metric"><div class="label">Request latency p95</div><div class="value">{{duration .Metrics.LatencyP95}}</div></div>
+    <div class="metric"><div class="label">Request latency max</div><div class="value">{{duration .Metrics.LatencyMax}}</div></div>
+    <div class="metric"><div class="label">Images extracted</div><div class="value">{{.Metrics.Images}}</div></div>
+    <div class="metric"><div class="label">Markdown chars</div><div class="value">{{.Metrics.MarkdownChars}}</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <table>
+    <tr><th>#</th><th>Pages</th><th>Status</th><th>Started</th><th>Latency</th><th>s/page</th><th>Request</th><th>Response</th><th>Images</th><th>Error</th></tr>
+    {{range .Job.Chunks}}
+    <tr>
+      <td>{{if eq .Status "done"}}<a href="/jobs/{{$.Job.ID}}/chunks/{{.Index}}/">{{.Index}}</a>{{else}}{{.Index}}{{end}}</td>
+      <td>{{.FirstPage}}–{{.LastPage}}</td>
+      <td><span class="status {{.Status}}">{{.Status}}</span></td>
+      <td>{{when .StartedAt}}</td>
+      <td>{{if .OCRMillis}}{{.OCRMillis}} ms{{else}}-{{end}}</td>
+      <td>{{if .SecondsPerPage}}{{rate .SecondsPerPage}}{{else}}-{{end}}</td>
+      <td>{{if .RequestBytes}}{{bytes .RequestBytes}}{{else}}-{{end}}</td>
+      <td>{{if .ResponseBytes}}{{bytes .ResponseBytes}}{{else}}-{{end}}</td>
+      <td>{{.ImageCount}}</td>
+      <td class="err">{{.Error}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+</body>
+</html>

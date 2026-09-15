@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+<title>{{.Job.FileName}} pages {{.Chunk.FirstPage}}–{{.Chunk.LastPage}}</title>
+{{template "style"}}
+</head>
+<body>
+<nav><a href="/">← jobs</a> · <a href="/jobs/{{.Job.ID}}">← {{.Job.FileName}}</a></nav>
+<h1>Pages {{.Chunk.FirstPage}}–{{.Chunk.LastPage}} <span class="muted">chunk {{.Chunk.Index}}</span></h1>
+<p class="muted">
+  {{.Chunk.OCRMillis}} ms for {{.Chunk.Pages}} pages ({{rate .Chunk.SecondsPerPage}} s/page) · {{.Chunk.ImageCount}} images ·
+  <a href="result.json">result.json</a> · <a href="result.md">result.md</a> · <a href="input.pdf">input.pdf</a>
+</p>
+<div class="markdown">{{.Rendered}}</div>
+<details style="margin-top:16px">
+  <summary>Raw markdown</summary>
+  <pre>{{.Raw}}</pre>
+</details>
+</body>
+</html>
