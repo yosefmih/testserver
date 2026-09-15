@@ -7,8 +7,13 @@ services:
   instances: 1
   cpuCores: 2
   ramMegabytes: 2048
-  terminationGracePeriodSeconds: 30
+  terminationGracePeriodSeconds: 600
   port: 8080
+  healthCheck:
+    enabled: true
+    httpPath: /api/readyz
+    initialDelaySeconds: 5
+    periodSeconds: 10
   domains:
   - name: web-6-cb69b240-gwes8ykn.withporter.run
   connections:
@@ -33,4 +38,6 @@ env:
   value: "2"
 - key: RESTRUCTURE_PAGES
   value: "true"
+- key: DRAIN_TIMEOUT_SECONDS
+  value: "540"
 

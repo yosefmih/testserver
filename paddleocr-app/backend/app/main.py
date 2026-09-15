@@ -44,7 +44,16 @@ app = FastAPI(title="PaddleOCR document service", lifespan=lifespan)
 
 @app.get("/api/healthz")
 async def healthz(request: Request) -> dict:
-    return {"ok": True, "ocrReady": await request.app.state.ocr.ready()}
+    return {"ok": True, "ocrReady": await request.app.state.ocr.ready(), "draining": request.app.state.worker.draining}
+
+
+# Readiness turns off while draining so the Service stops routing new uploads here while
+# in-flight chunks finish; liveness above stays up the whole time.
+@app.get("/api/readyz")
+async def readyz(request: Request) -> Response:
+    if request.app.state.worker.draining:
+        return Response('{"ready": false, "reason": "draining"}', status_code=503, media_type="application/json")
+    return Response('{"ready": true}', media_type="application/json")
 
 
 @app.get("/api/config")
@@ -58,6 +67,11 @@ async def config(request: Request) -> dict:
         "defaultRestructure": settings.restructure_pages,
         "maxUploadBytes": settings.max_upload_bytes,
     }
+
+
+@app.get("/api/metrics")
+async def metrics(request: Request) -> dict:
+    return request.app.state.store.backlog().model_dump()
 
 
 @app.get("/api/jobs")
@@ -74,6 +88,8 @@ async def create_job(
     restructure: bool = Form(False),
 ) -> dict:
     settings: Settings = request.app.state.settings
+    if request.app.state.worker.draining:
+        raise HTTPException(503, "shutting down, retry shortly")
     if chunkPages < 1 or concurrency < 1:
         raise HTTPException(400, "chunkPages and concurrency must be at least 1")
     data = await pdf.read()

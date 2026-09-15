@@ -52,8 +52,15 @@ class JobMetrics(BaseModel):
     pages_done: int
     chunks_done: int
     chunks_failed: int
+    queued_seconds: float
     elapsed_seconds: float
     pages_per_second: float
+
+
+class Backlog(BaseModel):
+    pending_pages: int
+    pending_chunks: int
+    active_jobs: int
 
 
 class Job(BaseModel):
@@ -85,14 +92,17 @@ class Job(BaseModel):
         done = [c for c in self.chunks if c.status == ChunkStatus.done]
         pages_done = sum(c.pages for c in done)
         if self.started_at is None:
+            queued = (now() - self.created_at).total_seconds()
             elapsed = 0.0
         else:
+            queued = (self.started_at - self.created_at).total_seconds()
             end = self.finished_at or now()
             elapsed = (end - self.started_at).total_seconds()
         return JobMetrics(
             pages_done=pages_done,
             chunks_done=len(done),
             chunks_failed=sum(1 for c in self.chunks if c.status == ChunkStatus.failed),
+            queued_seconds=round(max(queued, 0.0), 1),
             elapsed_seconds=round(elapsed, 1),
             pages_per_second=round(pages_done / elapsed, 3) if elapsed > 0 else 0.0,
         )
@@ -139,6 +149,13 @@ class JobStore:
 
     def list(self) -> list[Job]:
         return sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)
+
+    # Work accepted but not finished, the signal an autoscaler should size the OCR fleet on.
+    # Running chunks count because they still occupy a pod until they complete.
+    def backlog(self) -> Backlog:
+        active = [job for job in self._jobs.values() if job.is_active()]
+        pending = [c for job in active for c in job.chunks if c.status in (ChunkStatus.queued, ChunkStatus.running)]
+        return Backlog(pending_pages=sum(c.pages for c in pending), pending_chunks=len(pending), active_jobs=len(active))
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)

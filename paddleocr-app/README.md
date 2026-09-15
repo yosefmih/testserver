@@ -101,6 +101,7 @@ Set `AWS_PROFILE` for the account that owns the ECR registry, then:
 | `JOB_CONCURRENCY` | `1` | Jobs processed at once |
 | `RESTRUCTURE_PAGES` | `true` | Form default for the cross-page merge step |
 | `MAX_UPLOAD_BYTES` | `536870912` | Upload size limit |
+| `DRAIN_TIMEOUT_SECONDS` | `600` | How long shutdown waits for in-flight OCR requests |
 
 ## How a job runs
 
@@ -119,6 +120,38 @@ Set `AWS_PROFILE` for the account that owns the ECR registry, then:
    names before it is stored. `result.md`, `result.zip` (markdown plus `imgs/`) and
    `result.pages.json` (per-page markdown for the explorer) are written next to the
    manifest, and downloads stream straight from S3.
+
+## Shutdown, health and restarts
+
+PaddleOCR's API is synchronous: a chunk's result only exists when its request returns, so
+a request abandoned mid-way is GPU time thrown away. On SIGTERM the app therefore stops
+taking new jobs and starting new chunks, waits up to `DRAIN_TIMEOUT_SECONDS` for chunks
+already sent to PaddleOCR to come back, stores them, parks the job as queued with its
+finished chunks intact, and exits. The next process re-queues the job and runs only the
+chunks that are left, so a redeploy costs no duplicate work. Keep the drain timeout below
+the pod's termination grace period (`porter.yaml`: 540 s inside 600 s) and chunks small
+enough to finish within it (a 200-page chunk takes 4 to 5 minutes on one L4).
+
+- `GET /api/healthz` is liveness: always 200 while the process runs, with `ocrReady` and
+  `draining` for diagnostics.
+- `GET /api/readyz` is readiness: 503 while draining, 200 otherwise. `porter.yaml` uses
+  it as the health check.
+- `POST /api/jobs` answers 503 while draining.
+
+## Autoscaling signal
+
+`GET /api/metrics` reports the work accepted but not finished:
+
+```json
+{"pending_pages": 1240, "pending_chunks": 25, "active_jobs": 3}
+```
+
+`pending_pages` counts pages in chunks that are queued or still running across every
+unfinished job. It is the input for scaling the PaddleOCR pods: replicas =
+ceil(pending_pages / pages each pod may leave waiting), which a KEDA metrics-API trigger
+computes directly. GPU and CPU utilisation are not usable signals for this stack (a
+saturated pod shows ~60% GPU and one busy core), and Triton's queue counters only move once
+a pod is already full.
 
 Sizing notes from the benchmark (`../paddleocr-bench`, results in the workstation
 `weave-paddleocr-eval.md`): one L4 sustains 1.2 to 1.5 pages/s cold, so 50-page chunks with

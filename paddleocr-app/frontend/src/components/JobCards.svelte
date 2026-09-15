@@ -45,7 +45,7 @@
         {/if}
         <dl class="facts">
           <div><dt>Pages</dt><dd class="mono">{job.pages}</dd></div>
-          <div><dt>{job.finished_at ? 'Took' : 'Running for'}</dt><dd class="mono">{duration(job.metrics.elapsed_seconds)}</dd></div>
+          <div><dt>{job.finished_at ? 'Took' : 'Running for'}</dt><dd class="mono" title={`waited ${duration(job.metrics.queued_seconds)} in the queue first`}>{duration(job.metrics.elapsed_seconds)}</dd></div>
           <div><dt>Pages/s</dt><dd class="mono">{job.metrics.pages_per_second ? job.metrics.pages_per_second.toFixed(2) : '–'}</dd></div>
           <div><dt>Requests</dt><dd class="mono">{job.metrics.chunks_done}/{job.chunks.length}</dd></div>
         </dl>

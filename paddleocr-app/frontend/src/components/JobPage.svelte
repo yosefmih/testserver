@@ -88,6 +88,7 @@
     <section class="summary">
       <dl class="facts">
         <div><dt>Submitted</dt><dd class="mono">{when(job.created_at)}</dd></div>
+        <div><dt>Waited</dt><dd class="mono">{duration(job.metrics.queued_seconds)}</dd></div>
         <div><dt>{job.finished_at ? 'Took' : 'Running for'}</dt><dd class="mono">{duration(job.metrics.elapsed_seconds)}</dd></div>
         <div><dt>Pages</dt><dd class="mono">{job.metrics.pages_done} / {job.pages}</dd></div>
         <div><dt>Throughput</dt><dd class="mono">{job.metrics.pages_per_second.toFixed(2)} pages/s</dd></div>

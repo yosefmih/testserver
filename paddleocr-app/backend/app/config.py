@@ -16,6 +16,7 @@ class Settings:
     job_concurrency: int
     restructure_pages: bool
     max_upload_bytes: int
+    drain_timeout_seconds: float
 
 
 def load_settings() -> Settings:
@@ -36,4 +37,5 @@ def load_settings() -> Settings:
         job_concurrency=int(env.get("JOB_CONCURRENCY", "1")),
         restructure_pages=env.get("RESTRUCTURE_PAGES", "true").lower() in ("1", "true", "yes"),
         max_upload_bytes=int(env.get("MAX_UPLOAD_BYTES", str(512 * 1024 * 1024))),
+        drain_timeout_seconds=float(env.get("DRAIN_TIMEOUT_SECONDS", "600")),
     )

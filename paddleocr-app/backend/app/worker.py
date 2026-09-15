@@ -33,6 +33,7 @@ class Worker:
         self._ocr = ocr
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._consumers: list[asyncio.Task] = []
+        self._draining = False
 
     async def start(self) -> None:
         for job in reversed(self._store.list()):
@@ -43,10 +44,23 @@ class Worker:
             for i in range(self._settings.job_concurrency)
         ]
 
+    # Shutdown lets chunks already sent to PaddleOCR finish, because their results only
+    # exist once the request returns, but starts nothing new; a job caught mid-way is saved
+    # as queued with its finished chunks intact and resumes in the next process.
     async def stop(self) -> None:
+        self._draining = True
         for task in self._consumers:
-            task.cancel()
-        await asyncio.gather(*self._consumers, return_exceptions=True)
+            self._queue.put_nowait("")
+        done, pending = await asyncio.wait(self._consumers, timeout=self._settings.drain_timeout_seconds)
+        if pending:
+            log.warning("drain timed out after %.0fs, abandoning %d in-flight chunk(s)", self._settings.drain_timeout_seconds, len(pending))
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    @property
+    def draining(self) -> bool:
+        return self._draining
 
     def enqueue(self, job_id: str) -> None:
         self._queue.put_nowait(job_id)
@@ -62,10 +76,10 @@ class Worker:
         self.enqueue(job.id)
 
     async def _consume(self) -> None:
-        while True:
+        while not self._draining:
             job_id = await self._queue.get()
             job = self._store.get(job_id)
-            if job is None:
+            if job is None or self._draining:
                 continue
             try:
                 await self._run(job)
@@ -78,7 +92,7 @@ class Worker:
 
     async def _run(self, job: Job) -> None:
         job.status = JobStatus.running
-        job.started_at = now()
+        job.started_at = job.started_at or now()
         job.finished_at = None
         job.error = None
         await self._store.save(job)
@@ -91,6 +105,11 @@ class Worker:
         failures = [o for o in outcomes if isinstance(o, BaseException)]
         if failures:
             raise RuntimeError(f"{len(failures)} of {len(job.chunks)} chunks failed: {failures[0]}")
+        if any(o is None for o in outcomes):
+            job.status = JobStatus.queued
+            await self._store.save(job)
+            log.info("job %s parked with %d/%d chunks done for the next process", job.id, job.metrics().chunks_done, len(job.chunks))
+            return
         pages = [page for chunk_pages in outcomes for page in chunk_pages]
 
         job.status = JobStatus.assembling
@@ -112,10 +131,12 @@ class Worker:
         await self._store.save(job)
         log.info("job %s done: %d pages in %.1fs (%s)", job.id, job.pages, job.metrics().elapsed_seconds, method)
 
-    async def _run_chunk(self, job: Job, chunk: Chunk, source: bytes, limiter: asyncio.Semaphore) -> list[StoredPage]:
+    async def _run_chunk(self, job: Job, chunk: Chunk, source: bytes, limiter: asyncio.Semaphore) -> list[StoredPage] | None:
         if chunk.status == ChunkStatus.done:
             return await self._load_stored_pages(job, chunk)
         async with limiter:
+            if self._draining:
+                return None
             chunk.status = ChunkStatus.running
             chunk.started_at = now()
             chunk.finished_at = None
