@@ -85,7 +85,18 @@ spec:
       initContainers:
       - name: vlm
         restartPolicy: Always
+        {{- with .Values.vlm.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         image: {{ default (printf "%s/%s:%s" .Values.registry .Values.vlm.image .Values.vlm.tag) .Values.vlm.imageRef }}
+        {{- if .Values.vlm.benchmarkRuntimePatch }}
+        command: ["/bin/bash", "-ec"]
+        args:
+        - |
+          python3 /config/benchmark-vlm-patch.py {{ .Values.vlm.benchmarkRuntimePatch | squote }}
+          exec {{ range concat .Values.vlm.command .Values.vlm.args }}{{ . | squote }} {{ end }}
+        {{- else }}
         {{- with .Values.vlm.command }}
         command:
           {{- toYaml . | nindent 8 }}
@@ -107,6 +118,7 @@ spec:
         - vllm
         - --backend_config
         - /config/vllm_config.yaml
+        {{- end }}
         {{- end }}
         {{- with .Values.vlm.extraEnv }}
         env:
@@ -142,6 +154,13 @@ spec:
       - name: pipeline
         restartPolicy: Always
         image: {{ .Values.registry }}/{{ .Values.pipeline.image }}:{{ .Values.pipeline.tag }}
+        {{- if .Values.pipeline.benchmarkProfiling }}
+        command: ["/bin/bash", "-ec"]
+        args:
+        - |
+          cat /config/benchmark-profile.py >> /app/model_repo/layout-parsing/1/model.py
+          exec /app/server.sh
+        {{- end }}
         env:
         - name: PADDLEX_HPS_PIPELINE_CONFIG_PATH
           value: /config/pipeline_config.yaml

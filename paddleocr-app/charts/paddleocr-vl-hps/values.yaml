@@ -29,6 +29,8 @@ gateway:
       memory: 2Gi
 
 pipeline:
+  # Opt-in stage timings in pipeline logs (PADDLE_BENCH JSON); disabled in normal serving.
+  benchmarkProfiling: false
   image: paddleocr-hps-pipeline
   tag: paddlex3.6-gpu-sdk0.1.0-bundled
   # Parallel pipeline processes inside Triton (instance_group.count). Each holds its own
@@ -53,12 +55,16 @@ pipeline:
   config:
     batchSize: 8
     vlmMaxConcurrency: 64
+    layoutPrepCpuWorkers: 0
     maxNumInputImgs: null
     useDocPreprocessor: false
     useChartRecognition: false
     useSealRecognition: false
 
 vlm:
+  # Diagnostic interventions for the pinned stock model; empty leaves its source intact.
+  benchmarkRuntimePatch: ""
+  securityContext: {}
   image: paddleocr-genai-vllm-server
   tag: paddleocr3.6-nvidia-gpu-offline
   # Set imageRef and args to run a stock vLLM image with its native PaddleOCR-VL model

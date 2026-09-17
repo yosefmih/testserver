@@ -1,0 +1,72 @@
+{
+  "vlm": {
+    "imageRef": "docker.io/vllm/vllm-openai:v0.29.0",
+    "command": [
+      "vllm",
+      "serve"
+    ],
+    "args": [
+      "PaddlePaddle/PaddleOCR-VL-1.6",
+      "--served-model-name",
+      "PaddleOCR-VL-1.6-0.9B",
+      "--trust-remote-code",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8118",
+      "--gpu-memory-utilization",
+      "0.28",
+      "--max-num-batched-tokens",
+      "8192",
+      "--max-num-seqs",
+      "128",
+      "--max-model-len",
+      "16384",
+      "--mm-processor-cache-gb",
+      "0",
+      "--limit-mm-per-prompt",
+      "{\"image\":1}"
+    ],
+    "resources": {
+      "requests": {
+        "cpu": "1",
+        "memory": "4Gi"
+      },
+      "limits": {
+        "memory": "10Gi",
+        "nvidia.com/gpu": 1
+      }
+    },
+    "startupTimeoutSeconds": 1200
+  },
+  "pipeline": {
+    "instances": 1,
+    "resources": {
+      "requests": {
+        "cpu": "500m",
+        "memory": "4Gi"
+      },
+      "limits": {
+        "memory": "8Gi"
+      }
+    }
+  },
+  "gateway": {
+    "resources": {
+      "requests": {
+        "cpu": "100m",
+        "memory": "256Mi"
+      },
+      "limits": {
+        "memory": "2Gi"
+      }
+    }
+  },
+  "replicas": 2,
+  "autoscaling": {
+    "enabled": false
+  },
+  "nodeSelector": {
+    "nvidia.com/device-plugin.config": "paddle-two"
+  }
+}

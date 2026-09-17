@@ -12,6 +12,7 @@ data:
     pipeline_name: PaddleOCR-VL-1.6
 
     batch_size: {{ .Values.pipeline.config.batchSize }}
+    layout_prep_cpu_workers: {{ .Values.pipeline.config.layoutPrepCpuWorkers }}
 
     use_queues: True
 
@@ -109,3 +110,11 @@ data:
     output [ { name: "output", data_type: TYPE_STRING, dims: [ -1 ] } ]
     instance_group [ { count: {{ .Values.pipeline.instances }}, kind: KIND_GPU, gpus: [ 0 ] } ]
     dynamic_batching { max_queue_delay_microseconds: {{ mul .Values.pipeline.batchQueueDelayMs 1000 }} }
+  {{- if .Values.pipeline.benchmarkProfiling }}
+  benchmark-profile.py: |
+    {{- .Files.Get "files/benchmark-profile.py" | nindent 4 }}
+  {{- end }}
+  {{- if .Values.vlm.benchmarkRuntimePatch }}
+  benchmark-vlm-patch.py: |
+    {{- .Files.Get "files/benchmark-vlm-patch.py" | nindent 4 }}
+  {{- end }}

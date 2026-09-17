@@ -29,6 +29,62 @@ class StoredPage:
     image_keys: list[str]
 
 
+# Triton batches the requests that arrive inside its queue-delay window, but the chunks of one
+# document finish splitting and uploading at different moments, so their OCR calls trickle in
+# and each one is dispatched alone. This holds finished chunks until a group is ready and then
+# releases them together. One gate per job: a group never mixes documents.
+class BatchGate:
+    def __init__(self, size: int, wait_seconds: float, expected: int):
+        self._size = size
+        self._wait_seconds = wait_seconds
+        self._expected = expected
+        self._waiting: list[asyncio.Future] = []
+        self._timer: asyncio.Task | None = None
+
+    async def hold(self) -> None:
+        if self._size < 2:
+            return
+        released = asyncio.get_running_loop().create_future()
+        self._waiting.append(released)
+        self._release_full_group()
+        if not released.done() and self._timer is None:
+            self._timer = asyncio.create_task(self._release_stale_group())
+        try:
+            await released
+        except asyncio.CancelledError:
+            if released in self._waiting:
+                self._waiting.remove(released)
+            raise
+
+    # A chunk that will never reach the gate: already done, adopted from another pod, dropped
+    # by a drain, or failed while splitting. The group shrinks so the rest are not stranded.
+    def withdraw(self) -> None:
+        self._expected -= 1
+        self._release_full_group()
+
+    def _release_full_group(self) -> None:
+        if self._waiting and len(self._waiting) >= min(self._size, self._expected):
+            self._release()
+
+    # The safety valve for chunks still queued behind a lease or a slow split, which would
+    # otherwise hold a partial group indefinitely.
+    async def _release_stale_group(self) -> None:
+        await asyncio.sleep(self._wait_seconds)
+        self._timer = None
+        if self._waiting:
+            self._release()
+
+    def _release(self) -> None:
+        group, self._waiting = self._waiting, []
+        self._expected -= len(group)
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+        for released in group:
+            if not released.done():
+                released.set_result(None)
+
+
 class Worker:
     def __init__(self, settings: Settings, storage: Storage, store: JobStore, ocr: PaddleOCRClient):
         self._settings = settings
@@ -114,8 +170,15 @@ class Worker:
         await self._store.save(job)
         source = await self._storage.get(job.key("input.pdf"))
         limiter = asyncio.Semaphore(job.concurrency)
+        # A group can never exceed what this job is allowed to have in flight, or the gate
+        # would wait for chunks the semaphore is still holding back.
+        gate = BatchGate(
+            min(self._settings.ocr_batch_size, job.concurrency),
+            self._settings.ocr_batch_wait_seconds,
+            len(job.chunks),
+        )
         outcomes = await asyncio.gather(
-            *(self._run_chunk(job, chunk, source, limiter) for chunk in job.chunks),
+            *(self._run_chunk(job, chunk, source, limiter, gate) for chunk in job.chunks),
             return_exceptions=True,
         )
         failures = [o for o in outcomes if isinstance(o, BaseException)]
@@ -162,71 +225,80 @@ class Worker:
         await self._store.save(job)
         log.info("job %s done: %d pages in %.1fs (%s)", job.id, job.pages, job.metrics().elapsed_seconds, method)
 
-    async def _run_chunk(self, job: Job, chunk: Chunk, source: bytes, limiter: asyncio.Semaphore) -> list[StoredPage] | None:
-        pages_key = job.key("chunks", str(chunk.index), "pages.json")
-        if chunk.status == ChunkStatus.done or await self._storage.exists(pages_key):
-            return await self._adopt_finished_chunk(job, chunk)
-        async with limiter:
-            lease = Lease(self._storage, job.key("chunks", str(chunk.index), "lease.json"))
-            clock = time.monotonic()
-            while True:
-                if self._draining:
-                    return None
-                if await self._storage.exists(pages_key):
-                    return await self._adopt_finished_chunk(job, chunk)
-                if await lease.try_acquire():
-                    chunk.close_open_attempts("abandoned")
-                    break
-                holder = await lease.holder()
-                if chunk.owner != holder:
-                    chunk.owner = holder
-                    chunk.status = ChunkStatus.running
+    async def _run_chunk(self, job: Job, chunk: Chunk, source: bytes, limiter: asyncio.Semaphore, gate: BatchGate) -> list[StoredPage] | None:
+        held = False
+        try:
+            pages_key = job.key("chunks", str(chunk.index), "pages.json")
+            if chunk.status == ChunkStatus.done or await self._storage.exists(pages_key):
+                return await self._adopt_finished_chunk(job, chunk)
+            async with limiter:
+                lease = Lease(self._storage, job.key("chunks", str(chunk.index), "lease.json"))
+                clock = time.monotonic()
+                while True:
+                    if self._draining:
+                        return None
+                    if await self._storage.exists(pages_key):
+                        return await self._adopt_finished_chunk(job, chunk)
+                    if await lease.try_acquire():
+                        chunk.close_open_attempts("abandoned")
+                        break
+                    holder = await lease.holder()
+                    if chunk.owner != holder:
+                        chunk.owner = holder
+                        chunk.status = ChunkStatus.running
+                        await self._store.save(job)
+                        log.info("job %s chunk %d is held by %s, waiting", job.id, chunk.index, holder)
+                    await asyncio.sleep(LEASE_POLL_SECONDS)
+                chunk.status = ChunkStatus.running
+                chunk.owner = OWNER
+                chunk.started_at = now()
+                chunk.finished_at = None
+                chunk.error = None
+                chunk.timings = {}
+                chunk.attempts += 1
+                chunk.history.append(Attempt(owner=OWNER, started_at=chunk.started_at))
+                waited = time.monotonic() - clock
+                if waited > 1:
+                    chunk.timings["lease_wait"] = round(waited, 2)
+                await self._store.save(job)
+                try:
+                    async with lease.held():
+                        clock = time.monotonic()
+                        chunk_pdf = await asyncio.to_thread(pdf.extract_pages, source, chunk.first_page, chunk.last_page)
+                        chunk.timings["split"] = round(time.monotonic() - clock, 2)
+                        clock = time.monotonic()
+                        await self._storage.put(job.key("chunks", str(chunk.index), "input.pdf"), chunk_pdf, "application/pdf")
+                        chunk.timings["upload"] = round(time.monotonic() - clock, 2)
+                        clock = time.monotonic()
+                        await gate.hold()
+                        held = True
+                        chunk.timings["batch_wait"] = round(time.monotonic() - clock, 2)
+                        clock = time.monotonic()
+                        results = await self._ocr_with_retries(job, chunk, chunk_pdf)
+                        chunk.timings["ocr"] = round(time.monotonic() - clock, 2)
+                        if len(results) != chunk.pages:
+                            raise OCRError(f"expected {chunk.pages} pages, got {len(results)}")
+                        clock = time.monotonic()
+                        stored = await self._store_pages(job, chunk, results)
+                        chunk.timings["store"] = round(time.monotonic() - clock, 2)
+                    chunk.status = ChunkStatus.done
+                    chunk.finished_at = now()
+                    chunk.close_open_attempts("done")
+                    await self._storage.put(job.key("chunks", str(chunk.index), "chunk.json"), chunk.model_dump_json().encode(), "application/json")
                     await self._store.save(job)
-                    log.info("job %s chunk %d is held by %s, waiting", job.id, chunk.index, holder)
-                await asyncio.sleep(LEASE_POLL_SECONDS)
-            chunk.status = ChunkStatus.running
-            chunk.owner = OWNER
-            chunk.started_at = now()
-            chunk.finished_at = None
-            chunk.error = None
-            chunk.timings = {}
-            chunk.attempts += 1
-            chunk.history.append(Attempt(owner=OWNER, started_at=chunk.started_at))
-            waited = time.monotonic() - clock
-            if waited > 1:
-                chunk.timings["lease_wait"] = round(waited, 2)
-            await self._store.save(job)
-            try:
-                async with lease.held():
-                    clock = time.monotonic()
-                    chunk_pdf = await asyncio.to_thread(pdf.extract_pages, source, chunk.first_page, chunk.last_page)
-                    chunk.timings["split"] = round(time.monotonic() - clock, 2)
-                    clock = time.monotonic()
-                    await self._storage.put(job.key("chunks", str(chunk.index), "input.pdf"), chunk_pdf, "application/pdf")
-                    chunk.timings["upload"] = round(time.monotonic() - clock, 2)
-                    clock = time.monotonic()
-                    results = await self._ocr_with_retries(job, chunk, chunk_pdf)
-                    chunk.timings["ocr"] = round(time.monotonic() - clock, 2)
-                    if len(results) != chunk.pages:
-                        raise OCRError(f"expected {chunk.pages} pages, got {len(results)}")
-                    clock = time.monotonic()
-                    stored = await self._store_pages(job, chunk, results)
-                    chunk.timings["store"] = round(time.monotonic() - clock, 2)
-                chunk.status = ChunkStatus.done
-                chunk.finished_at = now()
-                chunk.close_open_attempts("done")
-                await self._storage.put(job.key("chunks", str(chunk.index), "chunk.json"), chunk.model_dump_json().encode(), "application/json")
-                await self._store.save(job)
-                await lease.release()
-                return stored
-            except Exception as exc:
-                chunk.status = ChunkStatus.failed
-                chunk.finished_at = now()
-                chunk.error = str(exc)[:500]
-                chunk.close_open_attempts("failed")
-                await self._store.save(job)
-                await lease.release()
-                raise
+                    await lease.release()
+                    return stored
+                except Exception as exc:
+                    chunk.status = ChunkStatus.failed
+                    chunk.finished_at = now()
+                    chunk.error = str(exc)[:500]
+                    chunk.close_open_attempts("failed")
+                    await self._store.save(job)
+                    await lease.release()
+                    raise
+        finally:
+            if not held:
+                gate.withdraw()
 
     # A chunk finished by another pod is adopted from the record that pod wrote next to its
     # pages, so the manifest shows who ran it and how long it took rather than a stale copy.
