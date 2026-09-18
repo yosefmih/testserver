@@ -104,6 +104,8 @@ Set `AWS_PROFILE` for the account that owns the ECR registry, then:
 | `DEFAULT_CHUNK_PAGES` | `50` | Form default for pages per OCR request |
 | `DEFAULT_CONCURRENCY` | `2` | Form default for requests in flight per job |
 | `JOB_CONCURRENCY` | `50` | Jobs processed at once; effectively unlimited, the OCR fleet's capacity is the real limit |
+| `OCR_BATCH_SIZE` | `8` | Chunks of one job released to the OCR service together, so Triton's dynamic batcher sees them arrive at once. Match the chart's `pipeline.maxBatchSize`; `1` disables grouping |
+| `OCR_BATCH_WAIT_SECONDS` | `5` | How long a partial group waits for stragglers before going anyway |
 | `RESTRUCTURE_PAGES` | `true` | Form default for the cross-page merge step |
 | `MAX_UPLOAD_BYTES` | `536870912` | Upload size limit |
 | `DRAIN_TIMEOUT_SECONDS` | `600` | How long shutdown waits for in-flight OCR requests |

@@ -8,9 +8,11 @@
     { key: 'lease_wait', label: 'waiting for another pod', color: 'var(--line)' },
     { key: 'split', label: 'split PDF', color: 'var(--line-strong)' },
     { key: 'upload', label: 'upload chunk', color: 'var(--muted)' },
+    { key: 'batch_wait', label: 'waiting for a batch', color: 'var(--line)' },
     { key: 'ocr', label: 'OCR round trip', color: 'var(--accent)' },
     { key: 'store', label: 'store pages', color: 'var(--done)' },
   ];
+  const OCR_STAGE = STAGES.find((s) => s.key === 'ocr');
   const SPANS = [30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 28800].map((s) => s * 1000);
 
   const t = (iso) => (iso ? new Date(iso).getTime() : null);
@@ -46,7 +48,7 @@
       cursor += seconds * 1000;
     }
     if (chunk.status === 'running' && stop > cursor) {
-      const next = STAGES.find((st) => chunk.timings?.[st.key] == null && st.key !== 'lease_wait') ?? STAGES[3];
+      const next = STAGES.find((st) => chunk.timings?.[st.key] == null && st.key !== 'lease_wait') ?? OCR_STAGE;
       out.push({ from: cursor, to: stop, color: next.color, label: `${next.label}: ${duration((stop - cursor) / 1000)} so far`, active: true });
     } else if (stop > cursor + 500) {
       out.push({ from: cursor, to: stop, color: 'transparent', label: `other: ${duration((stop - cursor) / 1000)}` });
@@ -79,7 +81,7 @@
     const intervals = done
       .map((r) => {
         const tm = r.chunk.timings;
-        const from = r.start + ((tm.lease_wait ?? 0) + (tm.split ?? 0) + (tm.upload ?? 0)) * 1000;
+        const from = r.start + ((tm.lease_wait ?? 0) + (tm.split ?? 0) + (tm.upload ?? 0) + (tm.batch_wait ?? 0)) * 1000;
         return [from, from + tm.ocr * 1000];
       })
       .sort((a, b) => a[0] - b[0]);
