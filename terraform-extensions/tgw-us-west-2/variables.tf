@@ -1,13 +1,11 @@
-# Porter passes the latest applied outputs of each upstream stack as var.porter.stacks["<stack>"]
+# Porter passes the outputs of every Porter stack in the cloud account:
+#   var.porter.stacks.regional_backbones["<region>"] is a region's shared network
+#   var.porter.stacks.clusters["<cluster id>"] is a cluster's network
 variable "porter" {
   type = any
 }
 
-# The extension's own settings, from the extension's variables:
-#   region_stack  Porter region stack whose shared VPC is attached, e.g. "region/us-west-2"
-#   cluster_stack Porter cluster stack whose VPC is attached, e.g. "cluster/21"
-#   remote_cidrs  networks reached through the transit gateway, e.g. a VPN or another VPC; routes to
-#                 them are added to both VPCs. They must be registered as the extension's external CIDRs.
+# Porter passes the extension's variables here; this module needs none
 variable "inputs" {
   type = any
 }

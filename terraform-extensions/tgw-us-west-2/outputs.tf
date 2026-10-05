@@ -7,8 +7,8 @@ output "transit_gateway_route_table_id" {
 }
 
 output "attachment_ids" {
-  value = {
-    shared  = aws_ec2_transit_gateway_vpc_attachment.shared.id
-    cluster = aws_ec2_transit_gateway_vpc_attachment.cluster.id
-  }
+  value = merge(
+    { shared = aws_ec2_transit_gateway_vpc_attachment.shared.id },
+    { for id, attachment in aws_ec2_transit_gateway_vpc_attachment.cluster : "cluster-${id}" => attachment.id },
+  )
 }
