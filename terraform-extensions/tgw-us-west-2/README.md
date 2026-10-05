@@ -13,6 +13,4 @@ tables, so traffic between the VPCs keeps using Porter's peering.
 Extensions → New extension:
 
 - Repository: `yosefmih/testserver`, branch `main`, path `terraform-extensions/tgw-us-west-2`
-- Default region: `us-west-2`
 - Variables: leave empty
-- External CIDRs: leave empty
