@@ -13,17 +13,19 @@ It creates the transit gateway and its shared VPC attachment, the Azure hub reso
 and VPN gateway, the four tunnels, the hub ↔ AKS VNet peerings, routes to each AKS VNet in the shared
 VPC's datastore route tables, and optional ingress rules on datastore security groups.
 
-The extension acts in two cloud accounts: the AWS account it is registered in and the project's Azure
-account that holds the AKS clusters' Terraform stacks. Porter passes both accounts' stack outputs in
-`var.porter` and credentials for both providers.
+The extension belongs to the project and acts in the two cloud accounts named when it is registered: the
+AWS account with the regional backbone and the Azure subscription with the AKS clusters' Terraform stacks.
+Porter configures the `aws` and `azurerm` providers for those accounts and passes their stack outputs in
+`var.porter`.
 
 ## Register it
 
 Prerequisites: an applied regional backbone in the AWS account, and AKS clusters created with
 "Create the network with Terraform" in one Azure location.
 
-Infrastructure → Terraform → the AWS account → Extensions → New extension:
+Infrastructure → Terraform → Extensions → New extension:
 
+- Cloud accounts: the AWS account and the Azure subscription
 - Repository: the repo holding this directory, path `terraform-extensions/aws-azure-interconnect`
 - Variables:
 
@@ -49,3 +51,17 @@ az network vnet-gateway list-bgp-peer-status -g <name>-hub -n <name>-vpngw -o ta
 
 where `<name>` is `aws-<region>--azure-<location>`. Then from an AKS pod, reach a datastore in the
 shared VPC by its private address.
+
+Through the API, the same registration is:
+
+```sh
+curl -X POST "$PORTER_URL/api/v2/projects/<project id>/terraform/extensions" \
+  -H "Authorization: Bearer $PORTER_TOKEN" -H 'Content-Type: application/json' -d '{
+    "name": "aws-azure-interconnect",
+    "cloud_account_ids": ["<aws cloud account id>", "<azure cloud account id>"],
+    "git_installation_id": <installation id>,
+    "repo_owner": "<owner>", "repo_name": "<repo>", "ref": "main",
+    "path": "terraform-extensions/aws-azure-interconnect",
+    "variables": { "aks_cluster_ids": ["<porter cluster id>"] }
+  }'
+```
