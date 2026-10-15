@@ -13,31 +13,22 @@ It creates the transit gateway and its shared VPC attachment, the Azure hub reso
 and VPN gateway, the four tunnels, the hub ↔ AKS VNet peerings, routes to each AKS VNet in the shared
 VPC's datastore route tables, and optional ingress rules on datastore security groups.
 
-The extension belongs to the project and acts in the two cloud accounts named when it is registered: the
-AWS account with the regional backbone and the Azure subscription with the AKS clusters' Terraform stacks.
-Porter configures the `aws` and `azurerm` providers for those accounts and passes their stack outputs in
-`var.porter`.
+`porter.tf` declares where the extension acts: the AWS account and region with the shared VPC, and the Azure
+subscription and location with the AKS clusters, by their Porter cloud account IDs, and the AKS clusters by
+their Porter cluster IDs. Porter configures the `aws` and `azurerm` providers for those two accounts and passes
+the outputs of its stacks there in `var.porter`. Edit `porter.tf` to point it at your own accounts, region,
+location and clusters.
 
 ## Register it
 
-Prerequisites: an applied regional backbone in the AWS account, and AKS clusters created with
+Prerequisites: an applied regional backbone in the AWS region, and AKS clusters created with
 "Create the network with Terraform" in one Azure location.
 
-Infrastructure → Terraform → Extensions → New extension:
+Infrastructure → Terraform → Extensions → New extension: pick the repository and branch, then this folder.
+Porter reads the scopes from `porter.tf` and grants the extension the two cloud accounts it declares.
 
-- Cloud accounts: the AWS account and the Azure subscription
-- Repository: the repo holding this directory, path `terraform-extensions/aws-azure-interconnect`
-- Variables:
-
-```json
-{
-  "aks_cluster_ids": ["<porter cluster id>"],
-  "datastore_security_groups": { "sg-0123456789abcdef0": 5432 }
-}
-```
-
-Optional: `aws_region` (default: the first regional backbone by name) and `hub_vnet_cidr` (default
-`100.127.0.0/24`; must not overlap the VPC or the AKS VNets).
+Optional, as variable defaults in `variables.tf`: `hub_vnet_cidr` (default `100.127.0.0/24`; must not overlap
+the VPC or the AKS VNets) and `datastore_security_groups`, as `{ "sg-0123456789abcdef0" = 5432 }`.
 
 The first apply takes 30 to 45 minutes; the Azure VPN gateway is most of it.
 
@@ -57,11 +48,7 @@ Through the API, the same registration is:
 ```sh
 curl -X POST "$PORTER_URL/api/v2/projects/<project id>/terraform/extensions" \
   -H "Authorization: Bearer $PORTER_TOKEN" -H 'Content-Type: application/json' -d '{
-    "name": "aws-azure-interconnect",
-    "cloud_account_ids": ["<aws cloud account id>", "<azure cloud account id>"],
-    "git_installation_id": <installation id>,
     "repo_owner": "<owner>", "repo_name": "<repo>", "ref": "main",
-    "path": "terraform-extensions/aws-azure-interconnect",
-    "variables": { "aks_cluster_ids": ["<porter cluster id>"] }
+    "path": "terraform-extensions/aws-azure-interconnect"
   }'
 ```

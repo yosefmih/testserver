@@ -1,23 +1,43 @@
 # Connects an AWS region's shared VPC to AKS clusters over an active-active, BGP-routed IPsec VPN:
 # a transit gateway attached to the shared VPC, an Azure hub VNet with an active-active VPN gateway
 # peered to each cluster's VNet, and four tunnels between them.
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 6.0"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+  }
+}
+
 locals {
-  aws_region     = try(var.inputs.aws_region, keys(var.porter.stacks.regional_backbones)[0])
-  shared_network = var.porter.stacks.regional_backbones[local.aws_region]
-  aks_clusters   = { for id in var.inputs.aks_cluster_ids : tostring(id) => var.porter.stacks.clusters[tostring(id)] }
+  # The AWS side is the one declared region whose shared network has applied
+  aws = one(flatten([
+    for cloud_account_id, account in var.porter.cloud_accounts : [
+      for region, stacks in account.regions : { region = region, shared_network = stacks.shared_network }
+      if stacks.shared_network != null
+    ] if account.cloud == "aws"
+  ]))
+
+  # The Azure side is every declared AKS cluster, all in one location
+  aks_clusters = merge(flatten([
+    for cloud_account_id, account in var.porter.cloud_accounts : [
+      for location, stacks in account.regions : {
+        for cluster_id, cluster in stacks.clusters : cluster_id => merge(cluster, { location = location })
+      }
+    ] if account.cloud == "azure"
+  ])...)
   azure_location = one(distinct([for cluster in values(local.aks_clusters) : cluster.location]))
 
-  name                      = "aws-${local.aws_region}--azure-${local.azure_location}"
-  hub_vnet_cidr             = try(var.inputs.hub_vnet_cidr, "100.127.0.0/24")
-  datastore_security_groups = try(var.inputs.datastore_security_groups, {})
+  name = "aws-${local.aws.region}--azure-${local.azure_location}"
 
   transit_gateway_asn = 64512
   vpn_gateway_asn     = 65515
 
-  # The shared VPC's datastore subnets hold the attachment ENIs and route to the AKS clusters
-  datastore_subnets = [for subnet in local.shared_network.subnets : subnet if subnet.service == "rds"]
-}
-
-provider "aws" {
-  region = local.aws_region
+  # The shared VPC's rds subnets, one per availability zone, hold the attachment ENIs and route to the AKS clusters
+  datastore_subnets = local.aws.shared_network.subnets.rds
 }

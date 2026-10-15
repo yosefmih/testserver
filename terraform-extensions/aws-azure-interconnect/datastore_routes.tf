@@ -2,20 +2,20 @@
 # transit gateway, and each datastore security group admits the AKS VNets on its port
 locals {
   datastore_routes = {
-    for pair in setproduct(local.datastore_subnets, values(local.aks_clusters)) :
-    "${pair[0].name}:${pair[1].cluster_id}" => {
-      route_table_id = local.shared_network.route_table_ids[pair[0].name]
-      cidr           = pair[1].vnet_cidr
+    for pair in setproduct(keys(local.datastore_subnets), keys(local.aks_clusters)) :
+    "${pair[0]}:${pair[1]}" => {
+      route_table_id = local.datastore_subnets[pair[0]].route_table_id
+      cidr           = local.aks_clusters[pair[1]].vnet.cidr
     }
   }
 
   datastore_ingress_rules = {
-    for pair in setproduct(keys(local.datastore_security_groups), values(local.aks_clusters)) :
-    "${pair[0]}:${pair[1].cluster_id}" => {
+    for pair in setproduct(keys(var.datastore_security_groups), keys(local.aks_clusters)) :
+    "${pair[0]}:${pair[1]}" => {
       security_group_id = pair[0]
-      port              = local.datastore_security_groups[pair[0]]
-      cidr              = pair[1].vnet_cidr
-      cluster_name      = pair[1].cluster_name
+      port              = var.datastore_security_groups[pair[0]]
+      cidr              = local.aks_clusters[pair[1]].vnet.cidr
+      cluster_name      = local.aks_clusters[pair[1]].name
     }
   }
 }
@@ -23,6 +23,7 @@ locals {
 resource "aws_route" "datastore_to_aks_cluster" {
   for_each = local.datastore_routes
 
+  region                 = local.aws.region
   route_table_id         = each.value.route_table_id
   destination_cidr_block = each.value.cidr
   transit_gateway_id     = aws_ec2_transit_gateway.hub.id
@@ -33,6 +34,7 @@ resource "aws_route" "datastore_to_aks_cluster" {
 resource "aws_vpc_security_group_ingress_rule" "aks_cluster_to_datastore" {
   for_each = local.datastore_ingress_rules
 
+  region            = local.aws.region
   security_group_id = each.value.security_group_id
   cidr_ipv4         = each.value.cidr
   ip_protocol       = "tcp"

@@ -26,6 +26,7 @@ locals {
 resource "aws_customer_gateway" "azure" {
   for_each = local.vpn_gateway_instances
 
+  region     = local.aws.region
   bgp_asn    = local.vpn_gateway_asn
   ip_address = azurerm_public_ip.vpn_gateway[each.key].ip_address
   type       = "ipsec.1"
@@ -36,6 +37,7 @@ resource "aws_customer_gateway" "azure" {
 resource "aws_vpn_connection" "azure" {
   for_each = local.vpn_gateway_instances
 
+  region              = local.aws.region
   transit_gateway_id  = aws_ec2_transit_gateway.hub.id
   customer_gateway_id = aws_customer_gateway.azure[each.key].id
   type                = "ipsec.1"

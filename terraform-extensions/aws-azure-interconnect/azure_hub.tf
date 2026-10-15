@@ -16,14 +16,14 @@ resource "azurerm_virtual_network" "hub" {
   name                = "${local.name}-hub"
   resource_group_name = azurerm_resource_group.hub.name
   location            = azurerm_resource_group.hub.location
-  address_space       = [local.hub_vnet_cidr]
+  address_space       = [var.hub_vnet_cidr]
 }
 
 resource "azurerm_subnet" "gateway" {
   name                 = "GatewaySubnet"
   resource_group_name  = azurerm_resource_group.hub.name
   virtual_network_name = azurerm_virtual_network.hub.name
-  address_prefixes     = [cidrsubnet(local.hub_vnet_cidr, 27 - tonumber(split("/", local.hub_vnet_cidr)[1]), 0)]
+  address_prefixes     = [cidrsubnet(var.hub_vnet_cidr, 27 - tonumber(split("/", var.hub_vnet_cidr)[1]), 0)]
 }
 
 resource "azurerm_public_ip" "vpn_gateway" {

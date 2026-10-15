@@ -21,7 +21,7 @@ output "tunnels" {
 output "reachable" {
   description = "What each side can reach once BGP is up"
   value = {
-    from_aws   = [for cluster in values(local.aks_clusters) : cluster.vnet_cidr]
-    from_azure = local.shared_network.vpc_cidr
+    from_aws   = [for cluster in values(local.aks_clusters) : cluster.vnet.cidr]
+    from_azure = local.aws.shared_network.vpc.cidr
   }
 }
