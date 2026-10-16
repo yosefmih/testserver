@@ -1,0 +1,41 @@
+# In a real IaC repo this file sits at the repository root. Porter adds it when it creates the repo.
+#
+# Pull requests get a plan for every stack they touch, posted back as a check. Merging to main applies
+# them: stacks under porter/ apply straight away, stacks under custom/ wait for approval in Porter.
+name: porter
+
+on:
+  pull_request:
+    paths: ["porter/**", "custom/**"]
+  push:
+    branches: [main]
+    paths: ["porter/**", "custom/**"]
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  porter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Porter
+        uses: porter-dev/setup-porter@v0.1.0
+
+      # Porter fetches this commit itself and runs each changed stack in the cloud account's CodeBuild
+      # project; nothing here runs Terraform or holds cloud credentials.
+      - name: Plan or apply
+        env:
+          PORTER_PROJECT: "5"
+          PORTER_TOKEN: ${{ secrets.PORTER_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            porter terraform plan --commit "${{ github.event.pull_request.head.sha }}" --base "${{ github.event.pull_request.base.sha }}"
+          else
+            porter terraform apply --commit "${{ github.sha }}" --base "${{ github.event.before }}"
+          fi

@@ -17,7 +17,7 @@ set -euo pipefail
 : "${ECR_REPO:=vllm-openai}"
 : "${VLLM_BASE_TAG:=v0.29.0}"
 : "${IMAGE_TAG:=${VLLM_BASE_TAG}-paddleocr-encoder-cudagraph}"
-: "${VLLM_SRC:=$(cd "$(dirname "$0")/../../../oss-deps/vllm" && pwd)}"
+: "${VLLM_SRC:?set VLLM_SRC to a vLLM checkout containing your patched paddleocr_vl.py}"
 : "${NAMESPACE:=default}"
 : "${POD:=vllm-image-build}"
 

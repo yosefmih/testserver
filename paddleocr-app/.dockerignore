@@ -6,3 +6,11 @@ backend/data
 charts
 scripts
 *.md
+
+.git
+.env
+.env.*
+.values*.yaml
+benchmarks
+.claude
+.DS_Store

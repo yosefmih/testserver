@@ -1,5 +1,5 @@
 # Images built from the PaddleOCR repo's deploy/paddleocr_vl_docker/hps and mirrored into ECR.
-registry: 992382605253.dkr.ecr.us-east-1.amazonaws.com
+registry: example.invalid/paddleocr
 imagePullSecrets: []
 
 # VRAM budget on an L4 (22.03 GiB usable), all numbers measured on fir-fir:
@@ -39,7 +39,7 @@ pipeline:
   # Triton dynamic batching of layout-parsing requests per instance execution.
   maxBatchSize: 8
   # How long Triton waits to gather several requests into one call to the pipeline, which
-  # runs them as one multi-page job. 0 dispatches every request alone to a free instance.
+  # runs them as one multi-page job. 0 removes the collection delay but can still batch queued requests.
   batchQueueDelayMs: 0
   gpuMode: shared
   # Environment for the Triton container and, by inheritance, every pipeline instance.

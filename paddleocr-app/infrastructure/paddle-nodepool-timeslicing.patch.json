@@ -1,0 +1,11 @@
+{
+  "spec": {
+    "template": {
+      "metadata": {
+        "labels": {
+          "nvidia.com/device-plugin.config": "paddle-two"
+        }
+      }
+    }
+  }
+}

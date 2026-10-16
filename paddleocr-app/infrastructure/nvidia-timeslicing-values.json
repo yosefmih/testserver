@@ -1,0 +1,9 @@
+{
+  "config": {
+    "default": "exclusive",
+    "map": {
+      "exclusive": "version: v1\nflags:\n  migStrategy: none\n",
+      "paddle-two": "version: v1\nflags:\n  migStrategy: none\nsharing:\n  timeSlicing:\n    renameByDefault: false\n    failRequestsGreaterThanOne: true\n    resources:\n    - name: nvidia.com/gpu\n      replicas: 2\n"
+    }
+  }
+}
