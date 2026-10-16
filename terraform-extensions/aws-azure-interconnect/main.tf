@@ -1,6 +1,6 @@
-# Connects an AWS region's shared VPC to AKS clusters over an active-active, BGP-routed IPsec VPN:
-# a transit gateway attached to the shared VPC, an Azure hub VNet with an active-active VPN gateway
-# peered to each cluster's VNet, and four tunnels between them.
+# Connects an AWS region's shared VPC and EKS clusters to AKS clusters over an active-active, BGP-routed
+# IPsec VPN: a transit gateway attached to the shared VPC and each EKS cluster's VPC, an Azure hub VNet
+# with an active-active VPN gateway peered to each AKS cluster's VNet, and four tunnels between them.
 terraform {
   required_providers {
     aws = {
@@ -15,13 +15,14 @@ terraform {
 }
 
 locals {
-  # The AWS side is the one declared region whose shared network has applied
+  # The AWS side is the one declared region whose shared network has applied, with its declared EKS clusters
   aws = one(flatten([
     for cloud_account_id, account in var.porter.cloud_accounts : [
-      for region, stacks in account.regions : { region = region, shared_network = stacks.shared_network }
+      for region, stacks in account.regions : { region = region, shared_network = stacks.shared_network, clusters = stacks.clusters }
       if stacks.shared_network != null
     ] if account.cloud == "aws"
   ]))
+  eks_clusters = local.aws.clusters
 
   # The Azure side is every declared AKS cluster, all in one location
   aks_clusters = merge(flatten([

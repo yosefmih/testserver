@@ -22,6 +22,6 @@ output "reachable" {
   description = "What each side can reach once BGP is up"
   value = {
     from_aws   = [for cluster in values(local.aks_clusters) : cluster.vnet.cidr]
-    from_azure = local.aws.shared_network.vpc.cidr
+    from_azure = concat([local.aws.shared_network.vpc.cidr], [for cluster in values(local.eks_clusters) : cluster.vpc.cidr])
   }
 }
