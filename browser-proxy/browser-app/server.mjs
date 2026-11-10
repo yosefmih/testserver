@@ -6,10 +6,11 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { chromium as playwright } from "playwright-core";
 
 const listenPort = Number(process.env.PORT ?? 8080);
 const maxBrowsers = Number(process.env.MAX_BROWSERS ?? 2);
-const idleCloseMs = Number(process.env.BROWSER_IDLE_CLOSE_SECONDS ?? 30) * 1000;
+const idleCloseMs = Number(process.env.BROWSER_IDLE_CLOSE_SECONDS ?? 300) * 1000;
 const browserToken = Buffer.from(requiredEnv("BROWSER_TOKEN"));
 const display = ":99";
 const chromiumFlags = [
@@ -29,16 +30,16 @@ const chromiumFlags = [
   "--lang=en-US",
   "--password-store=basic",
 ];
+const pageActions = { goto, text, snapshot, screenshot, click, fill, press, eval: evaluate };
 const browsersBySession = new Map();
 
 startVirtualDisplay();
 
 const server = http.createServer((request, response) => {
-  if (request.url === "/health") return response.writeHead(200).end("ok\n");
-  response.writeHead(404).end();
+  handleHttpRequest(request, response).catch((error) => sendJson(response, 500, { error: error.message }));
 });
 server.on("upgrade", (request, client, head) => {
-  connectClient(request, client, head).catch((error) => {
+  connectDevToolsClient(request, client, head).catch((error) => {
     console.error(`connection failed: ${error.message}`);
     rejectUpgrade(client, 502, "Bad Gateway");
   });
@@ -53,7 +54,106 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
   });
 }
 
-async function connectClient(request, client, head) {
+async function handleHttpRequest(request, response) {
+  const url = new URL(request.url, "http://browser-service");
+  if (url.pathname === "/health") return sendText(response, 200, "ok\n");
+  if (!hasBrowserToken(request, url)) return sendJson(response, 401, { error: "missing or wrong token" });
+
+  const [, resource, sessionName, actionName] = url.pathname.split("/");
+  if (resource !== "sessions" || !sessionName) return sendJson(response, 404, { error: "use /sessions/<name>/<action>" });
+  const session = `/${sessionName}`;
+
+  if (request.method === "DELETE" && !actionName) {
+    const browser = browsersBySession.get(session);
+    if (browser) await closeBrowser(browser);
+    return sendJson(response, 200, { closed: Boolean(browser) });
+  }
+
+  const action = pageActions[actionName];
+  if (!action) return sendJson(response, 404, { error: `unknown action; use one of: ${Object.keys(pageActions).join(", ")}` });
+  const params = { ...Object.fromEntries(url.searchParams), ...(await readParams(request)) };
+  delete params.token;
+
+  const browser = browserForSession(session);
+  if (!browser) return sendJson(response, 503, { error: `all ${maxBrowsers} browsers are in use` });
+  try {
+    const result = await runInSession(browser, (page) => action(page, params));
+    response.writeHead(result.status, { "content-type": result.contentType }).end(result.body);
+  } catch (error) {
+    const message = error.message.split("\n")[0];
+    sendJson(response, message.includes("net::ERR_") ? 502 : 422, { error: message });
+  }
+}
+
+async function goto(page, { url }) {
+  if (!url) throw new Error("url is required");
+  const response = await page.goto(url, { waitUntil: "load", timeout: 60000 });
+  return json({ url: page.url(), status: response?.status() ?? null, title: await page.title() });
+}
+
+async function text(page) {
+  return plain(`${page.url()}\n\n${await page.locator("body").innerText()}`);
+}
+
+async function snapshot(page) {
+  return plain(`${page.url()}\n\n${await page.locator("body").ariaSnapshot()}`);
+}
+
+async function screenshot(page, { full }) {
+  return { status: 200, contentType: "image/png", body: await page.screenshot({ fullPage: full === "true" }) };
+}
+
+async function click(page, { selector }) {
+  if (!selector) throw new Error("selector is required");
+  await page.locator(selector).first().click({ timeout: 15000 });
+  return pageStateAfterAction(page);
+}
+
+async function fill(page, { selector, text: value }) {
+  if (!selector) throw new Error("selector is required");
+  await page.locator(selector).first().fill(value ?? "", { timeout: 15000 });
+  return pageStateAfterAction(page);
+}
+
+async function press(page, { key }) {
+  if (!key) throw new Error("key is required");
+  await page.keyboard.press(key);
+  return pageStateAfterAction(page);
+}
+
+async function evaluate(page, { script }) {
+  if (!script) throw new Error("script is required");
+  return json({ value: await page.evaluate(script) });
+}
+
+async function pageStateAfterAction(page) {
+  await sleep(500);
+  await page.waitForLoadState("load", { timeout: 15000 }).catch(() => {});
+  return json({ url: page.url(), title: await page.title() });
+}
+
+async function runInSession(browser, run) {
+  clearTimeout(browser.idleTimer);
+  browser.queue = (browser.queue ?? Promise.resolve()).catch(() => {}).then(async () => run(await activePage(browser)));
+  try {
+    return await browser.queue;
+  } finally {
+    if (browser.clients.size === 0) scheduleIdleClose(browser);
+  }
+}
+
+async function activePage(browser) {
+  const { devtools } = await browser.ready;
+  browser.automation ??= playwright.connectOverCDP(`ws://127.0.0.1:${devtools.port}${devtools.path}`);
+  const automation = await browser.automation.catch((error) => {
+    browser.automation = undefined;
+    throw error;
+  });
+  const context = automation.contexts()[0];
+  return context.pages().at(-1) ?? (await context.newPage());
+}
+
+async function connectDevToolsClient(request, client, head) {
   client.on("error", () => client.destroy());
   const url = new URL(request.url, "http://browser-service");
   if (!hasBrowserToken(request, url)) return rejectUpgrade(client, 401, "Unauthorized");
@@ -82,7 +182,7 @@ async function connectClient(request, client, head) {
   upstream.on("error", () => client.destroy());
   upstream.once("close", () => client.destroy());
   client.once("close", () => upstream.destroy());
-  console.log(`session ${browser.session}: client connected (${browser.clients.size} open)`);
+  console.log(`session ${browser.session}: devtools client connected (${browser.clients.size} open)`);
 }
 
 function browserForSession(session) {
@@ -99,8 +199,13 @@ function browserForSession(session) {
 
 function releaseClient(browser, client) {
   browser.clients.delete(client);
-  console.log(`session ${browser.session}: client disconnected (${browser.clients.size} open)`);
-  if (browser.clients.size === 0) browser.idleTimer = setTimeout(() => closeBrowser(browser), idleCloseMs);
+  console.log(`session ${browser.session}: devtools client disconnected (${browser.clients.size} open)`);
+  if (browser.clients.size === 0) scheduleIdleClose(browser);
+}
+
+function scheduleIdleClose(browser) {
+  clearTimeout(browser.idleTimer);
+  browser.idleTimer = setTimeout(() => closeBrowser(browser), idleCloseMs);
 }
 
 async function launchChromium(browser) {
@@ -146,6 +251,7 @@ async function closeBrowser(browser) {
     clearTimeout(browser.idleTimer);
     browsersBySession.delete(browser.session);
     for (const client of browser.clients) client.destroy();
+    await browser.automation?.then((automation) => automation.close()).catch(() => {});
     if (browser.chromium) {
       killProcessGroup(browser.chromium, "SIGTERM");
       const forceKill = setTimeout(() => killProcessGroup(browser.chromium, "SIGKILL"), 5000);
@@ -165,9 +271,45 @@ function killProcessGroup(child, signal) {
 }
 
 function hasBrowserToken(request, url) {
-  const bearer = request.headers.authorization?.replace(/^Bearer /, "");
-  const presented = Buffer.from(url.searchParams.get("token") ?? bearer ?? "");
+  const presented = Buffer.from(presentedToken(request, url));
   return presented.length === browserToken.length && timingSafeEqual(presented, browserToken);
+}
+
+function presentedToken(request, url) {
+  const [scheme, credentials = ""] = (request.headers.authorization ?? "").split(" ");
+  if (scheme === "Bearer") return credentials;
+  if (scheme === "Basic") return Buffer.from(credentials, "base64").toString().split(":").slice(1).join(":");
+  return url.searchParams.get("token") ?? "";
+}
+
+async function readParams(request) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 1024 * 1024) throw new Error("request body over 1 MB");
+    chunks.push(chunk);
+  }
+  const body = Buffer.concat(chunks).toString();
+  if (!body) return {};
+  if (request.headers["content-type"]?.startsWith("application/json")) return JSON.parse(body);
+  return Object.fromEntries(new URLSearchParams(body));
+}
+
+function json(value) {
+  return { status: 200, contentType: "application/json", body: JSON.stringify(value) };
+}
+
+function plain(body) {
+  return { status: 200, contentType: "text/plain; charset=utf-8", body };
+}
+
+function sendJson(response, status, value) {
+  response.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(value));
+}
+
+function sendText(response, status, body) {
+  response.writeHead(status, { "content-type": "text/plain" }).end(body);
 }
 
 function rejectUpgrade(client, status, reason) {

@@ -10,7 +10,11 @@ RUN apt-get update \
 
 COPY --from=gost /bin/gost /usr/local/bin/gost
 COPY chromium-policy.json /etc/chromium/policies/managed/browser-app.json
-COPY entrypoint.sh egress-config.mjs server.mjs /app/
+
+WORKDIR /app
+COPY package.json ./
+RUN npm install --omit=dev --no-audit --no-fund
+COPY entrypoint.sh egress-config.mjs server.mjs ./
 
 EXPOSE 8080
 ENTRYPOINT ["bash", "/app/entrypoint.sh"]
