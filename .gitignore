@@ -42,3 +42,8 @@ CLAUDE.md
 
 audio_worker_c/build/
 spec/*
+.venv/
+porter-python-sdk/
+browser-proxy/*
+!browser-proxy/browser-app/
+!browser-proxy/qm-skill/
