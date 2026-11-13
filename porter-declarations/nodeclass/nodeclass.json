@@ -1,0 +1,25 @@
+{
+ "amiFamilies": [
+  "AL2023"
+ ],
+ "amiAliasPrefixes": [
+  "al2023@"
+ ],
+ "amiNamePrefixes": [
+  "amazon-eks-node-al2023-"
+ ],
+ "amiOwners": [
+  "amazon"
+ ],
+ "roles": [
+  "porter-node-manager"
+ ],
+ "metadataOptions": {
+  "httpTokens": "required",
+  "httpPutResponseHopLimit": 1
+ },
+ "userData": [
+  "MIME-Version: 1.0\nContent-Type: multipart/mixed; boundary=\"BOUNDARY\"\n\n--BOUNDARY\nContent-Type: application/node.eks.aws\n\n---\napiVersion: node.eks.aws/v1alpha1\nkind: NodeConfig\nspec:\n  kubelet:\n    config:\n      registryPullQPS: 20\n      registryBurst: 40\n\n--BOUNDARY\nContent-Type: text/x-shellscript; charset=\"us-ascii\"\n\n#!/bin/bash\nset -e\ncat > /etc/modprobe.d/disable-algif.conf << 'EOF'\ninstall algif_aead /bin/false\nEOF\nchmod 0644 /etc/modprobe.d/disable-algif.conf\nmodprobe -r algif_aead 2>/dev/null || true\n\n--BOUNDARY--",
+  "MIME-Version: 1.0\nContent-Type: multipart/mixed; boundary=\"BOUNDARY\"\n\n--BOUNDARY\nContent-Type: application/node.eks.aws\n\n---\napiVersion: node.eks.aws/v1alpha1\nkind: NodeConfig\nspec:\n  kubelet:\n    config:\n      registryPullQPS: 20\n      registryBurst: 40\n\n--BOUNDARY--"
+ ]
+}

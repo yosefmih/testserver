@@ -1,0 +1,24 @@
+{
+ "containers": {
+  "loki": [
+   {
+    "argNames": [
+     "-config.file",
+     "-target"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "docker.io/grafana/loki"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "porter-agent-system",
+ "serviceAccount": "loki"
+}

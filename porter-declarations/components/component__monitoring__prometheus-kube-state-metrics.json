@@ -1,0 +1,26 @@
+{
+ "containers": {
+  "kube-state-metrics": [
+   {
+    "argNames": [
+     "--custom-resource-state-config-file",
+     "--metric-labels-allowlist",
+     "--port",
+     "--resources"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "registry.k8s.io/kube-state-metrics/kube-state-metrics"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "monitoring",
+ "serviceAccount": "prometheus-kube-state-metrics"
+}

@@ -1,0 +1,27 @@
+{
+ "containers": {
+  "node-cache": [
+   {
+    "argNames": [
+     "-conf",
+     "-localip",
+     "-upstreamsvc"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "k8s.gcr.io/dns/k8s-dns-node-cache"
+    ],
+    "privileged": true
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": true,
+ "hostPID": false,
+ "hostPaths": [
+  "/run/xtables.lock"
+ ],
+ "namespace": "kube-system",
+ "serviceAccount": "node-local-dns"
+}

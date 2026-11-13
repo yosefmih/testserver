@@ -1,0 +1,27 @@
+{
+ "containers": {
+  "promtail": [
+   {
+    "argNames": [
+     "-config.file"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "docker.io/grafana/promtail"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [
+  "/run/promtail",
+  "/var/lib/docker/containers",
+  "/var/log/pods"
+ ],
+ "namespace": "porter-agent-system",
+ "serviceAccount": "porter-agent-promtail"
+}

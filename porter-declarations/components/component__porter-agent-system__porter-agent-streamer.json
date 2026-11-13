@@ -1,0 +1,23 @@
+{
+ "containers": {
+  "manager": [
+   {
+    "argNames": [
+     "streamer"
+    ],
+    "awsManaged": false,
+    "entrypoint": "/porter/agent",
+    "images": [
+     "ghcr.io/porter-dev/releases/porter-agent"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "porter-agent-system",
+ "serviceAccount": "porter-agent-streamer"
+}

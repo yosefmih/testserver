@@ -1,0 +1,21 @@
+{
+ "containers": {
+  "downward-api": [
+   {
+    "argNames": [],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "ghcr.io/porter-dev/downward-api-init"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "*",
+ "serviceAccount": "*"
+}

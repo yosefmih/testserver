@@ -1,0 +1,25 @@
+{
+ "containers": {
+  "kube-proxy": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/kube-proxy"
+    ],
+    "privileged": true
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": true,
+ "hostPID": false,
+ "hostPaths": [
+  "/lib/modules",
+  "/run/xtables.lock",
+  "/var/log"
+ ],
+ "namespace": "kube-system",
+ "serviceAccount": "kube-proxy"
+}

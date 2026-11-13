@@ -1,0 +1,25 @@
+{
+ "containers": {
+  "descheduler": [
+   {
+    "argNames": [
+     "--descheduling-interval",
+     "--policy-config-file",
+     "--v"
+    ],
+    "awsManaged": false,
+    "entrypoint": "/bin/descheduler",
+    "images": [
+     "registry.k8s.io/descheduler/descheduler"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "kube-system",
+ "serviceAccount": "descheduler"
+}

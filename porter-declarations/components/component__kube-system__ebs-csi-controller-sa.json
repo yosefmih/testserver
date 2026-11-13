@@ -1,0 +1,76 @@
+{
+ "containers": {
+  "csi-attacher": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/csi-attacher"
+    ],
+    "privileged": false
+   }
+  ],
+  "csi-provisioner": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/csi-provisioner"
+    ],
+    "privileged": false
+   }
+  ],
+  "csi-resizer": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/csi-resizer"
+    ],
+    "privileged": false
+   }
+  ],
+  "csi-snapshotter": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/csi-snapshotter"
+    ],
+    "privileged": false
+   }
+  ],
+  "ebs-plugin": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/aws-ebs-csi-driver"
+    ],
+    "privileged": false
+   }
+  ],
+  "liveness-probe": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/livenessprobe"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "kube-system",
+ "serviceAccount": "ebs-csi-controller-sa"
+}

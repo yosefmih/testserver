@@ -1,0 +1,29 @@
+{
+ "containers": {
+  "aws-cluster-autoscaler": [
+   {
+    "argNames": [
+     "--cloud-provider",
+     "--logtostderr",
+     "--max-graceful-termination-sec",
+     "--namespace",
+     "--node-group-auto-discovery",
+     "--stderrthreshold",
+     "--v"
+    ],
+    "awsManaged": false,
+    "entrypoint": "./cluster-autoscaler",
+    "images": [
+     "registry.k8s.io/autoscaling/cluster-autoscaler"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "kube-system",
+ "serviceAccount": "cluster-autoscaler-aws-cluster-autoscaler-chart"
+}

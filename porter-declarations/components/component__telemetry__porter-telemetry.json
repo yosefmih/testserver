@@ -1,0 +1,23 @@
+{
+ "containers": {
+  "opentelemetry-collector": [
+   {
+    "argNames": [
+     "--config"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "telemetry",
+ "serviceAccount": "porter-telemetry"
+}

@@ -1,0 +1,50 @@
+"on":
+    workflow_dispatch: {}
+    push:
+        branches:
+            - main
+        paths:
+            - porter-declarations/**
+            - .github/workflows/publish-porter-declarations.yml
+name: Publish Porter declarations
+permissions:
+    contents: read
+    id-token: write
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        env:
+            DECLARATIONS_REPOSITORY: 319490691152.dkr.ecr.us-east-1.amazonaws.com/porter-declarations
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+            - name: Assume the registry role
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                role-to-assume: arn:aws:iam::319490691152:role/testserver-ci-attestations
+                aws-region: us-east-1
+            - name: Log in to the registry
+              uses: aws-actions/amazon-ecr-login@v2
+            - name: Install cosign
+              uses: sigstore/cosign-installer@v3
+              with:
+                cosign-release: v2.6.1
+            - name: Install crane
+              uses: imjasonh/setup-crane@v0.4
+            - name: Publish and attest every declaration
+              run: |
+                set -euo pipefail
+                for declaration in porter-declarations/*/*.json; do
+                  tag="$(basename "$declaration" .json)"
+                  kind="$(basename "$(dirname "$declaration")")"
+                  predicate_type="https://porter.run/attestations/component/v1"
+                  if [ "$kind" = "nodeclass" ]; then
+                    predicate_type="https://porter.run/attestations/nodeclass/v1"
+                  fi
+                  work="$(mktemp -d)"
+                  cp "$declaration" "$work/declaration.json"
+                  tar -cf "$work/layer.tar" -C "$work" declaration.json
+                  reference="$(crane append -f "$work/layer.tar" -t "$DECLARATIONS_REPOSITORY:$tag" | tail -1)"
+                  cosign attest --yes --new-bundle-format --type "$predicate_type" --predicate "$declaration" "$reference"
+                  echo "published $tag as $reference"
+                done

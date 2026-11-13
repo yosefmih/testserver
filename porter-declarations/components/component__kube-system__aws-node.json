@@ -1,0 +1,50 @@
+{
+ "containers": {
+  "aws-eks-nodeagent": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/amazon/aws-network-policy-agent"
+    ],
+    "privileged": true
+   }
+  ],
+  "aws-node": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/amazon-k8s-cni"
+    ],
+    "privileged": false
+   }
+  ],
+  "aws-vpc-cni-init": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/amazon-k8s-cni-init"
+    ],
+    "privileged": true
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": true,
+ "hostPID": false,
+ "hostPaths": [
+  "/etc/cni/net.d",
+  "/opt/cni/bin",
+  "/run/xtables.lock",
+  "/sys/fs/bpf",
+  "/var/log/aws-routed-eni",
+  "/var/run/aws-node"
+ ],
+ "namespace": "kube-system",
+ "serviceAccount": "aws-node"
+}

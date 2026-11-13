@@ -1,0 +1,24 @@
+{
+ "containers": {
+  "cert-manager-cainjector": [
+   {
+    "argNames": [
+     "--leader-election-namespace",
+     "--v"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "quay.io/jetstack/cert-manager-cainjector"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "cert-manager",
+ "serviceAccount": "cert-manager-cainjector"
+}

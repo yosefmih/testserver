@@ -1,0 +1,21 @@
+{
+ "containers": {
+  "eviction-webhook": [
+   {
+    "argNames": [],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "public.ecr.aws/n9k9w4b1/eviction-webhook"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "porter-agent-system",
+ "serviceAccount": "porter-agent-eviction-webhook"
+}

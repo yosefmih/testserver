@@ -1,0 +1,50 @@
+{
+ "containers": {
+  "csi-driver-registrar": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/csi-node-driver-registrar"
+    ],
+    "privileged": false
+   }
+  ],
+  "efs-plugin": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/aws-efs-csi-driver"
+    ],
+    "privileged": true
+   }
+  ],
+  "liveness-probe": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/livenessprobe"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": true,
+ "hostPID": false,
+ "hostPaths": [
+  "/etc/amazon/efs",
+  "/var/amazon/efs",
+  "/var/lib/kubelet",
+  "/var/lib/kubelet/plugins/efs.csi.aws.com/",
+  "/var/lib/kubelet/plugins_registry/",
+  "/var/run/efs"
+ ],
+ "namespace": "kube-system",
+ "serviceAccount": "efs-csi-node-sa"
+}

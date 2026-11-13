@@ -1,0 +1,21 @@
+{
+ "containers": {
+  "controller": [
+   {
+    "argNames": [],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "public.ecr.aws/karpenter/controller"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "kube-system",
+ "serviceAccount": "karpenter"
+}

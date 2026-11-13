@@ -1,0 +1,32 @@
+{
+ "containers": {
+  "controller": [
+   {
+    "argNames": [
+     "--configmap",
+     "--controller-class",
+     "--election-id",
+     "--enable-metrics",
+     "--ingress-class",
+     "--publish-service",
+     "--validating-webhook",
+     "--validating-webhook-certificate",
+     "--validating-webhook-key",
+     "/nginx-ingress-controller"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "ghcr.io/porter-dev/ingress-nginx-controller"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "ingress-nginx",
+ "serviceAccount": "ingress-nginx"
+}

@@ -1,0 +1,39 @@
+{
+ "containers": {
+  "alertmanager": [
+   {
+    "argNames": [
+     "--config.file",
+     "--storage.path"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "quay.io/prometheus/alertmanager"
+    ],
+    "privileged": false
+   }
+  ],
+  "alertmanager-configmap-reload": [
+   {
+    "argNames": [
+     "--listen-address",
+     "--reload-url",
+     "--watched-dir"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "quay.io/prometheus-operator/prometheus-config-reloader"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "monitoring",
+ "serviceAccount": "prometheus-alertmanager"
+}

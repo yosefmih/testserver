@@ -1,0 +1,27 @@
+{
+ "containers": {
+  "metrics-server": [
+   {
+    "argNames": [
+     "--cert-dir",
+     "--kubelet-preferred-address-types",
+     "--kubelet-use-node-status-port",
+     "--metric-resolution",
+     "--secure-port"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "porterhub/metrics-server"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "kube-system",
+ "serviceAccount": "metrics-server"
+}

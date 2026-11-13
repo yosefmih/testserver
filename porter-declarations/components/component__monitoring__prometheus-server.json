@@ -1,0 +1,44 @@
+{
+ "containers": {
+  "prometheus-server": [
+   {
+    "argNames": [
+     "--config.file",
+     "--storage.tsdb.path",
+     "--storage.tsdb.retention.time",
+     "--web.console.libraries",
+     "--web.console.templates",
+     "--web.enable-lifecycle",
+     "--web.enable-remote-write-receiver"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "quay.io/prometheus/prometheus"
+    ],
+    "privileged": false
+   }
+  ],
+  "prometheus-server-configmap-reload": [
+   {
+    "argNames": [
+     "--listen-address",
+     "--reload-url",
+     "--watched-dir"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "quay.io/prometheus-operator/prometheus-config-reloader"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "monitoring",
+ "serviceAccount": "prometheus-server"
+}

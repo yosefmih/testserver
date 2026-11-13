@@ -1,0 +1,27 @@
+{
+ "containers": {
+  "cert-manager-webhook": [
+   {
+    "argNames": [
+     "--dynamic-serving-ca-secret-name",
+     "--dynamic-serving-ca-secret-namespace",
+     "--dynamic-serving-dns-names",
+     "--secure-port",
+     "--v"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "quay.io/jetstack/cert-manager-webhook"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "cert-manager",
+ "serviceAccount": "cert-manager-webhook"
+}

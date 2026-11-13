@@ -1,0 +1,32 @@
+{
+ "containers": {
+  "manager": [
+   {
+    "argNames": [],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "ghcr.io/porter-dev/releases/porter-agent"
+    ],
+    "privileged": false
+   },
+   {
+    "argNames": [
+     "watchman"
+    ],
+    "awsManaged": false,
+    "entrypoint": "/porter/agent",
+    "images": [
+     "ghcr.io/porter-dev/releases/porter-agent"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "porter-agent-system",
+ "serviceAccount": "porter-agent-controller-manager"
+}

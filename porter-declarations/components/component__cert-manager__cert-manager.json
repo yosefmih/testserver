@@ -1,0 +1,28 @@
+{
+ "containers": {
+  "cert-manager-controller": [
+   {
+    "argNames": [
+     "--acme-http01-solver-image",
+     "--cluster-resource-namespace",
+     "--config",
+     "--leader-election-namespace",
+     "--max-concurrent-challenges",
+     "--v"
+    ],
+    "awsManaged": false,
+    "entrypoint": "",
+    "images": [
+     "quay.io/jetstack/cert-manager-controller"
+    ],
+    "privileged": false
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": false,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "cert-manager",
+ "serviceAccount": "cert-manager"
+}

@@ -1,0 +1,32 @@
+{
+ "containers": {
+  "eks-pod-identity-agent": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/eks-pod-identity-agent"
+    ],
+    "privileged": false
+   }
+  ],
+  "eks-pod-identity-agent-init": [
+   {
+    "argNames": [],
+    "awsManaged": true,
+    "entrypoint": "",
+    "images": [
+     "602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/eks-pod-identity-agent"
+    ],
+    "privileged": true
+   }
+  ]
+ },
+ "hostIPC": false,
+ "hostNetwork": true,
+ "hostPID": false,
+ "hostPaths": [],
+ "namespace": "kube-system",
+ "serviceAccount": "default"
+}
