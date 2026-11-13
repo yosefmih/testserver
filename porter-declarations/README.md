@@ -8,3 +8,4 @@ admission policies verify that identity and compare what Porter applies against 
 - `components/component__<namespace>__<service account>.json`: the containers a system service account may run.
 - `nodeclass/nodeclass.json`: the boot documents, image owners and roles a node class may use.
 - `app/app-injected.json`: the containers Porter adds to customer app pods.
+- `settings/settings__<namespace>__<config map>.json`: the nginx snippets an ingress controller's settings may carry.

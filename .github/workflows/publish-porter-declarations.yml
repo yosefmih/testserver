@@ -41,6 +41,9 @@ jobs:
                   if [ "$kind" = "nodeclass" ]; then
                     predicate_type="https://porter.run/attestations/nodeclass/v1"
                   fi
+                  if [ "$kind" = "settings" ]; then
+                    predicate_type="https://porter.run/attestations/settings/v1"
+                  fi
                   work="$(mktemp -d)"
                   cp "$declaration" "$work/declaration.json"
                   tar -cf "$work/layer.tar" -C "$work" declaration.json

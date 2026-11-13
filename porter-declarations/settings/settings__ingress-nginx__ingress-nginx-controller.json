@@ -1,0 +1,6 @@
+{
+  "configMap": {"namespace": "ingress-nginx", "name": "ingress-nginx-controller"},
+  "data": {
+    "http-snippet": "more_set_headers \"X-Porter-Declared-Settings: 1\";"
+  }
+}
