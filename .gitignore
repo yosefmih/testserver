@@ -47,3 +47,5 @@ porter-python-sdk/
 browser-proxy/*
 !browser-proxy/browser-app/
 !browser-proxy/qm-skill/
+
+sandbox-demo/
