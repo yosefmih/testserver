@@ -6,6 +6,13 @@ name: Deploy to test-restricted
 jobs:
     porter-deploy:
         runs-on: ubuntu-latest
+        env:
+            PORTER_APP_NAME: test-restricted
+            PORTER_CLUSTER: "60"
+            PORTER_DEPLOYMENT_TARGET_ID: e0b71efd-9115-4f05-89af-db09ad459d1c
+            PORTER_HOST: https://yosefdev2.withporter.run
+            PORTER_PROJECT: "5"
+            PORTER_TOKEN: ${{ secrets.PORTER_APP_5_24 }}
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
@@ -14,14 +21,14 @@ jobs:
               run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
             - name: Setup porter
               uses: porter-dev/setup-porter@v0.2.0
-            - name: Deploy stack
+            - name: Build image
               timeout-minutes: 30
-              run: porter apply
+              run: porter app build test-restricted --tag ${{ steps.vars.outputs.sha_short }}
+            - name: Push image
+              timeout-minutes: 10
+              run: porter app push test-restricted --tag ${{ steps.vars.outputs.sha_short }}
+            - name: Apply manifest
+              timeout-minutes: 30
+              run: porter apply -f test_restricted_porter.yaml --no-build --tag ${{ steps.vars.outputs.sha_short }}
               env:
-                PORTER_APP_NAME: test-restricted
-                PORTER_CLUSTER: "60"
-                PORTER_DEPLOYMENT_TARGET_ID: e0b71efd-9115-4f05-89af-db09ad459d1c
-                PORTER_HOST: https://yosefdev2.withporter.run
-                PORTER_PROJECT: "5"
                 PORTER_TAG: ${{ steps.vars.outputs.sha_short }}
-                PORTER_TOKEN: ${{ secrets.PORTER_APP_5_24 }}

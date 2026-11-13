@@ -1,0 +1,45 @@
+version: v2
+name: test-restricted
+services:
+- name: web
+  run: ""
+  type: web
+  instances: 1
+  cpuCores: 0.5
+  ramMegabytes: 1000
+  terminationGracePeriodSeconds: 30
+  port: 3000
+  autoscaling:
+    enabled: true
+    minInstances: 1
+    maxInstances: 10
+    gpu: false
+    cpuThresholdPercent: 50
+    memoryThresholdPercent: 50
+    gpuThresholdPercent: 0
+    vramThresholdPercent: 0
+  domains:
+  - name: web-24-e0b71efd-eq7s5ttu.withporter.run
+  ingressAnnotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 2048m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+  sleep: false
+  networkRestriction:
+    enabled: true
+    egress:
+      apps:
+      - paddle
+      addons:
+      - name: ai-model-serving
+      - name: grafana
+      - name: sandbox-volumes
+      - name: paddleocr-hps
+        namespace: paddleocr
+      - name: paddleocr-bench-l40s
+        namespace: paddleocr-benchmark
+build:
+  context: ./
+  method: docker
+  dockerfile: Dockerfile
