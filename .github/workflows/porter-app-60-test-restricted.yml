@@ -2,7 +2,12 @@
     push:
         branches:
             - main
+    workflow_dispatch: {}
 name: Deploy to test-restricted
+permissions:
+    contents: read
+    id-token: write
+    attestations: write
 jobs:
     porter-deploy:
         runs-on: ubuntu-latest
@@ -13,6 +18,8 @@ jobs:
             PORTER_HOST: https://yosefdev2.withporter.run
             PORTER_PROJECT: "5"
             PORTER_TOKEN: ${{ secrets.PORTER_APP_5_24 }}
+            IMAGE_REPOSITORY: e0b71efd-9115-4f05-89af-db09ad459d1c/test-restricted
+            IMAGE_REGISTRY: 319490691152.dkr.ecr.us-east-1.amazonaws.com
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
@@ -27,6 +34,38 @@ jobs:
             - name: Push image
               timeout-minutes: 10
               run: porter app push test-restricted --tag ${{ steps.vars.outputs.sha_short }}
+            - name: Assume the registry role
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                role-to-assume: arn:aws:iam::319490691152:role/testserver-ci-attestations
+                aws-region: us-east-1
+            - name: Log in to the registry
+              uses: aws-actions/amazon-ecr-login@v2
+            - name: Resolve the pushed image digest
+              id: image
+              run: |
+                digest=$(aws ecr describe-images \
+                  --repository-name "$IMAGE_REPOSITORY" \
+                  --image-ids imageTag=${{ steps.vars.outputs.sha_short }} \
+                  --query 'imageDetails[0].imageDigest' --output text)
+                echo "name=$IMAGE_REGISTRY/$IMAGE_REPOSITORY" >> $GITHUB_OUTPUT
+                echo "digest=$digest" >> $GITHUB_OUTPUT
+            - name: Attest build provenance
+              uses: actions/attest-build-provenance@v2
+              with:
+                subject-name: ${{ steps.image.outputs.name }}
+                subject-digest: ${{ steps.image.outputs.digest }}
+                push-to-registry: true
+            - name: Render porter.yaml as the attested deploy intent
+              run: yq -o=json '.' test_restricted_porter.yaml > porter-app.json
+            - name: Attest porter.yaml
+              uses: actions/attest@v2
+              with:
+                subject-name: ${{ steps.image.outputs.name }}
+                subject-digest: ${{ steps.image.outputs.digest }}
+                predicate-type: https://porter.run/attestations/app/v1
+                predicate-path: porter-app.json
+                push-to-registry: true
             - name: Apply manifest
               timeout-minutes: 30
               run: porter apply -f test_restricted_porter.yaml --no-build --tag ${{ steps.vars.outputs.sha_short }}
