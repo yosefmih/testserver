@@ -2,7 +2,11 @@
     push:
         branches:
             - main
-    workflow_dispatch: {}
+    workflow_dispatch:
+        inputs:
+            attest_only_tag:
+                description: Attest an image tag already in the registry, without building or deploying
+                required: false
 name: Deploy to test-restricted
 permissions:
     contents: read
@@ -25,13 +29,18 @@ jobs:
               uses: actions/checkout@v4
             - name: Set Github tag
               id: vars
-              run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+              run: echo "sha_short=${ATTEST_ONLY_TAG:-$(git rev-parse --short HEAD)}" >> $GITHUB_OUTPUT
+              env:
+                ATTEST_ONLY_TAG: ${{ inputs.attest_only_tag }}
             - name: Setup porter
+              if: ${{ !inputs.attest_only_tag }}
               uses: porter-dev/setup-porter@v0.2.0
             - name: Build image
+              if: ${{ !inputs.attest_only_tag }}
               timeout-minutes: 30
               run: porter app build test-restricted --tag ${{ steps.vars.outputs.sha_short }}
             - name: Push image
+              if: ${{ !inputs.attest_only_tag }}
               timeout-minutes: 10
               run: porter app push test-restricted --tag ${{ steps.vars.outputs.sha_short }}
             - name: Assume the registry role
@@ -67,6 +76,7 @@ jobs:
                 predicate-path: porter-app.json
                 push-to-registry: true
             - name: Apply manifest
+              if: ${{ !inputs.attest_only_tag }}
               timeout-minutes: 30
               run: porter apply -f test_restricted_porter.yaml --no-build --tag ${{ steps.vars.outputs.sha_short }}
               env:
