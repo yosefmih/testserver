@@ -1,5 +1,7 @@
 version: v2
 name: test-restricted
+envGroups:
+- wo-probe
 services:
 - name: web
   run: ""
