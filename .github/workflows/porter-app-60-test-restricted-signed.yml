@@ -1,0 +1,43 @@
+"on":
+    workflow_dispatch: {}
+name: Deploy test-restricted through the signer
+permissions:
+    contents: read
+    id-token: write
+    attestations: write
+jobs:
+    sign:
+        uses: yosefmih/testserver/.github/workflows/porter-sign.yml@main
+        with:
+            app: test-restricted
+            porter-yaml: test_restricted_porter.yaml
+            image: 319490691152.dkr.ecr.us-east-1.amazonaws.com/e0b71efd-9115-4f05-89af-db09ad459d1c/test-restricted
+            cluster: "60"
+            project: "5"
+            host: https://trustcenter.yosefdev2.withporter.run
+            deployment-target: e0b71efd-9115-4f05-89af-db09ad459d1c
+            registry-role: arn:aws:iam::319490691152:role/testserver-ci-attestations
+        secrets:
+            porter-token: ${{ secrets.PORTER_APP_5_24 }}
+    deploy:
+        needs: sign
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        env:
+            PORTER_APP_NAME: test-restricted
+            PORTER_CLUSTER: "60"
+            PORTER_DEPLOYMENT_TARGET_ID: e0b71efd-9115-4f05-89af-db09ad459d1c
+            PORTER_HOST: https://trustcenter.yosefdev2.withporter.run
+            PORTER_PROJECT: "5"
+            PORTER_TOKEN: ${{ secrets.PORTER_APP_5_24 }}
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+            - name: Setup porter
+              uses: porter-dev/setup-porter@v0.2.0
+            - name: Apply manifest
+              timeout-minutes: 30
+              run: porter apply -f test_restricted_porter.yaml --no-build --tag ${{ needs.sign.outputs.tag }}
+              env:
+                PORTER_TAG: ${{ needs.sign.outputs.tag }}
