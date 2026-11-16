@@ -1,0 +1,174 @@
+name: Porter sign
+"on":
+    workflow_call:
+        inputs:
+            app:
+                type: string
+                required: true
+            porter-yaml:
+                type: string
+                required: true
+            image:
+                description: registry and repository the app's image is pushed to
+                type: string
+                required: true
+            cluster:
+                type: string
+                required: true
+            project:
+                type: string
+                required: true
+            host:
+                type: string
+                required: true
+            deployment-target:
+                type: string
+                required: true
+            registry-role:
+                type: string
+                required: true
+        secrets:
+            porter-token:
+                required: true
+        outputs:
+            tag:
+                value: ${{ jobs.build.outputs.tag }}
+            digest:
+                value: ${{ jobs.build.outputs.digest }}
+env:
+    PORTER_APP_ACTOR: "yosef-dev[bot]"
+jobs:
+    customer-code-only:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                fetch-depth: 0
+                persist-credentials: false
+            - name: Refuse code that Porter's app put here
+              env:
+                GH_TOKEN: ${{ github.token }}
+                REPO: ${{ github.repository }}
+                DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+                EVENT: ${{ github.event_name }}
+                REF: ${{ github.ref }}
+                PR_HEAD: ${{ github.head_ref }}
+                PR_BASE: ${{ github.base_ref }}
+                PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+              run: |
+                refuse() { echo "::error::Not signing: $1"; exit 1; }
+
+                # who created this branch, as of a point in time, according to GitHub's own record of the repository
+                branch_creator() {
+                  gh api -X GET "repos/$REPO/activity" -f ref="$1" -f activity_type=branch_creation -f per_page=100 \
+                    --jq "[.[] | select(.timestamp <= \"$2\")][0].actor.login // \"\""
+                }
+
+                # 1. only branches and pull requests inside this repository are signed
+                case "$EVENT" in
+                  pull_request)
+                    [ "$PR_HEAD_REPO" = "$REPO" ] || refuse "the pull request comes from a fork"
+                    branches="$PR_HEAD $PR_BASE" ;;
+                  *)
+                    case "$REF" in
+                      refs/heads/*) branches="${REF#refs/heads/}" ;;
+                      *) refuse "$REF is not a branch or a pull request" ;;
+                    esac ;;
+                esac
+
+                # 2. a branch Porter's app created is never signed, nor a pull request into or out of one
+                now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+                for branch in $branches; do
+                  creator=$(branch_creator "refs/heads/$branch" "$now")
+                  [ "$creator" != "$PORTER_APP_ACTOR" ] || refuse "Porter's app created the branch $branch"
+                done
+
+                # 3. nothing Porter's app pushed onto somebody else's branch is signed, until it is on the default branch
+                gh api --paginate -X GET "repos/$REPO/activity" -f actor="$PORTER_APP_ACTOR" -f per_page=100 \
+                  --jq '.[] | select(.activity_type != "branch_creation" and .activity_type != "branch_deletion") | [.timestamp, .ref, .before, .after] | @tsv' \
+                  > "$RUNNER_TEMP/pushes-by-porter.tsv"
+
+                while IFS=$'\t' read -r pushed_at ref before after; do
+                  git cat-file -e "$after^{commit}" 2>/dev/null || continue
+                  pushed="$after"
+                  if git cat-file -e "$before^{commit}" 2>/dev/null; then pushed="$before..$after"; fi
+
+                  in_this_build=""
+                  for commit in $(git rev-list "$pushed" --not "origin/$DEFAULT_BRANCH"); do
+                    if git merge-base --is-ancestor "$commit" HEAD; then in_this_build="$commit"; break; fi
+                  done
+                  [ -n "$in_this_build" ] || continue
+
+                  # on a branch the app created itself, a person had to merge it to bring it here
+                  [ "$(branch_creator "$ref" "$pushed_at")" != "$PORTER_APP_ACTOR" ] ||  continue
+                  refuse "Porter's app pushed commit $in_this_build onto $ref, and it is not on $DEFAULT_BRANCH"
+                done < "$RUNNER_TEMP/pushes-by-porter.tsv"
+
+                echo "Nothing in this build was put here by Porter's app"
+    build:
+        needs: customer-code-only
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        outputs:
+            tag: ${{ steps.vars.outputs.tag }}
+            digest: ${{ steps.push.outputs.digest }}
+        env:
+            PORTER_APP_NAME: ${{ inputs.app }}
+            PORTER_CLUSTER: ${{ inputs.cluster }}
+            PORTER_PROJECT: ${{ inputs.project }}
+            PORTER_HOST: ${{ inputs.host }}
+            PORTER_DEPLOYMENT_TARGET_ID: ${{ inputs.deployment-target }}
+            PORTER_TOKEN: ${{ secrets.porter-token }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                persist-credentials: false
+            - id: vars
+              run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+            - uses: porter-dev/setup-porter@v0.2.0
+            - name: Build image
+              timeout-minutes: 30
+              run: porter app build "$PORTER_APP_NAME" --tag ${{ steps.vars.outputs.tag }}
+            - name: Push image
+              id: push
+              timeout-minutes: 10
+              run: |
+                porter app push "$PORTER_APP_NAME" --tag ${{ steps.vars.outputs.tag }}
+                digest=$(docker inspect "${{ inputs.image }}:${{ steps.vars.outputs.tag }}" --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep -F "${{ inputs.image }}@" | head -n 1 | cut -d@ -f2)
+                [ -n "$digest" ] || { echo "::error::the pushed image has no digest"; exit 1; }
+                echo "digest=$digest" >> "$GITHUB_OUTPUT"
+    sign:
+        needs: build
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            id-token: write
+            attestations: write
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                persist-credentials: false
+            - uses: aws-actions/configure-aws-credentials@v4
+              with:
+                role-to-assume: ${{ inputs.registry-role }}
+                aws-region: us-east-1
+            - uses: aws-actions/amazon-ecr-login@v2
+            - name: Attest build provenance
+              uses: actions/attest-build-provenance@v2
+              with:
+                subject-name: ${{ inputs.image }}
+                subject-digest: ${{ needs.build.outputs.digest }}
+                push-to-registry: true
+            - name: Render porter.yaml as the attested deploy intent
+              run: yq -o=json '.' "${{ inputs.porter-yaml }}" > porter-app.json
+            - name: Attest porter.yaml
+              uses: actions/attest@v2
+              with:
+                subject-name: ${{ inputs.image }}
+                subject-digest: ${{ needs.build.outputs.digest }}
+                predicate-type: https://porter.run/attestations/app/v1
+                predicate-path: porter-app.json
+                push-to-registry: true
