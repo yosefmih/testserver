@@ -1,0 +1,9 @@
+name: Signer identity probe caller
+"on":
+    workflow_dispatch: {}
+permissions:
+    id-token: write
+    contents: read
+jobs:
+    call-the-signer-on-main:
+        uses: yosefmih/testserver/.github/workflows/porter-sign-probe.yml@main

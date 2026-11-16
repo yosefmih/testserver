@@ -1,0 +1,33 @@
+name: Signer identity probe
+"on":
+    workflow_call: {}
+jobs:
+    identity:
+        runs-on: ubuntu-latest
+        permissions:
+            id-token: write
+            contents: read
+        steps:
+            - name: Print the identity claims GitHub issues to this job
+              run: |
+                token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sigstore" | jq -r .value)
+                python3 - "$token" <<'PY'
+                import base64, json, sys
+                payload = sys.argv[1].split(".")[1]
+                payload += "=" * (-len(payload) % 4)
+                claims = json.loads(base64.urlsafe_b64decode(payload))
+                for name in ["job_workflow_ref", "workflow_ref", "ref", "head_ref", "base_ref", "event_name", "actor", "sub"]:
+                    print(f"{name} = {claims.get(name)}")
+                PY
+            - name: Install cosign
+              uses: sigstore/cosign-installer@v3
+            - name: Sign a blob and print the certificate's identity
+              continue-on-error: true
+              run: |
+                echo probe > probe.txt
+                cosign sign-blob --yes --bundle bundle.json probe.txt > /dev/null
+                if jq -e '.verificationMaterial.certificate.rawBytes' bundle.json > /dev/null; then
+                  jq -r '.verificationMaterial.certificate.rawBytes' bundle.json | base64 -d | openssl x509 -inform der -noout -ext subjectAltName
+                else
+                  jq -r '.cert' bundle.json | base64 -d | openssl x509 -noout -ext subjectAltName
+                fi
